@@ -1,0 +1,380 @@
+2024/06/27 17:15:15 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:15:23 spaceZ.go:34: Received request: GET / from [::1]:49774
+2024/06/27 17:15:23 spaceZ.go:34: Received request: GET /game.js from [::1]:49774
+2024/06/27 17:17:38 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:17:40 spaceZ.go:34: Received request: GET / from [::1]:49787
+2024/06/27 17:17:40 spaceZ.go:34: Received request: GET /game.js from [::1]:49787
+2024/06/27 17:19:35 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:19:36 spaceZ.go:34: Received request: GET / from [::1]:49804
+2024/06/27 17:19:36 spaceZ.go:34: Received request: GET /game.js from [::1]:49804
+2024/06/27 17:25:34 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:25:36 spaceZ.go:34: Received request: GET / from [::1]:49838
+2024/06/27 17:25:36 spaceZ.go:34: Received request: GET /game.js from [::1]:49838
+2024/06/27 17:31:29 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:31:31 spaceZ.go:34: Received request: GET / from [::1]:49898
+2024/06/27 17:32:40 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:32:41 spaceZ.go:34: Received request: GET / from [::1]:49906
+2024/06/27 17:32:53 spaceZ.go:34: Received request: GET / from [::1]:49906
+2024/06/27 17:32:56 spaceZ.go:34: Received request: GET / from [::1]:49906
+2024/06/27 17:32:56 spaceZ.go:34: Received request: GET / from [::1]:49906
+2024/06/27 17:35:14 spaceZ.go:47: Starting server on :8080
+2024/06/27 17:35:16 spaceZ.go:23: Received request: GET / from [::1]:49915
+2024/06/27 17:35:18 spaceZ.go:23: Received request: GET / from [::1]:49915
+2024/06/27 17:35:19 spaceZ.go:23: Received request: GET / from [::1]:49915
+2024/06/27 17:35:30 spaceZ.go:23: Received request: GET / from [::1]:49915
+2024/06/27 17:35:31 spaceZ.go:23: Received request: GET / from [::1]:49915
+2024/06/27 17:35:34 spaceZ.go:23: Received request: GET / from [::1]:49918
+2024/06/27 17:36:33 spaceZ.go:35: Starting server on :8080
+2024/06/27 17:36:34 spaceZ.go:23: Received request: GET / from [::1]:49928
+2024/06/27 17:36:35 spaceZ.go:23: Received request: GET / from [::1]:49928
+2024/06/27 17:36:37 spaceZ.go:23: Received request: GET / from [::1]:49928
+2024/06/27 17:36:37 spaceZ.go:23: Received request: GET / from [::1]:49928
+2024/06/27 17:37:12 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:37:13 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:37:15 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:37:15 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:37:16 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:37:16 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:37:17 spaceZ.go:23: Received request: GET / from [::1]:49939
+2024/06/27 17:38:08 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:38:11 spaceZ.go:34: Received request: GET / from [::1]:49945
+2024/06/27 17:38:12 spaceZ.go:34: Received request: GET / from [::1]:49945
+2024/06/27 17:38:30 spaceZ.go:34: Received request: GET / from [::1]:49945
+2024/06/27 17:38:37 spaceZ.go:25: Starting server on :8080
+2024/06/27 17:38:39 spaceZ.go:34: Received request: GET / from [::1]:49959
+2024/06/27 17:38:39 spaceZ.go:34: Received request: GET / from [::1]:49959
+2024/06/27 17:40:19 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:40:22 spaceZ.go:23: Received request: GET / from [::1]:49964
+2024/06/27 17:43:14 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET / from [::1]:49990
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /game.js from [::1]:49990
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /player-ship.svg from [::1]:49990
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /ibm-b.svg from [::1]:49993
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /wall.svg from [::1]:49991
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /ibm-m.svg from [::1]:49994
+2024/06/27 17:43:15 spaceZ.go:23: Received request: GET /ibm-i.svg from [::1]:49992
+2024/06/27 17:48:19 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:48:21 spaceZ.go:23: Received request: GET / from [::1]:50018
+2024/06/27 17:48:21 spaceZ.go:23: Received request: GET /game.js from [::1]:50018
+2024/06/27 17:48:21 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50018
+2024/06/27 17:48:21 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50019
+2024/06/27 17:51:19 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:51:21 spaceZ.go:23: Received request: GET / from [::1]:50033
+2024/06/27 17:51:21 spaceZ.go:23: Received request: GET /game.js from [::1]:50033
+2024/06/27 17:51:21 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50033
+2024/06/27 17:51:21 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50034
+2024/06/27 17:51:23 spaceZ.go:23: Received request: GET / from [::1]:50034
+2024/06/27 17:51:23 spaceZ.go:23: Received request: GET /game.js from [::1]:50034
+2024/06/27 17:51:43 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:51:44 spaceZ.go:23: Received request: GET / from [::1]:50039
+2024/06/27 17:51:44 spaceZ.go:23: Received request: GET /game.js from [::1]:50039
+2024/06/27 17:51:44 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50039
+2024/06/27 17:54:36 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:54:39 spaceZ.go:23: Received request: GET / from [::1]:50081
+2024/06/27 17:54:39 spaceZ.go:23: Received request: GET /game.js from [::1]:50081
+2024/06/27 17:54:39 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50081
+2024/06/27 17:54:39 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50082
+2024/06/27 17:54:41 spaceZ.go:23: Received request: GET / from [::1]:50082
+2024/06/27 17:54:41 spaceZ.go:23: Received request: GET /game.js from [::1]:50082
+2024/06/27 17:54:57 spaceZ.go:31: Starting server on :8080
+2024/06/27 17:54:59 spaceZ.go:23: Received request: GET / from [::1]:50086
+2024/06/27 17:54:59 spaceZ.go:23: Received request: GET /game.js from [::1]:50086
+2024/06/27 17:55:00 spaceZ.go:23: Received request: GET /ibm-i.svg from [::1]:50086
+2024/06/27 17:55:00 spaceZ.go:23: Received request: GET /ibm-b.svg from [::1]:50087
+2024/06/27 17:55:00 spaceZ.go:23: Received request: GET /ibm-m.svg from [::1]:50088
+2024/06/27 17:55:53 spaceZ.go:23: Received request: GET / from [::1]:50087
+2024/06/27 17:55:53 spaceZ.go:23: Received request: GET /game.js from [::1]:50087
+2024/06/27 17:55:53 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50087
+2024/06/27 17:55:54 spaceZ.go:23: Received request: GET /ibm-b.svg from [::1]:50087
+2024/06/27 17:57:35 spaceZ.go:23: Received request: GET / from [::1]:50087
+2024/06/27 17:57:35 spaceZ.go:23: Received request: GET /game.js from [::1]:50087
+2024/06/27 17:57:35 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50088
+2024/06/27 17:57:35 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50087
+2024/06/27 17:57:37 spaceZ.go:23: Received request: GET /ibm-i.svg from [::1]:50088
+2024/06/27 17:57:37 spaceZ.go:23: Received request: GET /ibm-m.svg from [::1]:50086
+2024/06/27 17:57:37 spaceZ.go:23: Received request: GET /ibm-b.svg from [::1]:50087
+2024/06/27 18:01:55 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET / from [::1]:50103
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /game.js from [::1]:50103
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50103
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50104
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50104
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50103
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50106
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50105
+2024/06/27 18:01:58 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50107
+2024/06/27 18:03:45 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:03:47 spaceZ.go:23: Received request: GET / from [::1]:50136
+2024/06/27 18:03:47 spaceZ.go:23: Received request: GET /game.js from [::1]:50136
+2024/06/27 18:03:47 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50136
+2024/06/27 18:03:48 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50136
+2024/06/27 18:03:48 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50137
+2024/06/27 18:03:48 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50138
+2024/06/27 18:03:48 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50136
+2024/06/27 18:03:48 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50139
+2024/06/27 18:04:08 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:04:10 spaceZ.go:23: Received request: GET / from [::1]:50144
+2024/06/27 18:04:11 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50144
+2024/06/27 18:04:11 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50145
+2024/06/27 18:04:11 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50148
+2024/06/27 18:04:11 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50146
+2024/06/27 18:04:11 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50147
+2024/06/27 18:05:20 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:05:22 spaceZ.go:23: Received request: GET / from [::1]:50153
+2024/06/27 18:05:22 spaceZ.go:23: Received request: GET /game.js from [::1]:50153
+2024/06/27 18:05:22 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50153
+2024/06/27 18:05:23 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50153
+2024/06/27 18:05:23 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50154
+2024/06/27 18:05:23 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50157
+2024/06/27 18:05:23 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50155
+2024/06/27 18:05:23 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50156
+2024/06/27 18:05:57 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:05:58 spaceZ.go:23: Received request: GET / from [::1]:50161
+2024/06/27 18:05:58 spaceZ.go:23: Received request: GET /game.js from [::1]:50161
+2024/06/27 18:05:58 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50161
+2024/06/27 18:05:59 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50161
+2024/06/27 18:05:59 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50162
+2024/06/27 18:05:59 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50161
+2024/06/27 18:05:59 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50163
+2024/06/27 18:05:59 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50164
+2024/06/27 18:07:48 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET / from [::1]:50170
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /game.js from [::1]:50170
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50170
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50170
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50171
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50170
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50173
+2024/06/27 18:07:50 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50172
+2024/06/27 18:07:52 spaceZ.go:23: Received request: GET / from [::1]:50170
+2024/06/27 18:07:52 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50170
+2024/06/27 18:09:11 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:09:13 spaceZ.go:23: Received request: GET / from [::1]:50181
+2024/06/27 18:09:13 spaceZ.go:23: Received request: GET /game.js from [::1]:50181
+2024/06/27 18:09:13 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50181
+2024/06/27 18:09:13 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50182
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET / from [::1]:50182
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50182
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50181
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50183
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50182
+2024/06/27 18:09:14 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50181
+2024/06/27 18:10:49 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:10:51 spaceZ.go:23: Received request: GET / from [::1]:50193
+2024/06/27 18:10:51 spaceZ.go:23: Received request: GET /game.js from [::1]:50193
+2024/06/27 18:10:51 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50193
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET / from [::1]:50193
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50193
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50194
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50198
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50197
+2024/06/27 18:10:53 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50196
+2024/06/27 18:11:45 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET / from [::1]:50204
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /game.js from [::1]:50204
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50204
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50204
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50205
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50207
+2024/06/27 18:11:49 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50206
+2024/06/27 18:12:31 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET / from [::1]:50212
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /game.js from [::1]:50212
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50212
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50213
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50214
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50215
+2024/06/27 18:12:34 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50212
+2024/06/27 18:16:10 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:16:12 spaceZ.go:23: Received request: GET / from [::1]:50238
+2024/06/27 18:16:12 spaceZ.go:23: Received request: GET /game.js from [::1]:50238
+2024/06/27 18:16:12 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50238
+2024/06/27 18:16:12 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50239
+2024/06/27 18:16:13 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50239
+2024/06/27 18:16:13 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50238
+2024/06/27 18:16:13 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50239
+2024/06/27 18:16:13 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50240
+2024/06/27 18:16:13 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50238
+2024/06/27 18:18:01 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET / from [::1]:50255
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /game.js from [::1]:50255
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50255
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50256
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50256
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50255
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50258
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50257
+2024/06/27 18:18:04 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50259
+2024/06/27 18:18:37 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:18:39 spaceZ.go:23: Received request: GET / from [::1]:50267
+2024/06/27 18:18:39 spaceZ.go:23: Received request: GET /game.js from [::1]:50267
+2024/06/27 18:18:39 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50267
+2024/06/27 18:18:39 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50268
+2024/06/27 18:18:40 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50268
+2024/06/27 18:18:40 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50267
+2024/06/27 18:18:40 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50267
+2024/06/27 18:19:03 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:19:06 spaceZ.go:23: Received request: GET / from [::1]:50273
+2024/06/27 18:19:06 spaceZ.go:23: Received request: GET /game.js from [::1]:50273
+2024/06/27 18:19:06 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50274
+2024/06/27 18:19:06 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50273
+2024/06/27 18:19:07 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50273
+2024/06/27 18:19:07 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50274
+2024/06/27 18:19:07 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50274
+2024/06/27 18:19:07 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50273
+2024/06/27 18:19:56 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET / from [::1]:50280
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /game.js from [::1]:50280
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50280
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50281
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50280
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50281
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50283
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50284
+2024/06/27 18:19:58 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50282
+2024/06/27 18:20:39 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:20:41 spaceZ.go:23: Received request: GET / from [::1]:50289
+2024/06/27 18:20:41 spaceZ.go:23: Received request: GET /game.js from [::1]:50289
+2024/06/27 18:20:41 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50289
+2024/06/27 18:20:41 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50290
+2024/06/27 18:20:42 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50290
+2024/06/27 18:20:42 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50289
+2024/06/27 18:20:42 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50290
+2024/06/27 18:20:42 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50291
+2024/06/27 18:21:24 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET / from [::1]:50296
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /game.js from [::1]:50296
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50296
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50297
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50297
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50296
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50300
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50299
+2024/06/27 18:21:26 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50298
+2024/06/27 18:22:07 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:22:09 spaceZ.go:23: Received request: GET / from [::1]:50304
+2024/06/27 18:22:09 spaceZ.go:23: Received request: GET /game.js from [::1]:50304
+2024/06/27 18:22:09 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50304
+2024/06/27 18:22:09 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50305
+2024/06/27 18:22:10 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50305
+2024/06/27 18:22:10 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50304
+2024/06/27 18:22:10 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50305
+2024/06/27 18:22:10 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50304
+2024/06/27 18:22:10 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50306
+2024/06/27 18:22:41 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET / from [::1]:50311
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /game.js from [::1]:50311
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50311
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50312
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50311
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50314
+2024/06/27 18:22:42 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50313
+2024/06/27 18:22:55 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:22:56 spaceZ.go:23: Received request: GET / from [::1]:50322
+2024/06/27 18:22:56 spaceZ.go:23: Received request: GET /game.js from [::1]:50322
+2024/06/27 18:22:56 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50322
+2024/06/27 18:22:56 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50323
+2024/06/27 18:22:57 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50323
+2024/06/27 18:22:57 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50322
+2024/06/27 18:23:08 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET / from [::1]:50328
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET /game.js from [::1]:50328
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50328
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50329
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50330
+2024/06/27 18:23:09 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50328
+2024/06/27 18:23:25 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:23:27 spaceZ.go:23: Received request: GET / from [::1]:50335
+2024/06/27 18:23:27 spaceZ.go:23: Received request: GET /game.js from [::1]:50335
+2024/06/27 18:23:27 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50336
+2024/06/27 18:23:27 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50335
+2024/06/27 18:24:48 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:24:50 spaceZ.go:23: Received request: GET / from [::1]:50343
+2024/06/27 18:24:50 spaceZ.go:23: Received request: GET /game.js from [::1]:50343
+2024/06/27 18:24:50 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50343
+2024/06/27 18:24:50 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50344
+2024/06/27 18:24:51 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50344
+2024/06/27 18:24:51 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50343
+2024/06/27 18:24:51 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50345
+2024/06/27 18:24:51 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50343
+2024/06/27 18:24:51 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50346
+2024/06/27 18:24:59 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:25:02 spaceZ.go:23: Received request: GET / from [::1]:50351
+2024/06/27 18:25:02 spaceZ.go:23: Received request: GET /game.js from [::1]:50351
+2024/06/27 18:25:13 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:25:15 spaceZ.go:23: Received request: GET / from [::1]:50355
+2024/06/27 18:25:15 spaceZ.go:23: Received request: GET /game.js from [::1]:50355
+2024/06/27 18:25:16 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50355
+2024/06/27 18:25:29 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:25:33 spaceZ.go:23: Received request: GET / from [::1]:50361
+2024/06/27 18:25:33 spaceZ.go:23: Received request: GET /game.js from [::1]:50361
+2024/06/27 18:25:34 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50361
+2024/06/27 18:25:34 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50362
+2024/06/27 18:25:34 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50364
+2024/06/27 18:25:34 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50363
+2024/06/27 18:30:19 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:30:21 spaceZ.go:23: Received request: GET / from [::1]:50434
+2024/06/27 18:30:21 spaceZ.go:23: Received request: GET /game.js from [::1]:50434
+2024/06/27 18:30:21 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50434
+2024/06/27 18:30:21 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50435
+2024/06/27 18:30:22 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50435
+2024/06/27 18:30:22 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50434
+2024/06/27 18:30:22 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50435
+2024/06/27 18:30:22 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50434
+2024/06/27 18:30:22 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50436
+2024/06/27 18:30:24 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50436
+2024/06/27 18:31:56 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET / from [::1]:50451
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /game.js from [::1]:50451
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50451
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50452
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50452
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50451
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50451
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50452
+2024/06/27 18:31:59 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50453
+2024/06/27 18:32:01 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50453
+2024/06/27 18:32:14 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50453
+2024/06/27 18:32:33 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50453
+2024/06/27 18:36:42 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET / from [::1]:50476
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /game.js from [::1]:50476
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50476
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50477
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50477
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50476
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50477
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50476
+2024/06/27 18:36:44 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50476
+2024/06/27 18:36:46 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50476
+2024/06/27 18:39:39 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET / from [::1]:50493
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /game.js from [::1]:50493
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50493
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50494
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50494
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50493
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50495
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50497
+2024/06/27 18:39:41 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50496
+2024/06/27 18:39:48 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50495
+2024/06/27 18:41:59 spaceZ.go:31: Starting server on :8080
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET / from [::1]:50509
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /game.js from [::1]:50509
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50509
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50509
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50510
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50511
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50509
+2024/06/27 18:42:01 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50512
+2024/06/27 20:20:25 spaceZ.go:23: Received request: GET / from [::1]:50679
+2024/06/27 20:20:25 spaceZ.go:23: Received request: GET /game.js from [::1]:50679
+2024/06/27 20:20:25 spaceZ.go:23: Received request: GET /wall.svg from [::1]:50679
+2024/06/27 20:20:25 spaceZ.go:23: Received request: GET /hercules-ship.svg from [::1]:50680
+2024/06/27 20:20:27 spaceZ.go:23: Received request: GET /enemy-ship-red.svg from [::1]:50679
+2024/06/27 20:20:27 spaceZ.go:23: Received request: GET /enemy-ship-green.svg from [::1]:50694
+2024/06/27 20:20:27 spaceZ.go:23: Received request: GET /enemy-ship-yellow.svg from [::1]:50692
+2024/06/27 20:20:27 spaceZ.go:23: Received request: GET /enemy-ship-blue.svg from [::1]:50693
+2024/06/27 20:20:27 spaceZ.go:23: Received request: GET /enemy-ship-orange.svg from [::1]:50680
+2024/06/27 20:20:30 spaceZ.go:23: Received request: GET /explosion.svg from [::1]:50680
+2024/06/27 20:20:56 spaceZ.go:23: Received request: GET / from [::1]:50680

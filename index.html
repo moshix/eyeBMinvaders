@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Space Invader</title>
+        <style>
+            body {
+                margin: 0;
+                overflow: hidden;
+                background: black;
+                color: white;
+                font-family: Arial, sans-serif;
+            }
+            canvas {
+                display: block;
+                background: #000;
+            }
+            #score {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                color: white;
+                font-size: 20px;
+            }
+            #legend {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: white;
+                font-size: 24px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="score">Score: 0</div>
+        <div id="legend">
+            <p>Arrow Left/Right: Move</p>
+            <p>Space: Shoot</p>
+            <p>P: Pause/Unpause</p>
+            <p>R: Restart</p>
+            <p>Press any key to start...</p>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <script src="game.js"></script>
+    </body>
+</html>
