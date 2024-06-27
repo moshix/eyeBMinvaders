@@ -10,8 +10,11 @@ Run it with
 <pre>go run eyeBMinvaders.go
 then, connect with browser to localhost:8080
 </pre>
+
+
   
 
 June 27, 2024, Celerina
-  
+
+<img src="https://moshix.dynu.net/eyebminvaders.png">
 
