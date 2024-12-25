@@ -8,7 +8,7 @@ eyeBMinvaders
 
 A space invaders game for the mainframe, and any other computers out there. 
 
-June 27, 2024, Celerina
+December 25, somewhere in Mexico  
 
 <img src="https://moshix.dynu.net/eyebminvaders.png">
 
