@@ -48,21 +48,53 @@
             }
             #startButton {
                 position: absolute;
-                top: 50%;
                 left: 50%;
-                transform: translate(-50%, -50%);
-                padding: 20px 40px;
-                font-size: 24px;
+                transform: translateX(-50%);
+                padding: 15px 30px;
+                font-size: 20px;
                 background-color: rgba(255, 255, 255, 0.3);
                 color: white;
                 border: 2px solid white;
                 border-radius: 10px;
                 cursor: pointer;
-                display: block;
-                touch-action: manipulation;  /* Improves touch handling */
+                touch-action: manipulation;
             }
             
-            /* Hide button after game starts */
+            /* Tablet styling */
+            @media (min-width: 768px) and (max-width: 1024px) {
+                #startButton {
+                    top: 70%;  /* Position below text */
+                    padding: 15px 30px;
+                    font-size: 18px;
+                }
+                #legend {
+                    display: block;  /* Show text */
+                }
+            }
+
+            /* Phone styling */
+            @media (max-width: 767px) {
+                #startButton {
+                    top: 50%;
+                    transform: translate(-50%, -50%);  /* Center vertically and horizontally */
+                    padding: 20px 40px;
+                    font-size: 24px;
+                }
+                #legend {
+                    display: none;  /* Hide text on phones */
+                }
+            }
+
+            /* Desktop styling */
+            @media (min-width: 1025px) {
+                #startButton {
+                    display: none;  /* Hide button on desktop */
+                }
+                #legend {
+                    display: block;  /* Show text */
+                }
+            }
+
             #startButton.hidden {
                 display: none;
             }
