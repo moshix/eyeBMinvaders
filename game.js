@@ -16,6 +16,7 @@
 // 2.1  oh no! homing missiles from the evil empire!
 // 2.2  fix missile logic, add assets and add favicon support
 // 2.3  fix opening page and walls can now collapse! 
+// 2.4  vax bullets also deterioate walls 
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -93,6 +94,9 @@ let chunkImage = new Image();
 chunkImage.src = 'chunk.svg';
 
 const WALL_MAX_HITS = 3;  // Programmer tunable: number of hits before wall disappears
+const WALL_HITS_FROM_BELOW = 4;     // Programmer tunable: hits needed for wall damage from player shots
+const WALL_MAX_HITS_TOTAL = 10;     // Programmer tunable: total hits before wall disappears
+const WALL_MAX_MISSILE_HITS = 3;    // Programmer tunable: hits from missiles before wall disappears
 
 let walls = [
   {
@@ -298,6 +302,64 @@ function moveEnemies(deltaTime) {
 }
 
 function detectCollisions() {
+  // Check player bullet collisions with walls
+  bullets.forEach((bullet, bIndex) => {
+    if (!bullet.isEnemyBullet) {  // Only player bullets
+      walls.forEach((wall, wallIndex) => {
+        if (bullet.x >= wall.x && 
+            bullet.x <= wall.x + wall.width &&
+            bullet.y >= wall.y && 
+            bullet.y <= wall.y + wall.height) {
+          
+          // Count hits for this wall
+          wall.hitCount = (wall.hitCount || 0) + 1;
+          
+          // Add damage mark every WALL_HITS_FROM_BELOW shots
+          if (wall.hitCount % WALL_HITS_FROM_BELOW === 0) {
+            wallHits[wallIndex].push({
+              x: bullet.x - wall.x,
+              y: bullet.y - wall.y
+            });
+          }
+          
+          // Remove bullet
+          bullets.splice(bIndex, 1);
+          
+          // Remove wall if total hits exceeded
+          if (wall.hitCount >= WALL_MAX_HITS_TOTAL) {
+            walls.splice(wallIndex, 1);
+            wallHits.splice(wallIndex, 1);
+          }
+        }
+      });
+    }
+  });
+
+  // Update missile collision with walls to use WALL_MAX_MISSILE_HITS
+  homingMissiles.forEach((missile, mIndex) => {
+    walls.forEach((wall, wallIndex) => {
+      if (missile.x >= wall.x && 
+          missile.x <= wall.x + wall.width &&
+          missile.y >= wall.y && 
+          missile.y <= wall.y + wall.height) {
+        
+        wallHits[wallIndex].push({
+          x: missile.x - wall.x,
+          y: missile.y - wall.y
+        });
+        
+        homingMissiles.splice(mIndex, 1);
+        
+        // Count missile hits separately
+        wall.missileHits = (wall.missileHits || 0) + 1;
+        if (wall.missileHits >= WALL_MAX_MISSILE_HITS) {
+          walls.splice(wallIndex, 1);
+          wallHits.splice(wallIndex, 1);
+        }
+      }
+    });
+  });
+
   for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
     const bullet = bullets[bIndex];
     
@@ -435,32 +497,6 @@ function detectCollisions() {
       }
     }
   });
-
-  // Check missile collisions with walls
-  homingMissiles.forEach((missile, mIndex) => {
-    walls.forEach((wall, wallIndex) => {
-      if (missile.x >= wall.x && 
-          missile.x <= wall.x + wall.width &&
-          missile.y >= wall.y && 
-          missile.y <= wall.y + wall.height) {
-        
-        // Record hit location
-        wallHits[wallIndex].push({
-          x: missile.x - wall.x,  // Record relative position within wall
-          y: missile.y - wall.y
-        });
-        
-        // Remove missile
-        homingMissiles.splice(mIndex, 1);
-        
-        // Remove wall if hit 3 times
-        if (wallHits[wallIndex].length >= WALL_MAX_HITS) {
-          walls.splice(wallIndex, 1);
-          wallHits.splice(wallIndex, 1);
-        }
-      }
-    });
-  });
 }
 
 function drawScore() {
@@ -553,8 +589,8 @@ function restartGame() {
       height: 20,
       image: wallImage
     }
-  ];
-  wallHits = walls.map(() => []); // Reset wall hits
+  ].map(wall => ({...wall, hitCount: 0, missileHits: 0}));
+  wallHits = walls.map(() => []);
 }
 
 function handleEnemyShooting(currentTime) {
