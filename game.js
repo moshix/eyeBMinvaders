@@ -136,24 +136,29 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
-      player.width = 50;    // Original width
-      player.height = 50;   // Original height
+      player.width = 50;
+      player.height = 50;
     } else {
       player.image = playerExplosionImage;
-      player.width = 50 * 2;    // Double size for explosion
-      player.height = 50 * 2;   // Double size for explosion
-      // Draw explosion centered on player's original position
-      ctx.drawImage(
-        player.image, 
-        player.x - (player.width / 2),  // Center horizontally
-        player.y - (player.height / 2),  // Center vertically
-        player.width, 
-        player.height
-      );
+      player.width = 50 * 2;
+      player.height = 50 * 2;
+      // Only draw if image is loaded
+      if (player.image.complete) {
+        ctx.drawImage(
+          player.image, 
+          player.x - (player.width / 2),
+          player.y - (player.height / 2),
+          player.width, 
+          player.height
+        );
+      }
       return;
     }
   }
-  ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
+  // Only draw if image is loaded
+  if (player.image.complete) {
+    ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
+  }
 }
 
 function drawEnemies() {
