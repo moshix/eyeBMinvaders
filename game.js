@@ -13,6 +13,8 @@
 // 1.8  remove console log messages
 // 1.9  1000 extra points when user finishes the level
 // 2.0  touch screen support!
+// 2.1  oh no! homing missiles from the evil empire!
+// 2.2  fix missile logic, add assets and add favicon support
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -24,6 +26,14 @@ const BULLET_SPEED = 300; // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
 const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
+const MIN_MISSILE_INTERVAL = 3000; // 3 seconds
+const MAX_MISSILE_INTERVAL = 6000; // 6 seconds
+const MISSILE_SPEED = 200; // pixels per second
+let lastMissileTime = 0;
+let nextMissileTime = 0;
+let homingMissiles = [];
+let missileImage = new Image();
+missileImage.src = 'missile.svg';
 
 let player = {
   x: canvas.width / 2 - 25,
@@ -253,6 +263,43 @@ function moveEnemies(deltaTime) {
 }
 
 function detectCollisions() {
+  for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
+    const bullet = bullets[bIndex];
+    
+    if (!bullet.isEnemyBullet) {
+      for (let mIndex = homingMissiles.length - 1; mIndex >= 0; mIndex--) {
+        const missile = homingMissiles[mIndex];
+        const dx = bullet.x - missile.x;
+        const dy = bullet.y - missile.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < (missile.width/2 + 5)) {
+          // Add explosion at missile's position
+          missileExplosions.push({
+            x: missile.x,
+            y: missile.y,
+            width: missile.width * 1.5,  // Make explosion slightly larger
+            height: missile.width * 1.5,
+            timeCreated: Date.now(),
+            duration: 400  // Match sound duration
+          });
+          
+          bullets.splice(bIndex, 1);
+          homingMissiles.splice(mIndex, 1);
+          
+          missileBoomSound.currentTime = 0;
+          if (!isMuted) {
+            missileBoomSound.play();
+            setTimeout(() => {
+              missileBoomSound.pause();
+              missileBoomSound.currentTime = 0;
+            }, 400);
+          }
+          break;
+        }
+      }
+    }
+  }
   bullets.forEach((bullet, bIndex) => {
     if (bullet.isEnemyBullet) {
       // Only check player collision if not currently hit
@@ -322,6 +369,37 @@ function detectCollisions() {
       }
     });
   });
+
+  // Check missile collisions with player
+  homingMissiles.forEach((missile, mIndex) => {
+    if (!isPlayerHit) {
+      const dx = (missile.x) - (player.x + player.width/2);
+      const dy = (missile.y) - (player.y + player.height/2);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < (player.width + missile.width)/2) {
+        homingMissiles.splice(mIndex, 1);
+        player.lives--;
+        showHitMessage = true;
+        hitMessageTimer = Date.now();
+        
+        // Add explosion animation and sound
+        isPlayerHit = true;
+        playerHitTimer = Date.now();
+        player.image = playerExplosionImage;
+        playerExplosionSound.currentTime = 0;
+        playerExplosionSound.play();
+        
+        // Clear all enemy bullets and missiles
+        bullets = bullets.filter(b => !b.isEnemyBullet);
+        homingMissiles = [];
+        
+        if (player.lives <= 0) {
+          gameOverFlag = true;
+        }
+      }
+    }
+  });
 }
 
 function drawScore() {
@@ -352,7 +430,7 @@ function victory() {
 
 function restartGame() {
   currentLevel = 1;
-  enemySpeed = 0.55; // Reset to initial speed
+  enemySpeed = 0.55;
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
   player.y = canvas.height - 60;
@@ -361,6 +439,7 @@ function restartGame() {
   score = 0;
   bullets = [];
   enemies = [];
+  homingMissiles = [];
   createEnemies();
   explosions = [];
   showHitMessage = false;
@@ -371,6 +450,7 @@ function restartGame() {
   startGameSound.currentTime = 0;
   startGameSound.play();
   requestAnimationFrame(gameLoop);
+  missileExplosions = [];
 }
 
 function handleEnemyShooting(currentTime) {
@@ -430,93 +510,6 @@ function drawMuteStatus() {
   }
 }
 
-// Add touch button definitions at the top
-const touchButtons = {
-  left: {
-    x: 20,
-    y: canvas.height - 100,
-    width: 60,
-    height: 60,
-    alpha: 0.3,
-    text: "←"
-  },
-  right: {
-    x: canvas.width - 160,
-    y: canvas.height - 100,
-    width: 60,
-    height: 60,
-    alpha: 0.3,
-    text: "→"
-  },
-  shoot: {
-    x: canvas.width - 80,
-    y: canvas.height - 100,
-    width: 60,
-    height: 60,
-    alpha: 0.3,
-    text: "🔫"
-  }
-};
-
-// Add touch detection at the top
-const isTouchDevice = ('ontouchstart' in window) || 
-                     (navigator.maxTouchPoints > 0) ||
-                     (navigator.msMaxTouchPoints > 0);
-
-// Update drawTouchControls function
-function drawTouchControls() {
-  // Only draw touch controls if on a touch device
-  if (!isTouchDevice) return;
-
-  Object.values(touchButtons).forEach(button => {
-    ctx.save();
-    ctx.globalAlpha = button.alpha;
-    ctx.fillStyle = "white";
-    ctx.fillRect(button.x, button.y, button.width, button.height);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "black";
-    ctx.font = "24px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(button.text, button.x + button.width/2, button.y + button.height/2);
-    ctx.restore();
-  });
-}
-
-// Update touch event listeners
-if (isTouchDevice) {
-  canvas.addEventListener('touchstart', handleTouch, false);
-  canvas.addEventListener('touchend', handleTouchEnd, false);
-}
-
-function handleTouch(e) {
-  e.preventDefault();
-  const touch = e.touches[0];
-  const rect = canvas.getBoundingClientRect();
-  const x = touch.clientX - rect.left;
-  const y = touch.clientY - rect.top;
-
-  Object.entries(touchButtons).forEach(([key, button]) => {
-    if (x >= button.x && x <= button.x + button.width &&
-        y >= button.y && y <= button.y + button.height) {
-      if (key === 'left') {
-        keys.ArrowLeft = true;
-      } else if (key === 'right') {
-        keys.ArrowRight = true;
-      } else if (key === 'shoot') {
-        keys.Space = true;
-      }
-    }
-  });
-}
-
-function handleTouchEnd(e) {
-  e.preventDefault();
-  keys.ArrowLeft = false;
-  keys.ArrowRight = false;
-  keys.Space = false;
-}
-
 function gameLoop(currentTime) {
   if (!lastTime) lastTime = currentTime;
   const deltaTime = (currentTime - lastTime) / 1000;
@@ -524,24 +517,25 @@ function gameLoop(currentTime) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Always draw everything, even when paused
-  drawPlayer();
-  drawEnemies();
-  drawBullets();
-  drawWalls();
-  drawExplosions();
-  drawScore();
-  drawHitMessage();
-  drawMuteStatus();
-
-  // Only update game state if not paused
   if (!gamePaused) {
     if (player.lives > 0 && !gameOverFlag && !victoryFlag) {
       movePlayer(deltaTime);
       moveBullets(deltaTime);
       moveEnemies(deltaTime);
+      moveMissiles(deltaTime);
       handleEnemyShooting(currentTime);
+      handleMissileLaunching(currentTime);
       detectCollisions();
+
+      drawPlayer();
+      drawEnemies();
+      drawBullets();
+      drawMissiles();
+      drawMissileExplosions();
+      drawWalls();
+      drawExplosions();
+      drawScore();
+      drawHitMessage();
     }
 
     if (gameOverFlag) {
@@ -551,13 +545,9 @@ function gameLoop(currentTime) {
     }
   }
 
-  // Continue animation frame if game is running or paused
   if (!gameOverFlag && !victoryFlag) {
     requestAnimationFrame(gameLoop);
   }
-
-  // Add touch controls drawing after other UI elements
-  drawTouchControls();
 }
 
 function startGame() {
@@ -650,3 +640,109 @@ let machineGunSoundDuration = 500; // 0.5 seconds in milliseconds
 let machineGunSoundTimer = null;
 
 let currentLevel = 1;
+
+// Add function to get random enemy from top row
+function getRandomTopRowEnemy() {
+  const topY = Math.min(...enemies.map(e => e.y));
+  const topRowEnemies = enemies.filter(e => e.y === topY);
+  return topRowEnemies[Math.floor(Math.random() * topRowEnemies.length)];
+}
+
+// Add function to handle missile launching
+function handleMissileLaunching(currentTime) {
+  if (currentTime >= nextMissileTime) {
+    const shooter = getRandomTopRowEnemy();
+    if (shooter) {
+      homingMissiles.push({
+        x: shooter.x + shooter.width/2,
+        y: shooter.y + shooter.height,
+        angle: 0,
+        width: 30,
+        height: 30,
+        time: 0 // For trajectory calculation
+      });
+    }
+    // Set next missile time
+    nextMissileTime = currentTime + 
+      Math.random() * (MAX_MISSILE_INTERVAL - MIN_MISSILE_INTERVAL) + 
+      MIN_MISSILE_INTERVAL;
+  }
+}
+
+// Add function to move missiles
+function moveMissiles(deltaTime) {
+  homingMissiles.forEach(missile => {
+    missile.time += deltaTime;
+    
+    // Check if missile is above wall row
+    const isAboveWallRow = missile.y < (walls[0].y - 50); // One row above walls
+    
+    if (isAboveWallRow) {
+      // Calculate target direction
+      const dx = player.x + player.width/2 - missile.x;
+      const dy = player.y + player.height/2 - missile.y;
+      
+      // Calculate missile angle
+      missile.angle = Math.atan2(dy, dx);
+    }
+    // else keep the last angle
+    
+    // Add curved trajectory
+    const curve = Math.sin(missile.time * 2) * 100;
+    
+    // Move missile
+    missile.x += Math.cos(missile.angle) * MISSILE_SPEED * deltaTime;
+    missile.y += Math.sin(missile.angle) * MISSILE_SPEED * deltaTime;
+    missile.x += Math.cos(missile.angle + Math.PI/2) * curve * deltaTime;
+  });
+  
+  // Remove missiles that are off screen
+  homingMissiles = homingMissiles.filter(m => 
+    m.y < canvas.height && m.y > 0 && m.x > 0 && m.x < canvas.width
+  );
+}
+
+// Add function to draw missiles
+function drawMissiles() {
+  homingMissiles.forEach(missile => {
+    ctx.save();
+    ctx.translate(missile.x, missile.y);
+    ctx.rotate(missile.angle + Math.PI/2); // Rotate missile to face direction of travel
+    ctx.drawImage(
+      missileImage,
+      -missile.width/2,
+      -missile.height/2,
+      missile.width,
+      missile.height
+    );
+    ctx.restore();
+  });
+}
+
+// Add with other audio elements at the top
+let missileBoomSound = new Audio('explode_missile.mp3');
+
+// Add with other image declarations at the top
+let missileExplosionImage = new Image();
+missileExplosionImage.src = 'explode_missile.jpg';
+
+// Add missile explosions array with other state variables
+let missileExplosions = [];
+
+// Add function to draw missile explosions
+function drawMissileExplosions() {
+  missileExplosions = missileExplosions.filter(explosion => {
+    const age = Date.now() - explosion.timeCreated;
+    if (age < explosion.duration) {
+      ctx.drawImage(
+        missileExplosionImage,
+        explosion.x - explosion.width/2,
+        explosion.y - explosion.height/2,
+        explosion.width,
+        explosion.height
+      );
+      return true;
+    }
+    return false;
+  });
+}
