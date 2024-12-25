@@ -607,9 +607,21 @@ function drawMuteStatus() {
   if (isMuted) {
     ctx.save();
     ctx.fillStyle = "white";
-    ctx.font = "20px Arial";
+    ctx.font = "16px Arial";
     ctx.textAlign = "right";
-    ctx.fillText("MUTED", canvas.width - 20, 60);
+    ctx.fillText("MUTED", canvas.width - 260, canvas.height - 10);  // Position below version number
+    ctx.restore();
+  }
+}
+
+function drawPauseMessage() {
+  if (gamePaused) {
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("PAUSED", canvas.width/2, canvas.height/2);
     ctx.restore();
   }
 }
@@ -631,6 +643,8 @@ function gameLoop(currentTime) {
   drawExplosions();
   drawScore();
   drawHitMessage();
+  drawMuteStatus();
+  drawPauseMessage();  // Add pause message last so it's on top
 
   // Only update positions if game is not paused
   if (!gamePaused) {
