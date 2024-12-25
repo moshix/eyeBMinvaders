@@ -464,8 +464,13 @@ function detectCollisions() {
 }
 
 function drawScore() {
+  ctx.save();
+  ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
+  ctx.textAlign = "left";
   document.getElementById("score").innerText = 
     `Score: ${score}\nLives: ${player.lives}/${PLAYER_LIVES}\nLevel: ${currentLevel}`;
+  ctx.restore();
 }
 
 function gameOver() {
