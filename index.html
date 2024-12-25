@@ -39,13 +39,18 @@
                 font-size: 12px;
             }
             #legend {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
                 color: white;
-                font-size: 24px;
+                font-size: 14px;
+                line-height: 1.3;
                 text-align: center;
+                margin-top: 10px;
+            }
+            #legend-title {
+                color: cyan;
+                font-size: 18px;
+                font-weight: bold;
+                text-align: center;
+                margin: 20px 0 10px 0;
             }
             .screenshot {
                 width: 600px;
@@ -83,7 +88,10 @@
         <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
         <div id="legend">
-            <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
+            <div class="screenshot-frame">
+                <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
+            </div>
+            <div id="legend-title">eyeBMInvaders!</div>
             <p>Use Arrow Keys to move left and right</p>
             <p>Space to shoot</p>
             <p>P to pause</p>
