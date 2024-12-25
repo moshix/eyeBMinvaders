@@ -15,7 +15,7 @@
             }
             canvas {
                 display: block;
-                background: #000;
+                margin: 0 auto;
             }
             #score {
                 position: absolute;
@@ -48,15 +48,38 @@
                 text-align: center;
             }
             .screenshot {
-                width: 700px;  /* Scale down the image */
-                height: auto;  /* Maintain aspect ratio */
+                width: 600px;
+                height: auto;
                 display: block;
-                margin: 20px auto;  /* Center the image with some spacing */
+                border-radius: 5px;
+            }
+            .screenshot-frame {
+                background: #333;
+                border: 3px solid #666;
+                border-radius: 10px;
+                padding: 10px;
+                width: fit-content;
+                margin: 20px auto;
+                box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+            }
+            h1 {
+                color: white;
+                text-align: center;
+                font-family: 'Arial', sans-serif;
+                font-size: 2.5em;
+                margin: 20px 0;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            }
+            #version {
+                color: white;
+                position: fixed;
+                right: 220px;
+                bottom: 10px;
             }
         </style>
     </head>
     <body>
-        <div id="version-info">v2.</div>
+        <div id="version-info">v2.3</div>
         <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
         <div id="legend">
