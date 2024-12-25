@@ -616,6 +616,18 @@ function gameLoop(currentTime) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Draw everything regardless of pause state
+  drawPlayer();
+  drawEnemies();
+  drawBullets();
+  drawMissiles();
+  drawMissileExplosions();
+  drawWalls();
+  drawExplosions();
+  drawScore();
+  drawHitMessage();
+
+  // Only update positions if game is not paused
   if (!gamePaused) {
     if (player.lives > 0 && !gameOverFlag && !victoryFlag) {
       movePlayer(deltaTime);
@@ -625,16 +637,6 @@ function gameLoop(currentTime) {
       handleEnemyShooting(currentTime);
       handleMissileLaunching(currentTime);
       detectCollisions();
-
-      drawPlayer();
-      drawEnemies();
-      drawBullets();
-      drawMissiles();
-      drawMissileExplosions();
-      drawWalls();
-      drawExplosions();
-      drawScore();
-      drawHitMessage();
     }
 
     if (gameOverFlag) {
