@@ -26,10 +26,10 @@ const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 sec
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 60,
-  width: 50,
-  height: 50,
+  width: 50 * 4,
+  height: 50 * 4,
   dx: 5,
-  lives: PLAYER_LIVES, // Use the tunable parameter
+  lives: PLAYER_LIVES,
   image: new Image(),
 };
 player.image.src = "vax.jpg";
@@ -60,7 +60,7 @@ let isPlayerHit = false;
 let playerNormalImage = new Image();
 let playerExplosionImage = new Image();
 
-playerNormalImage.src = "hercules-ship.svg";
+playerNormalImage.src = "vax.jpg";
 playerExplosionImage.src = "explosion_player.jpg";
 player.image = playerNormalImage;
 
@@ -136,6 +136,16 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
+      player.width = 50 * 4;
+      player.height = 50 * 4;
+    } else {
+      let originalY = player.y;
+      player.y = canvas.height - (50 * 2);
+      player.width = 50 * 2;
+      player.height = 50 * 2;
+      ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
+      player.y = originalY;
+      return;
     }
   }
   ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
