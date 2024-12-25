@@ -16,6 +16,7 @@
             canvas {
                 display: block;
                 margin: 0 auto;
+                height: 600px;
             }
             #score {
                 position: absolute;
@@ -43,7 +44,7 @@
                 font-size: 14px;
                 line-height: 1.3;
                 text-align: center;
-                margin-top: 10px;
+                margin-top: 20px;
             }
             #legend-title {
                 color: cyan;
@@ -91,14 +92,14 @@
             <div class="screenshot-frame">
                 <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
             </div>
-            <div id="legend-title">eyeBMInvaders!</div>
+            <div id="legend-title" style="color: cyan;">eyeBMInvaders!</div>
             <p>Use Arrow Keys to move left and right</p>
             <p>Space to shoot</p>
             <p>P to pause</p>
             <p>R to restart</p>
             <p>M to mute sounds</p>
         </div>
-        <div id="version">v2.0.1</div>
+        
         <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fmoshix.github.io%2FeyeBMinvaders%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
         <canvas id="gameCanvas"></canvas>
         <script src="game.js"></script>
