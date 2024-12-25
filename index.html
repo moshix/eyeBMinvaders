@@ -47,19 +47,37 @@
                 font-size: 24px;
                 text-align: center;
             }
+            .screenshot {
+                width: 600px;  /* Changed from 300px to 600px (2x) */
+                height: auto;
+                display: block;
+                border-radius: 5px;
+            }
+            .screenshot-frame {
+                background: #333;
+                border: 3px solid #666;
+                border-radius: 10px;
+                padding: 10px;
+                width: fit-content;
+                margin: 20px auto;
+                box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+            }
         </style>
     </head>
     <body>
-        <div id="version-info">v2.2</div>
+        <div id="version-info">v2.3</div>
         <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
+        <h1>eyeBMInvaders!</h1>
         <div id="legend">
-            <p>Arrow Left/Right: Move</p>
-            <p>Space: Shoot</p>
-            <p>P: Pause/Unpause</p>
-            <p>M: Mute/unmute</p>
-            <p>R: Restart</p>
-            <p>Press any key to start...</p>
+            <div class="screenshot-frame">
+                <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
+            </div>
+            <p>Use Arrow Keys to move left and right</p>
+            <p>Space to shoot</p>
+            <p>P to pause</p>
+            <p>R to restart</p>
+            <p>M to mute sounds</p>
         </div>
         <canvas id="gameCanvas"></canvas>
         <script src="game.js"></script>
