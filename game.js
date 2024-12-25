@@ -10,6 +10,7 @@
 // 1.6  walls a bit bigger
 // 1.6  use a vax to shoot at IBM
 // 1.7  MUTE button
+// 1.8  remove console log messages
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -141,29 +142,15 @@ function drawPlayer() {
 }
 
 function drawEnemies() {
-  // Debug: Log the number of enemies and their properties
-  console.log(`Drawing ${enemies.length} enemies`);
-  
   enemies.forEach((enemy) => {
-    // Debug: Log enemy properties
-    console.log(`Enemy at (${enemy.x}, ${enemy.y}), image loaded: ${enemy.image.complete}`);
-    
-    // Add error handling for image drawing
-    try {
-      if (enemy.image.complete) {
+    if (enemy.image.complete) {
+      ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
+    } else {
+      ctx.fillStyle = 'red';
+      ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      enemy.image.onload = () => {
         ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
-      } else {
-        // Draw a placeholder rectangle if image isn't loaded
-        ctx.fillStyle = 'red';
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-        
-        // Add onload handler to redraw once image loads
-        enemy.image.onload = () => {
-          ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
-        };
-      }
-    } catch (error) {
-      console.error('Error drawing enemy:', error);
+      };
     }
   });
 }
@@ -461,9 +448,8 @@ function startGame() {
   enemies = []; // Clear any existing enemies
   createEnemies();
   lastTime = 0; // Reset the time
-  startGameSound.currentTime = 0; // Reset sound to start
+  startGameSound.currentTime = 0;
   startGameSound.play();
-  console.log("Starting game with", enemies.length, "enemies"); // Debug
   requestAnimationFrame(gameLoop);
 }
 
