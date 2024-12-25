@@ -4,6 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Space Invader</title>
+        <link rel="icon" type="image/webp" href="favicon.webp">
         <style>
             body {
                 margin: 0;
@@ -46,62 +47,10 @@
                 font-size: 24px;
                 text-align: center;
             }
-            #startButton {
-                position: absolute;
-                left: 50%;
-                transform: translateX(-50%);
-                padding: 15px 30px;
-                font-size: 20px;
-                background-color: rgba(255, 255, 255, 0.3);
-                color: white;
-                border: 2px solid white;
-                border-radius: 10px;
-                cursor: pointer;
-                touch-action: manipulation;
-            }
-            
-            /* Tablet styling */
-            @media (min-width: 768px) and (max-width: 1024px) {
-                #startButton {
-                    top: 70%;  /* Position below text */
-                    padding: 15px 30px;
-                    font-size: 18px;
-                }
-                #legend {
-                    display: block;  /* Show text */
-                }
-            }
-
-            /* Phone styling */
-            @media (max-width: 767px) {
-                #startButton {
-                    top: 50%;
-                    transform: translate(-50%, -50%);  /* Center vertically and horizontally */
-                    padding: 20px 40px;
-                    font-size: 24px;
-                }
-                #legend {
-                    display: none;  /* Hide text on phones */
-                }
-            }
-
-            /* Desktop styling */
-            @media (min-width: 1025px) {
-                #startButton {
-                    display: none;  /* Hide button on desktop */
-                }
-                #legend {
-                    display: block;  /* Show text */
-                }
-            }
-
-            #startButton.hidden {
-                display: none;
-            }
         </style>
     </head>
     <body>
-        <div id="version-info">v2.0</div>
+        <div id="version-info">v2.2</div>
         <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
         <div id="legend">
@@ -113,13 +62,6 @@
             <p>Press any key to start...</p>
         </div>
         <canvas id="gameCanvas"></canvas>
-        <button id="startButton">Tap to Start</button>
         <script src="game.js"></script>
-        <script>
-            document.getElementById('startButton').addEventListener('click', function() {
-                this.classList.add('hidden');
-                startGame();
-            }, { once: true });  // Ensure it only triggers once
-        </script>
     </body>
 </html>
