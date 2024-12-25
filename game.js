@@ -422,7 +422,7 @@ function drawMuteStatus() {
     ctx.fillStyle = "white";
     ctx.font = "20px Arial";
     ctx.textAlign = "right";
-    ctx.fillText("MUTED", canvas.width - 20, 30);
+    ctx.fillText("MUTED", canvas.width - 20, 60);
     ctx.restore();
   }
 }
