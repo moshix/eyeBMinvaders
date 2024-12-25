@@ -12,6 +12,7 @@
 // 1.7  MUTE button
 // 1.8  remove console log messages
 // 1.9  1000 extra points when user finishes the level
+// 2.0  touch screen support!
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -429,6 +430,83 @@ function drawMuteStatus() {
   }
 }
 
+// Add touch button definitions at the top
+const touchButtons = {
+  left: {
+    x: 20,
+    y: canvas.height - 100,
+    width: 60,
+    height: 60,
+    alpha: 0.3,
+    text: "←"
+  },
+  right: {
+    x: canvas.width - 160,
+    y: canvas.height - 100,
+    width: 60,
+    height: 60,
+    alpha: 0.3,
+    text: "→"
+  },
+  shoot: {
+    x: canvas.width - 80,
+    y: canvas.height - 100,
+    width: 60,
+    height: 60,
+    alpha: 0.3,
+    text: "🔫"
+  }
+};
+
+// Add function to draw touch controls
+function drawTouchControls() {
+  Object.values(touchButtons).forEach(button => {
+    ctx.save();
+    ctx.globalAlpha = button.alpha;
+    ctx.fillStyle = "white";
+    ctx.fillRect(button.x, button.y, button.width, button.height);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "black";
+    ctx.font = "24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(button.text, button.x + button.width/2, button.y + button.height/2);
+    ctx.restore();
+  });
+}
+
+// Add touch event listeners
+canvas.addEventListener('touchstart', handleTouch, false);
+canvas.addEventListener('touchend', handleTouchEnd, false);
+
+function handleTouch(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+
+  Object.entries(touchButtons).forEach(([key, button]) => {
+    if (x >= button.x && x <= button.x + button.width &&
+        y >= button.y && y <= button.y + button.height) {
+      if (key === 'left') {
+        keys.ArrowLeft = true;
+      } else if (key === 'right') {
+        keys.ArrowRight = true;
+      } else if (key === 'shoot') {
+        keys.Space = true;
+      }
+    }
+  });
+}
+
+function handleTouchEnd(e) {
+  e.preventDefault();
+  keys.ArrowLeft = false;
+  keys.ArrowRight = false;
+  keys.Space = false;
+}
+
 function gameLoop(currentTime) {
   if (!lastTime) lastTime = currentTime;
   const deltaTime = (currentTime - lastTime) / 1000;
@@ -467,6 +545,9 @@ function gameLoop(currentTime) {
   if (!gameOverFlag && !victoryFlag) {
     requestAnimationFrame(gameLoop);
   }
+
+  // Add touch controls drawing after other UI elements
+  drawTouchControls();
 }
 
 function startGame() {
