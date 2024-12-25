@@ -136,22 +136,23 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
-      player.width = 50;
-      player.height = 50;
+      player.width = 50;    // Original width
+      player.height = 50;   // Original height
     } else {
-      let originalY = player.y;
-      player.y = canvas.height - (50 * 2);
-      player.width = 50 * 2;
-      player.height = 50 * 2;
-      ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
-      player.y = originalY;
+      player.image = playerExplosionImage;
+      player.width = 50 * 2;    // Double size for explosion
+      player.height = 50 * 2;   // Double size for explosion
+      // Draw explosion centered on player's original position
+      ctx.drawImage(
+        player.image, 
+        player.x - (player.width / 2),  // Center horizontally
+        player.y - (player.height / 2),  // Center vertically
+        player.width, 
+        player.height
+      );
       return;
     }
   }
-  
-  ctx.strokeStyle = 'red';
-  ctx.strokeRect(player.x, player.y, player.width, player.height);
-  
   ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
 }
 
