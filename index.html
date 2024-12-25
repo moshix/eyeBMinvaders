@@ -18,10 +18,24 @@
             }
             #score {
                 position: absolute;
-                top: 10px;
+                top: 30px;
                 left: 10px;
                 color: white;
                 font-size: 20px;
+            }
+            #version-info {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                color: white;
+                font-size: 14px;
+            }
+            #copyright {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+                color: white;
+                font-size: 12px;
             }
             #legend {
                 position: absolute;
@@ -35,11 +49,14 @@
         </style>
     </head>
     <body>
+        <div id="version-info">v1.7</div>
+        <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
         <div id="legend">
             <p>Arrow Left/Right: Move</p>
             <p>Space: Shoot</p>
             <p>P: Pause/Unpause</p>
+            <p>M: Mute/unmute</p>
             <p>R: Restart</p>
             <p>Press any key to start...</p>
         </div>
