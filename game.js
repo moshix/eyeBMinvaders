@@ -24,10 +24,10 @@ const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in millise
 const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
 
 let player = {
-  x: canvas.width / 2,
+  x: canvas.width / 2 - 25,
   y: canvas.height - 60,
-  width: 50 * 4,
-  height: 50 * 4,
+  width: 50,
+  height: 50,
   dx: 5,
   lives: PLAYER_LIVES,
   image: new Image(),
@@ -60,7 +60,7 @@ let isPlayerHit = false;
 let playerNormalImage = new Image();
 let playerExplosionImage = new Image();
 
-playerNormalImage.src = "vax.jpg";
+playerNormalImage.src = "vax.svg";
 playerExplosionImage.src = "explosion_player.jpg";
 player.image = playerNormalImage;
 
@@ -136,8 +136,8 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
-      player.width = 50 * 4;
-      player.height = 50 * 4;
+      player.width = 50;
+      player.height = 50;
     } else {
       let originalY = player.y;
       player.y = canvas.height - (50 * 2);
@@ -148,6 +148,10 @@ function drawPlayer() {
       return;
     }
   }
+  
+  ctx.strokeStyle = 'red';
+  ctx.strokeRect(player.x, player.y, player.width, player.height);
+  
   ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
 }
 
@@ -223,12 +227,12 @@ function moveBullets(deltaTime) {
 }
 
 function moveEnemies(deltaTime) {
-  const currentEnemySpeed = ENEMY_SPEED * deltaTime;
+  const currentEnemySpeed = (ENEMY_SPEED * enemySpeed) * deltaTime;  // Combine base speed with level multiplier
   enemies.forEach((enemy) => {
     enemy.x += currentEnemySpeed * enemyDirection;
     if (enemy.x + enemy.width > canvas.width || enemy.x < 0) {
       enemyDirection *= -1;
-      enemies.forEach((e) => (e.y += e.height * 0.25)); // Move down 25% of height
+      enemies.forEach((e) => (e.y += e.height * 0.25));
     }
     if (enemy.y + enemy.height >= walls[0].y - 100) {
       gameOverFlag = true;
@@ -313,7 +317,8 @@ function detectCollisions() {
 }
 
 function drawScore() {
-  document.getElementById("score").innerText = `Score: ${score}\nLives: ${player.lives}/${PLAYER_LIVES}`;
+  document.getElementById("score").innerText = 
+    `Score: ${score}\nLives: ${player.lives}/${PLAYER_LIVES}\nLevel: ${currentLevel}`;
 }
 
 function gameOver() {
@@ -325,17 +330,20 @@ function gameOver() {
 }
 
 function victory() {
-  ctx.fillStyle = "white";
-  ctx.font = "50px Arial";
-  ctx.fillText(
-    "You have destroyed the enemy!",
-    canvas.width / 2 - 300,
-    canvas.height / 2,
-  );
-  gamePaused = true;
+  currentLevel++;
+  enemySpeed *= 1.33; // Increase speed by 33%
+  enemies = [];
+  createEnemies();
+  bullets = [];
+  gamePaused = false;
+  victoryFlag = false;
+  lastTime = 0;
+  requestAnimationFrame(gameLoop);
 }
 
 function restartGame() {
+  currentLevel = 1;
+  enemySpeed = 0.55; // Reset to initial speed
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
   player.y = canvas.height - 60;
@@ -351,7 +359,7 @@ function restartGame() {
   gameOverFlag = false;
   victoryFlag = false;
   lastTime = 0;
-  startGameSound.currentTime = 0; // Reset sound to start
+  startGameSound.currentTime = 0;
   startGameSound.play();
   requestAnimationFrame(gameLoop);
 }
@@ -541,3 +549,5 @@ let spaceKeyPressTime = 0;
 const MACHINE_GUN_THRESHOLD = 500; // 0.5 seconds in milliseconds
 let machineGunSoundDuration = 500; // 0.5 seconds in milliseconds
 let machineGunSoundTimer = null;
+
+let currentLevel = 1;
