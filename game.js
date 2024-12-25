@@ -458,8 +458,16 @@ const touchButtons = {
   }
 };
 
-// Add function to draw touch controls
+// Add touch detection at the top
+const isTouchDevice = ('ontouchstart' in window) || 
+                     (navigator.maxTouchPoints > 0) ||
+                     (navigator.msMaxTouchPoints > 0);
+
+// Update drawTouchControls function
 function drawTouchControls() {
+  // Only draw touch controls if on a touch device
+  if (!isTouchDevice) return;
+
   Object.values(touchButtons).forEach(button => {
     ctx.save();
     ctx.globalAlpha = button.alpha;
@@ -475,9 +483,11 @@ function drawTouchControls() {
   });
 }
 
-// Add touch event listeners
-canvas.addEventListener('touchstart', handleTouch, false);
-canvas.addEventListener('touchend', handleTouchEnd, false);
+// Update touch event listeners
+if (isTouchDevice) {
+  canvas.addEventListener('touchstart', handleTouch, false);
+  canvas.addEventListener('touchend', handleTouchEnd, false);
+}
 
 function handleTouch(e) {
   e.preventDefault();
