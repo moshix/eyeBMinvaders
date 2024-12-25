@@ -48,31 +48,19 @@
                 text-align: center;
             }
             .screenshot {
-                width: 600px;  /* Changed from 300px to 600px (2x) */
-                height: auto;
+                width: 700px;  /* Scale down the image */
+                height: auto;  /* Maintain aspect ratio */
                 display: block;
-                border-radius: 5px;
-            }
-            .screenshot-frame {
-                background: #333;
-                border: 3px solid #666;
-                border-radius: 10px;
-                padding: 10px;
-                width: fit-content;
-                margin: 20px auto;
-                box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+                margin: 20px auto;  /* Center the image with some spacing */
             }
         </style>
     </head>
     <body>
-        <div id="version-info">v2.3</div>
+        <div id="version-info">v2.</div>
         <div id="copyright">© Hotdog Studios</div>
         <div id="score">Score: 0</div>
-        <h1>eyeBMInvaders!</h1>
         <div id="legend">
-            <div class="screenshot-frame">
-                <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
-            </div>
+            <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
             <p>Use Arrow Keys to move left and right</p>
             <p>Space to shoot</p>
             <p>P to pause</p>
