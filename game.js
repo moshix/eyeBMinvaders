@@ -15,7 +15,8 @@
 // 2.0  touch screen support!
 // 2.1  oh no! homing missiles from the evil empire!
 // 2.2  fix missile logic, add assets and add favicon support
-
+// 2.3  fix opening page and walls can now collapse! 
+        
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -86,37 +87,53 @@ const keys = {
   r: false,
 };
 
+let wallImage = new Image();
+wallImage.src = 'wall.svg';
+let chunkImage = new Image();
+chunkImage.src = 'chunk.svg';
+
+const WALL_MAX_HITS = 3;  // Programmer tunable: number of hits before wall disappears
+
 let walls = [
   {
-    x: canvas.width * 0.2 - 25,
-    y: player.y - 50,
+    x: canvas.width / 6 - 50,
+    y: canvas.height - 150,
     width: 100,
-    height: 30,
-    image: new Image(),
+    height: 20,
+    image: wallImage
   },
   {
-    x: canvas.width * 0.4 - 25,
-    y: player.y - 50,
+    x: canvas.width * 2/6 - 50,
+    y: canvas.height - 150,
     width: 100,
-    height: 30,
-    image: new Image(),
+    height: 20,
+    image: wallImage
   },
   {
-    x: canvas.width * 0.6 - 25,
-    y: player.y - 50,
+    x: canvas.width * 3/6 - 50,
+    y: canvas.height - 150,
     width: 100,
-    height: 30,
-    image: new Image(),
+    height: 20,
+    image: wallImage
   },
   {
-    x: canvas.width * 0.8 - 25,
-    y: player.y - 50,
+    x: canvas.width * 4/6 - 50,
+    y: canvas.height - 150,
     width: 100,
-    height: 30,
-    image: new Image(),
+    height: 20,
+    image: wallImage
   },
+  {
+    x: canvas.width * 5/6 - 50,
+    y: canvas.height - 150,
+    width: 100,
+    height: 20,
+    image: wallImage
+  }
 ];
-walls.forEach((wall) => (wall.image.src = "wall.svg"));
+
+// Initialize wallHits array for all walls
+let wallHits = walls.map(() => []);
 
 function createEnemies() {
   const rows = 5;
@@ -199,8 +216,26 @@ function drawBullets() {
 }
 
 function drawWalls() {
-  walls.forEach((wall) => {
-    ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
+  walls.forEach((wall, index) => {
+    // Draw wall SVG first
+    if (wall.image.complete) {
+      ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
+    }
+    
+    // Draw damage chunks on top
+    if (wallHits[index]) {
+      wallHits[index].forEach(hit => {
+        if (chunkImage.complete) {
+          ctx.drawImage(
+            chunkImage,
+            wall.x + hit.x - 10, // Center chunk on hit location
+            wall.y + hit.y - 10,
+            20,  // chunk size
+            20
+          );
+        }
+      });
+    }
   });
 }
 
@@ -400,6 +435,32 @@ function detectCollisions() {
       }
     }
   });
+
+  // Check missile collisions with walls
+  homingMissiles.forEach((missile, mIndex) => {
+    walls.forEach((wall, wallIndex) => {
+      if (missile.x >= wall.x && 
+          missile.x <= wall.x + wall.width &&
+          missile.y >= wall.y && 
+          missile.y <= wall.y + wall.height) {
+        
+        // Record hit location
+        wallHits[wallIndex].push({
+          x: missile.x - wall.x,  // Record relative position within wall
+          y: missile.y - wall.y
+        });
+        
+        // Remove missile
+        homingMissiles.splice(mIndex, 1);
+        
+        // Remove wall if hit 3 times
+        if (wallHits[wallIndex].length >= WALL_MAX_HITS) {
+          walls.splice(wallIndex, 1);
+          wallHits.splice(wallIndex, 1);
+        }
+      }
+    });
+  });
 }
 
 function drawScore() {
@@ -451,6 +512,44 @@ function restartGame() {
   startGameSound.play();
   requestAnimationFrame(gameLoop);
   missileExplosions = [];
+  walls = [
+    {
+      x: canvas.width / 6 - 50,
+      y: canvas.height - 150,
+      width: 100,
+      height: 20,
+      image: wallImage
+    },
+    {
+      x: canvas.width * 2/6 - 50,
+      y: canvas.height - 150,
+      width: 100,
+      height: 20,
+      image: wallImage
+    },
+    {
+      x: canvas.width * 3/6 - 50,
+      y: canvas.height - 150,
+      width: 100,
+      height: 20,
+      image: wallImage
+    },
+    {
+      x: canvas.width * 4/6 - 50,
+      y: canvas.height - 150,
+      width: 100,
+      height: 20,
+      image: wallImage
+    },
+    {
+      x: canvas.width * 5/6 - 50,
+      y: canvas.height - 150,
+      width: 100,
+      height: 20,
+      image: wallImage
+    }
+  ];
+  wallHits = walls.map(() => []); // Reset wall hits
 }
 
 function handleEnemyShooting(currentTime) {
