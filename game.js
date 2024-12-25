@@ -17,6 +17,7 @@
 // 2.2  fix missile logic, add assets and add favicon support
 // 2.3  fix opening page and walls can now collapse! 
 // 2.4  vax bullets also deterioate walls 
+// 2.5  fix some sound issues 
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -901,4 +902,39 @@ function drawMissileExplosions() {
     }
     return false;
   });
+}
+
+// Update audio handling
+function playSound(sound) {
+    if (!isMuted) {
+        // Reset the sound before playing
+        sound.pause();
+        sound.currentTime = 0;
+        
+        // Create a play promise
+        const playPromise = sound.play();
+
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                if (error.name === "AbortError") {
+                    // Ignore abort errors - these happen when rapidly firing
+                    console.log("Sound play aborted");
+                } else {
+                    console.error("Error playing sound:", error);
+                }
+            });
+        }
+    }
+}
+
+// Update where sounds are played
+function handleShooting() {
+    if (keys.Space && !gamePaused) {
+        const currentTime = Date.now();
+        if (currentTime - lastShootTime >= shootCooldown) {
+            bullets.push(createBullet(player.x + player.width/2, player.y, false));
+            playSound(shootSound);
+            lastShootTime = currentTime;
+        }
+    }
 }
