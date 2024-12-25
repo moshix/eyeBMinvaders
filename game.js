@@ -11,6 +11,7 @@
 // 1.6  use a vax to shoot at IBM
 // 1.7  MUTE button
 // 1.8  remove console log messages
+// 1.9  1000 extra points when user finishes the level
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -337,7 +338,8 @@ function gameOver() {
 
 function victory() {
   currentLevel++;
-  enemySpeed *= 1.33; // Increase speed by 33%
+  enemySpeed *= 1.33;
+  score += 1000;  // Add 1000 points for completing the level
   enemies = [];
   createEnemies();
   bullets = [];
