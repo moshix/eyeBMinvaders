@@ -29,6 +29,7 @@
 // 3.0.1 old bug of enemy reacching criticla position fix?
 // 3.0.2 display game over when enmies reach critical position
 // 3.0.3 aha! (?) only enemies alive can reach wall
+// 3.1   catch gug when no more walls are around 
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -942,8 +943,11 @@ function moveMissiles(deltaTime) {
   homingMissiles.forEach(missile => {
     missile.time += deltaTime;
     
+    // Check if there are any walls left before checking position
+    const wallRowY = walls.length > 0 ? walls[0].y - 50 : canvas.height * 0.85;
+    
     // Check if missile is above wall row
-    const isAboveWallRow = missile.y < (walls[0].y - 50); // One row above walls
+    const isAboveWallRow = missile.y < wallRowY;
     
     if (isAboveWallRow) {
       // Calculate target direction
