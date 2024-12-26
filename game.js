@@ -25,6 +25,7 @@
 // 2.7  avoid missed promise in sound playing
 // 2.8  fix game over race condition
 // 2.9  sometimes change explosion type for enemies to make more interesting
+// 3.0  more sound effects
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -44,6 +45,7 @@ let nextMissileTime = 0;
 let homingMissiles = [];
 let missileImage = new Image();
 missileImage.src = 'missile.svg';
+let newMissileLaunched = false;
 
 let player = {
   x: canvas.width / 2 - 25,
@@ -908,6 +910,9 @@ function handleMissileLaunching(currentTime) {
         time: 0 // For trajectory calculation
       });
     }
+    newMissileLaunched = true;
+    playSoundWithCleanup(createMissileLaunchSound);
+    newMissileLaunched = false;
     // Set next missile time
     nextMissileTime = currentTime + 
       Math.random() * (MAX_MISSILE_INTERVAL - MIN_MISSILE_INTERVAL) + 
@@ -1027,3 +1032,50 @@ function handleShooting() {
         }
     }
 }
+
+// Sound creation functions
+function createExplosionSound() {
+    const sound = new Audio('explosion_enemy.mp3');
+    sound.volume = 1.0;
+    return sound;
+}
+
+function createWallGoneSound() {
+    const sound = new Audio('wall_gone.mp3');
+    sound.volume = 1.0;
+    return sound;
+}
+
+function createMissileLaunchSound() {
+    const sound = new Audio('missile_flying_short.mp3');
+    sound.volume = 1.0;
+    return sound;
+}
+
+// Example of how to play sounds (apply this pattern to all sound plays)
+function playSoundWithCleanup(createSoundFunc) {
+    if (!isMuted) {
+        const sound = createSoundFunc();
+        sound.play()
+            .then(() => {
+                setTimeout(() => {
+                    sound.pause();
+                    sound.remove();  // Clean up the audio element
+                }, 1000);  // Adjust timeout based on specific sound length
+            })
+            .catch(error => console.error('Error playing sound:', error));
+    }
+}
+
+// Usage in various places:
+// For explosions
+if (explosionCounter % 3 === 0) {
+    playSoundWithCleanup(createExplosionSound);
+}
+
+// For wall destruction
+if (wall.hits >= wall.maxHits) {
+    playSoundWithCleanup(createWallGoneSound);
+}
+
+
