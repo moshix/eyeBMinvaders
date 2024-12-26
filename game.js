@@ -162,6 +162,11 @@ explosionAdditionalImg.src = 'explosion_additional.svg';
 
 function createExplosion(x, y) {
   explosionCounter++;
+  if (explosionCounter % 3 === 0) {
+    playSoundWithCleanup(createExplosionSound);
+  }
+  score += 100;
+
   const isAdditionalExplosion = explosionCounter % (Math.random() < 0.5 ? 3 : 4) === 0;
   
   const newExplosion = {
@@ -388,6 +393,7 @@ function detectCollisions() {
           
           // Remove wall if total hits exceeded
           if (wall.hitCount >= WALL_MAX_HITS_TOTAL) {
+            playSoundWithCleanup(createWallGoneSound);
             walls.splice(wallIndex, 1);
             wallHits.splice(wallIndex, 1);
           }
@@ -1065,17 +1071,6 @@ function playSoundWithCleanup(createSoundFunc) {
             })
             .catch(error => console.error('Error playing sound:', error));
     }
-}
-
-// Usage in various places:
-// For explosions
-if (explosionCounter % 3 === 0) {
-    playSoundWithCleanup(createExplosionSound);
-}
-
-// For wall destruction
-if (wall.hits >= wall.maxHits) {
-    playSoundWithCleanup(createWallGoneSound);
 }
 
 
