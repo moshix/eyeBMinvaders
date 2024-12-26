@@ -28,6 +28,7 @@
 // 3.0  more sound effects
 // 3.0.1 old bug of enemy reacching criticla position fix?
 // 3.0.2 display game over when enmies reach critical position
+// 3.0.3 aha! (?) only enemies alive can reach wall
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -338,10 +339,13 @@ function moveEnemies(deltaTime) {
   
   // First check if any enemy needs to change direction
   enemies.forEach((enemy) => {
+    // Skip any "dead" enemies that might still be in the array
+    if (enemy.hits >= enemyHitsToDestroy) return;
+    
     enemy.x += currentEnemySpeed * enemyDirection;
     if (enemy.x + enemy.width > canvas.width || enemy.x < 0) {
       needsToMoveDown = true;
-      enemy.x = Math.max(0, Math.min(canvas.width - enemy.width, enemy.x));  // Keep within bounds
+      enemy.x = Math.max(0, Math.min(canvas.width - enemy.width, enemy.x));
     }
   });
   
@@ -350,16 +354,21 @@ function moveEnemies(deltaTime) {
     enemyDirection *= -1;
     const moveDownAmount = 20;
     enemies.forEach((enemy) => {
-      enemy.y += moveDownAmount;
-      if (enemy.y + enemy.height >= walls[0].y - 50) {
-        console.log('Game Over triggered by enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 150);
-        gameOverFlag = true;
-        gameOver();
+      // Only check active enemies
+      if (enemy.hits < enemyHitsToDestroy) {
+        enemy.y += moveDownAmount;
+        if (enemy.y + enemy.height >= walls[0].y - 50) {
+          console.log('Game Over triggered by ACTIVE enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 50);
+          gameOverFlag = true;
+          gameOver();
+        }
       }
     });
   }
   
-  enemies = enemies.filter((enemy) => enemy.y < canvas.height);
+  // Clean up any destroyed enemies
+  enemies = enemies.filter(enemy => enemy.hits < enemyHitsToDestroy);
+  
   if (enemies.length === 0 && !gameOverFlag) {
     gamePaused = true;
     Object.keys(keys).forEach(key => {
