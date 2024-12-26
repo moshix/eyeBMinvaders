@@ -1,4 +1,4 @@
-// copyright 2025 by moshix and hotdog studios 
+ // copyright 2025 by moshix and hotdog studios 
 //up to now just create functional game
 // 0.01 humble beginnings
 // 0.01 - 1.00 just create functional game first
@@ -26,6 +26,7 @@
 // 2.8  fix game over race condition
 // 2.9  sometimes change explosion type for enemies to make more interesting
 // 3.0  more sound effects
+// 3.0.1 old bug of enemy reacching criticla position fix?
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -63,7 +64,7 @@ let enemies = [];
 let explosions = [];
 let score = 0;
 let enemyHitsToDestroy = 2; // Configurable parameter
-let enemySpeed = 0.55; // 33% faster speed for enemies
+let enemySpeed = 0.45;  // Decreased from 0.55
 let enemyDirection = 1; // 1 for right, -1 for left
 let gamePaused = false;
 let lastFireTime = 0;
@@ -350,8 +351,8 @@ function moveEnemies(deltaTime) {
     enemies.forEach((enemy) => {
       enemy.y += moveDownAmount;
       // Check if this would trigger game over
-      if (enemy.y + enemy.height >= walls[0].y - 100) {
-        console.log('Game Over triggered by enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 100);
+      if (enemy.y + enemy.height >= walls[0].y - 150) {
+        console.log('Game Over triggered by enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 150);
         gameOverFlag = true;
       }
     });
@@ -604,7 +605,7 @@ function victory() {
 
 function restartGame() {
   currentLevel = 1;
-  enemySpeed = 0.55;
+  enemySpeed = 0.45;
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
   player.y = canvas.height - 60;
