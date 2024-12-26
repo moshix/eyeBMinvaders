@@ -12,7 +12,7 @@
 // 1.7  MUTE button
 // 1.8  remove console log messages
 // 1.9  1000 extra points when user finishes the level
-// 2.0  touch screen support!
+// 2.0  touch screen support! (later removed again)
 // 2.1  oh no! homing missiles from the evil empire!
 // 2.2  fix missile logic, add assets and add favicon support
 // 2.3  fix opening page and walls can now collapse! 
@@ -68,7 +68,7 @@ let victoryFlag = false;
 let lastTime = 0;
 const PLAYER_SPEED = 300; // pixels per second
 const ENEMY_SPEED = 50; // pixels per second
-const FIRE_RATE = 0.1; // Time in seconds between shots (0.1 = 10 shots per second)
+const FIRE_RATE = 0.2; // Time in seconds between shots (0.1 = 10 shots per second)
 const ENEMY_FIRE_RATE = 1.0; // Time in seconds between enemy shots
 let lastEnemyFireTime = 0;
 
