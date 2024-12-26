@@ -1,4 +1,4 @@
- // copyright 2025 by moshix and hotdog studios 
+// copyright 2025 by moshix and hotdog studios 
 //up to now just create functional game
 // 0.01 humble beginnings
 // 0.01 - 1.00 just create functional game first
@@ -27,6 +27,7 @@
 // 2.9  sometimes change explosion type for enemies to make more interesting
 // 3.0  more sound effects
 // 3.0.1 old bug of enemy reacching criticla position fix?
+// 3.0.2 display game over when enmies reach critical position
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -347,13 +348,13 @@ function moveEnemies(deltaTime) {
   // Then handle direction change and moving down as a separate step
   if (needsToMoveDown) {
     enemyDirection *= -1;
-    const moveDownAmount = 20;  // Fixed amount instead of percentage
+    const moveDownAmount = 20;
     enemies.forEach((enemy) => {
       enemy.y += moveDownAmount;
-      // Check if this would trigger game over
-      if (enemy.y + enemy.height >= walls[0].y - 150) {
+      if (enemy.y + enemy.height >= walls[0].y - 50) {
         console.log('Game Over triggered by enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 150);
         gameOverFlag = true;
+        gameOver();
       }
     });
   }
