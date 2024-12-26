@@ -22,6 +22,7 @@
 // 2.5.2 also enable A for left and D for right move
 // 2.5.3 show new level banner before continuing
 // 2.6   fire rate slower while moving  
+// 2.7  avoid missed promise in sound playing
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
