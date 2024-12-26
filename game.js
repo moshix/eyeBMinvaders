@@ -19,6 +19,7 @@
 // 2.4  vax bullets also deterioate walls 
 // 2.5  fix some sound issues 
 // 2.5.1 fix new level unexplained pause
+// 2.5.2 also enable A for left and D for right move
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -48,7 +49,7 @@ let player = {
   lives: PLAYER_LIVES,
   image: new Image(),
 };
-player.image.src = "vax.jpg";
+
 
 let bullets = [];
 let enemies = [];
@@ -83,6 +84,8 @@ player.image = playerNormalImage;
 const keys = {
   ArrowLeft: false,
   ArrowRight: false,
+  KeyD: false,
+  KeyA: false,
   Space: false,
   P: false,
   p: false,
@@ -263,10 +266,10 @@ function drawExplosions() {
 function movePlayer(deltaTime) {
   // Only allow movement if player is not in hit animation
   if (!isPlayerHit) {
-    if (keys.ArrowLeft && player.x > 0) {
+    if ((keys.ArrowLeft || keys.KeyA) && player.x > 0) {
       player.x -= PLAYER_SPEED * deltaTime;
     }
-    if (keys.ArrowRight && player.x < canvas.width - player.width) {
+    if ((keys.ArrowRight || keys.KeyD) && player.x < canvas.width - player.width) {
       player.x += PLAYER_SPEED * deltaTime;
     }
   }
