@@ -29,7 +29,9 @@
 // 3.0.1 old bug of enemy reacching criticla position fix?
 // 3.0.2 display game over when enmies reach critical position
 // 3.0.3 aha! (?) only enemies alive can reach wall
-// 3.1   catch gug when no more walls are around 
+// 3.1   catch bug when no more walls are around 
+// 3.2   defintely show game over when it's over    
+ 
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -163,6 +165,9 @@ let explosionImg = new Image();
 explosionImg.src = 'explosion.svg';
 let explosionAdditionalImg = new Image();
 explosionAdditionalImg.src = 'explosion_additional.svg';
+
+const BASE_FIRE_RATE = 0.2; // Base time in seconds between shots
+let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
 function createExplosion(x, y) {
   explosionCounter++;
@@ -765,34 +770,24 @@ function gameLoop(currentTime) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Check if player is moving
-  const isMoving = keys.ArrowLeft || keys.ArrowRight || keys.KeyA || keys.KeyD;
-  const currentFireRate = isMoving ? FIRE_RATE * 3 : FIRE_RATE;  // Triple the delay when moving
-
-  // Handle shooting if Space is held down
+  // Handle player shooting - now using currentFireRate
   if (keys.Space && !gamePaused && 
       Date.now() - lastFireTime > currentFireRate * 1000) {
-    bullets.push({
-      x: player.x + player.width / 2 - 2.5,
-      y: player.y,
-      isEnemyBullet: false
-    });
-    lastFireTime = Date.now();
-    
-    if (Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD) {
-      if (!isMuted) {
-        machineGunSound.currentTime = 0;
-        machineGunSound.play();
+      bullets.push({
+          x: player.x + player.width / 2 - 2.5,
+          y: player.y,
+          isEnemyBullet: false
+      });
+      lastFireTime = Date.now();
+      
+      if (Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD) {
+          playMachineGunSound();
+      } else {
+          playSoundWithCleanup(() => playerShotSound);
       }
-    } else {
-      if (!isMuted) {
-        playerShotSound.currentTime = 0;
-        playerShotSound.play();
-      }
-    }
   }
 
-  // Draw everything regardless of pause state
+  // Draw everything regardless of game state
   drawPlayer();
   drawEnemies();
   drawBullets();
@@ -806,33 +801,29 @@ function gameLoop(currentTime) {
   drawLevelMessage();
   drawPauseMessage();
 
-  // Allow player movement even during level transition pause
-  movePlayer(deltaTime);
-
-  // Only update game elements if not paused
-  if (!gamePaused) {
-    if (player.lives > 0 && !gameOverFlag && !victoryFlag) {
-      moveBullets(deltaTime);
-      moveEnemies(deltaTime);
-      moveMissiles(deltaTime);
-      handleEnemyShooting(currentTime);
-      handleMissileLaunching(currentTime);
-      detectCollisions();
-    }
-
-    if (gameOverFlag) {
-      gameOver();
-    } else if (victoryFlag) {
-      gamePaused = false;
-    }
+  // Only update game elements if not paused and game isn't over
+  if (!gamePaused && !gameOverFlag) {
+      movePlayer(deltaTime);
+      if (player.lives > 0) {
+          moveBullets(deltaTime);
+          moveEnemies(deltaTime);
+          moveMissiles(deltaTime);
+          handleEnemyShooting(currentTime);
+          handleMissileLaunching(currentTime);
+          detectCollisions();
+      }
   }
 
-  if (!gameOverFlag && !victoryFlag) {
-    requestAnimationFrame(gameLoop);
-  } else {
-    console.log('Animation stopped because:', 
-                gameOverFlag ? 'game over' : 'victory flag');
+  // Draw game over message if game is over
+  if (gameOverFlag) {
+      ctx.fillStyle = "white";
+      ctx.font = "50px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
   }
+
+  // Continue animation frame even if game is over
+  requestAnimationFrame(gameLoop);
 }
 
 function startGame() {
@@ -883,9 +874,8 @@ document.addEventListener("keyup", (e) => {
   if (e.code in keys) {
     keys[e.code] = false;
     if (e.code === "Space") {
-      spaceKeyPressTime = 0; // Reset the space key timer
-      machineGunSound.pause(); // Stop the machine gun sound
-      machineGunSound.currentTime = 0; // Reset the sound to start
+      spaceKeyPressTime = 0;
+      stopMachineGunSound();
     }
   }
 });
@@ -1077,14 +1067,64 @@ function createMissileLaunchSound() {
 function playSoundWithCleanup(createSoundFunc) {
     if (!isMuted) {
         const sound = createSoundFunc();
-        sound.play()
-            .then(() => {
-                setTimeout(() => {
-                    sound.pause();
-                    sound.remove();  // Clean up the audio element
-                }, 1000);  // Adjust timeout based on specific sound length
-            })
-            .catch(error => console.error('Error playing sound:', error));
+        const playPromise = sound.play();
+
+        if (playPromise !== undefined) {
+            playPromise
+                .then(() => {
+                    // Sound played successfully, schedule cleanup
+                    setTimeout(() => {
+                        try {
+                            sound.pause();
+                            sound.remove();
+                        } catch (e) {
+                            console.log("Cleanup error handled:", e);
+                        }
+                    }, 1000);
+                })
+                .catch(error => {
+                    if (error.name === "AbortError") {
+                        // Ignore abort errors - these happen when rapidly firing
+                        console.log("Sound play aborted - normal during rapid fire");
+                    } else {
+                        console.error("Error playing sound:", error);
+                    }
+                });
+        }
+    }
+}
+
+// Update how we handle machine gun sound
+let machineGunSoundPlaying = false;
+
+function playMachineGunSound() {
+    if (!isMuted && !machineGunSoundPlaying) {
+        machineGunSoundPlaying = true;
+        machineGunSound.currentTime = 0;
+        const playPromise = machineGunSound.play();
+        
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                if (error.name === "AbortError") {
+                    console.log("Machine gun sound aborted");
+                } else {
+                    console.error("Error playing machine gun sound:", error);
+                }
+                machineGunSoundPlaying = false;
+            });
+        }
+    }
+}
+
+function stopMachineGunSound() {
+    if (machineGunSoundPlaying) {
+        try {
+            machineGunSound.pause();
+            machineGunSound.currentTime = 0;
+        } catch (e) {
+            console.log("Error stopping machine gun sound:", e);
+        }
+        machineGunSoundPlaying = false;
     }
 }
 
