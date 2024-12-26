@@ -24,7 +24,8 @@
 // 2.6   fire rate slower while moving  
 // 2.7  avoid missed promise in sound playing
 // 2.8  fix game over race condition
-        
+// 2.9  sometimes change explosion type for enemies to make more interesting
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -148,6 +149,33 @@ let walls = [
 // Initialize wallHits array for all walls
 let wallHits = walls.map(() => []);
 
+// Add a counter for tracking explosions
+let explosionCounter = 0;
+
+// At the start of the game where other assets are loaded
+let explosionImg = new Image();
+explosionImg.src = 'explosion.svg';
+let explosionAdditionalImg = new Image();
+explosionAdditionalImg.src = 'explosion_additional.svg';
+
+function createExplosion(x, y) {
+  explosionCounter++;
+  const isAdditionalExplosion = explosionCounter % (Math.random() < 0.5 ? 3 : 4) === 0;
+  
+  const newExplosion = {
+    x: x,
+    y: y,
+    frame: 0,
+    img: new Image(),
+    width: isAdditionalExplosion ? 100 : 96,   // Regular explosion now 96 (32 * 3)
+    height: isAdditionalExplosion ? 100 : 96,  // Regular explosion now 96 (32 * 3)
+  };
+  
+  // Set the source first, then push to array
+  newExplosion.img.src = isAdditionalExplosion ? 'explosion_additional.svg' : 'explosion.svg';
+  explosions.push(newExplosion);
+}
+
 function createEnemies() {
   const rows = 5;
   const cols = 10;
@@ -255,7 +283,7 @@ function drawWalls() {
 function drawExplosions() {
   explosions.forEach((explosion) => {
     ctx.drawImage(
-      explosion.image,
+      explosion.img,
       explosion.x,
       explosion.y,
       explosion.width,
@@ -469,15 +497,7 @@ function detectCollisions() {
         ) {
           enemy.hits++;
           if (enemy.hits >= enemyHitsToDestroy) {
-            explosions.push({
-              x: enemy.x,
-              y: enemy.y,
-              width: enemy.width,
-              height: enemy.height,
-              image: new Image(),
-              startTime: Date.now(),
-            });
-            explosions[explosions.length - 1].image.src = "explosion.svg";
+            createExplosion(enemy.x, enemy.y);
             enemies.splice(eIndex, 1);
             score += 10;
           }
