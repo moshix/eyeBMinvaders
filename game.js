@@ -18,6 +18,7 @@
 // 2.3  fix opening page and walls can now collapse! 
 // 2.4  vax bullets also deterioate walls 
 // 2.5  fix some sound issues 
+// 2.5.1 fix new level unexplained pause
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -520,7 +521,7 @@ function gameOver() {
 
 function victory() {
   currentLevel++;
-  enemySpeed *= 1.33;
+  enemySpeed *= 1.33;  // Increase enemy speed in each new level
   score += 1000;  // Add 1000 points for completing the level
   enemies = [];
   createEnemies();
@@ -698,6 +699,7 @@ function gameLoop(currentTime) {
     if (gameOverFlag) {
       gameOver();
     } else if (victoryFlag) {
+      gamePaused = false;
       victory();
     }
   }
