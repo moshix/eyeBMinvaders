@@ -20,6 +20,7 @@
 // 2.5  fix some sound issues 
 // 2.5.1 fix new level unexplained pause
 // 2.5.2 also enable A for left and D for right move
+// 2.5.3 show new level banner before continuing
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -302,7 +303,12 @@ function moveEnemies(deltaTime) {
   });
   enemies = enemies.filter((enemy) => enemy.y < canvas.height);
   if (enemies.length === 0 && !gameOverFlag) {
-    victoryFlag = true;
+    gamePaused = true;  // Set pause immediately
+    // Reset all key states
+    Object.keys(keys).forEach(key => {
+        keys[key] = false;
+    });
+    victory();
   }
 }
 
@@ -527,12 +533,25 @@ function victory() {
   enemySpeed *= 1.33;  // Increase enemy speed in each new level
   score += 1000;  // Add 1000 points for completing the level
   enemies = [];
-  createEnemies();
   bullets = [];
-  gamePaused = false;
-  victoryFlag = false;
-  lastTime = 0;
-  requestAnimationFrame(gameLoop);
+  
+  // Draw the level message
+  ctx.save();
+  ctx.fillStyle = "white";
+  ctx.font = "48px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`Level ${currentLevel}`, canvas.width/2, canvas.height/2);
+  ctx.restore();
+  
+  // Wait 1.5 seconds before starting the new level
+  setTimeout(() => {
+    createEnemies();
+    gamePaused = false;
+    victoryFlag = false;
+    lastTime = 0;
+    requestAnimationFrame(gameLoop);
+  }, 1500);
 }
 
 function restartGame() {
@@ -656,13 +675,25 @@ function drawMuteStatus() {
 }
 
 function drawPauseMessage() {
-  if (gamePaused) {
+  if (gamePaused && !gameOverFlag && enemies.length > 0 && currentLevel === Math.floor(currentLevel)) {  // Only show PAUSED during regular gameplay
     ctx.save();
     ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
     ctx.font = "48px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("PAUSED", canvas.width/2, canvas.height/2);
+    ctx.restore();
+  }
+}
+
+function drawLevelMessage() {
+  if (gamePaused && !gameOverFlag && enemies.length === 0) {  // Only show during level transition
+    ctx.save();
+    ctx.fillStyle = "white";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`Level ${currentLevel}`, canvas.width/2, canvas.height/2);
     ctx.restore();
   }
 }
@@ -685,12 +716,15 @@ function gameLoop(currentTime) {
   drawScore();
   drawHitMessage();
   drawMuteStatus();
-  drawPauseMessage();  // Add pause message last so it's on top
+  drawLevelMessage();
+  drawPauseMessage();
 
-  // Only update positions if game is not paused
+  // Allow player movement even during level transition pause
+  movePlayer(deltaTime);
+
+  // Only update game elements if not paused
   if (!gamePaused) {
     if (player.lives > 0 && !gameOverFlag && !victoryFlag) {
-      movePlayer(deltaTime);
       moveBullets(deltaTime);
       moveEnemies(deltaTime);
       moveMissiles(deltaTime);
@@ -703,7 +737,6 @@ function gameLoop(currentTime) {
       gameOver();
     } else if (victoryFlag) {
       gamePaused = false;
-      victory();
     }
   }
 
@@ -723,6 +756,15 @@ function startGame() {
 }
 
 document.addEventListener("keydown", (e) => {
+  if (e.code === "F11") {
+    // Clear all enemies to trigger victory condition
+    enemies = [];
+    // Reset all key states
+    Object.keys(keys).forEach(key => {
+        keys[key] = false;
+    });
+    victory();
+  }
   if (e.code === "KeyP") {
     gamePaused = !gamePaused;
     if (!gamePaused) {
