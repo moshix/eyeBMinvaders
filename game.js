@@ -21,6 +21,7 @@
 // 2.5.1 fix new level unexplained pause
 // 2.5.2 also enable A for left and D for right move
 // 2.5.3 show new level banner before continuing
+// 2.6   fire rate slower while moving  
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -705,6 +706,33 @@ function gameLoop(currentTime) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Check if player is moving
+  const isMoving = keys.ArrowLeft || keys.ArrowRight || keys.KeyA || keys.KeyD;
+  const currentFireRate = isMoving ? FIRE_RATE * 3 : FIRE_RATE;  // Triple the delay when moving
+
+  // Handle shooting if Space is held down
+  if (keys.Space && !gamePaused && 
+      Date.now() - lastFireTime > currentFireRate * 1000) {
+    bullets.push({
+      x: player.x + player.width / 2 - 2.5,
+      y: player.y,
+      isEnemyBullet: false
+    });
+    lastFireTime = Date.now();
+    
+    if (Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD) {
+      if (!isMuted) {
+        machineGunSound.currentTime = 0;
+        machineGunSound.play();
+      }
+    } else {
+      if (!isMuted) {
+        playerShotSound.currentTime = 0;
+        playerShotSound.play();
+      }
+    }
+  }
+
   // Draw everything regardless of pause state
   drawPlayer();
   drawEnemies();
@@ -775,37 +803,10 @@ document.addEventListener("keydown", (e) => {
   if (e.code === "KeyR") {
     restartGame();
   }
-  if (e.code === "Space" && !gamePaused && 
-      Date.now() - lastFireTime > FIRE_RATE * 1000) {
-    if (!keys.Space) {
+  if (e.code in keys) {
+    keys[e.code] = true;
+    if (e.code === "Space" && !keys.Space) {
       spaceKeyPressTime = Date.now();
-    }
-    
-    bullets.push({
-      x: player.x + player.width / 2 - 2.5,
-      y: player.y,
-      isEnemyBullet: false
-    });
-    lastFireTime = Date.now();
-    
-    // Play appropriate sound based on hold duration
-    if (Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD) {
-      if (!isMuted) {
-        machineGunSound.currentTime = 0;
-        machineGunSound.play();
-        // Clear any existing timer
-        if (machineGunSoundTimer) clearTimeout(machineGunSoundTimer);
-        // Set new timer to stop sound after duration
-        machineGunSoundTimer = setTimeout(() => {
-          machineGunSound.pause();
-          machineGunSound.currentTime = 0;
-        }, machineGunSoundDuration);
-      }
-    } else {
-      if (!isMuted) {
-        playerShotSound.currentTime = 0;
-        playerShotSound.play();
-      }
     }
   }
   if (e.code === "KeyM") {
@@ -814,7 +815,6 @@ document.addEventListener("keydown", (e) => {
     playerExplosionSound.muted = isMuted;
     gameOverSound.muted = isMuted;
   }
-  if (e.code in keys) keys[e.code] = true;
 });
 
 document.addEventListener("keyup", (e) => {
