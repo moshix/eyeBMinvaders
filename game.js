@@ -23,6 +23,7 @@
 // 2.5.3 show new level banner before continuing
 // 2.6   fire rate slower while moving  
 // 2.7  avoid missed promise in sound playing
+// 2.8  fix game over race condition
         
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -292,21 +293,38 @@ function moveBullets(deltaTime) {
 }
 
 function moveEnemies(deltaTime) {
-  const currentEnemySpeed = (ENEMY_SPEED * enemySpeed) * deltaTime;  // Combine base speed with level multiplier
+  // Add safety check for large deltaTime values
+  if (deltaTime > 0.1) deltaTime = 0.1;  // Cap maximum deltaTime at 100ms
+  
+  const currentEnemySpeed = (ENEMY_SPEED * enemySpeed) * deltaTime;
+  let needsToMoveDown = false;
+  
+  // First check if any enemy needs to change direction
   enemies.forEach((enemy) => {
     enemy.x += currentEnemySpeed * enemyDirection;
     if (enemy.x + enemy.width > canvas.width || enemy.x < 0) {
-      enemyDirection *= -1;
-      enemies.forEach((e) => (e.y += e.height * 0.25));
-    }
-    if (enemy.y + enemy.height >= walls[0].y - 100) {
-      gameOverFlag = true;
+      needsToMoveDown = true;
+      enemy.x = Math.max(0, Math.min(canvas.width - enemy.width, enemy.x));  // Keep within bounds
     }
   });
+  
+  // Then handle direction change and moving down as a separate step
+  if (needsToMoveDown) {
+    enemyDirection *= -1;
+    const moveDownAmount = 20;  // Fixed amount instead of percentage
+    enemies.forEach((enemy) => {
+      enemy.y += moveDownAmount;
+      // Check if this would trigger game over
+      if (enemy.y + enemy.height >= walls[0].y - 100) {
+        console.log('Game Over triggered by enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 100);
+        gameOverFlag = true;
+      }
+    });
+  }
+  
   enemies = enemies.filter((enemy) => enemy.y < canvas.height);
   if (enemies.length === 0 && !gameOverFlag) {
-    gamePaused = true;  // Set pause immediately
-    // Reset all key states
+    gamePaused = true;
     Object.keys(keys).forEach(key => {
         keys[key] = false;
     });
@@ -771,6 +789,9 @@ function gameLoop(currentTime) {
 
   if (!gameOverFlag && !victoryFlag) {
     requestAnimationFrame(gameLoop);
+  } else {
+    console.log('Animation stopped because:', 
+                gameOverFlag ? 'game over' : 'victory flag');
   }
 }
 
