@@ -86,13 +86,26 @@
             }
             /* Touch controls - hidden by default */
             #touch-controls {
-                display: none;  /* Hidden by default */
+                display: none;
                 position: fixed;
                 bottom: 40px;
                 left: 0;
                 right: 0;
-                text-align: center;
                 z-index: 1000;
+            }
+
+            /* Left side controls */
+            #left-controls {
+                position: absolute;
+                left: 20px;
+                bottom: 20px;
+            }
+
+            /* Right side controls */
+            #right-controls {
+                position: absolute;
+                right: 20px;
+                bottom: 20px;
             }
 
             .touch-button {
@@ -105,6 +118,11 @@
                 font-size: 24px;
                 cursor: pointer;
                 touch-action: manipulation;
+            }
+
+            .fire-button {
+                background: rgba(255, 0, 0, 0.2);
+                border-color: rgba(255, 0, 0, 0.4);
             }
 
             #touch-start {
@@ -135,15 +153,32 @@
             <p>P to pause</p>
             <p>R to restart</p>
             <p>M to mute sounds</p>
+            <script>
+                // More precise phone detection
+                function isPhone() {
+                    const isMobile = /iPhone|Android.*Mobile/i.test(navigator.userAgent);
+                    const isSmallScreen = window.innerWidth <= 767; // Typical phone width
+                    return isMobile && isSmallScreen;
+                }
+
+                if (isPhone()) {
+                    document.write('<p style="color: yellow; font-weight: bold; margin-top: 20px; text-align: center;">eyeBMInvaders only works on PC and tablet browsers. Sorry!</p>');
+                }
+            </script>
             <p style="color: red; margin-top: 20px; text-align: center; margin-left: 50px;">...press any key to start</p>
         </div>
         
         <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fmoshix.github.io%2FeyeBMinvaders%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
         <canvas id="gameCanvas"></canvas>
         <div id="touch-controls">
-            <button id="touch-left" class="touch-button">◀</button>
-            <button id="touch-right" class="touch-button">▶</button>
-            <button id="touch-fire" class="touch-button">🔥</button>
+            <div id="left-controls">
+                <button id="touch-left" class="touch-button">◀</button>
+                <button id="touch-fire-left" class="touch-button fire-button">🔥</button>
+            </div>
+            <div id="right-controls">
+                <button id="touch-fire-right" class="touch-button fire-button">🔥</button>
+                <button id="touch-right" class="touch-button">▶</button>
+            </div>
         </div>
         <button id="touch-start" class="touch-button">Start Game</button>
 
