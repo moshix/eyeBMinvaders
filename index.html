@@ -84,6 +84,40 @@
                 right: 220px;
                 bottom: 10px;
             }
+            /* Touch controls - hidden by default */
+            #touch-controls {
+                display: none;  /* Hidden by default */
+                position: fixed;
+                bottom: 40px;
+                left: 0;
+                right: 0;
+                text-align: center;
+                z-index: 1000;
+            }
+
+            .touch-button {
+                background: rgba(255, 255, 255, 0.2);
+                border: 2px solid rgba(255, 255, 255, 0.4);
+                color: white;
+                padding: 20px 40px;
+                margin: 10px;
+                border-radius: 10px;
+                font-size: 24px;
+                cursor: pointer;
+                touch-action: manipulation;
+            }
+
+            #touch-start {
+                display: none;  /* Hidden by default */
+                position: absolute;
+                right: 50px;
+                top: 50%;
+                transform: translateY(-50%);
+                background: rgba(84, 206, 70, 0.3);
+                border: 2px solid rgba(84, 206, 70, 0.6);
+                padding: 15px 30px;
+                font-size: 20px;
+            }
         </style>
     </head>
     <body>
@@ -106,6 +140,38 @@
         
         <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fmoshix.github.io%2FeyeBMinvaders%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
         <canvas id="gameCanvas"></canvas>
+        <div id="touch-controls">
+            <button id="touch-left" class="touch-button">◀</button>
+            <button id="touch-right" class="touch-button">▶</button>
+            <button id="touch-fire" class="touch-button">🔥</button>
+        </div>
+        <button id="touch-start" class="touch-button">Start Game</button>
+
+        <script>
+            // Proper touch device detection
+            function isTouchTablet() {
+                // Check if device has touch capability
+                const hasTouch = (('ontouchstart' in window) ||
+                    (navigator.maxTouchPoints > 0) ||
+                    (navigator.msMaxTouchPoints > 0));
+                
+                // Check if it's not a desktop/laptop
+                const isNotDesktop = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                return hasTouch && isNotDesktop;
+            }
+
+            // Only show touch controls if we're on a tablet
+            if (isTouchTablet()) {
+                document.getElementById('touch-controls').style.display = 'block';
+                document.getElementById('touch-start').style.display = 'block';
+                // Remove the "press any key" text for touch devices
+                const keyPrompt = document.querySelector('#legend p[style*="color: red"]');
+                if (keyPrompt) {
+                    keyPrompt.style.display = 'none';
+                }
+            }
+        </script>
         <script src="game.js"></script>
     </body>
 </html>
