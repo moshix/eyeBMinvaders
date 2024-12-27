@@ -43,7 +43,7 @@
 // 3.6.1 the monster can shoot! 
 // 3.6.2 make monster shoot missiles from its position  
     
-const VERSION = "v3.6.1";  // version showing in index.html
+const VERSION = "v3.6.2";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
