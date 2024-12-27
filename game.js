@@ -34,8 +34,9 @@
 // 3.2.1 small parameter tune-ups    
 // 3.2.2 enemies fire more frequent as levels increase 
 // 3.2.3 version taken from the javascript file
+// 3.24  change enemy explosions graphics a bit
     
-const VERSION = "v3.2.3g";  // version showin in index.html
+const VERSION = "v3.2.4g";  // version showin in index.html
 document.getElementById('version-info').textContent = VERSION;
 
 const canvas = document.getElementById("gameCanvas");
@@ -180,20 +181,20 @@ let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
 function createExplosion(x, y) {
   explosionCounter++;
-  if (explosionCounter % 3 === 0) {
+  if (explosionCounter % 2 === 0) {
     playSoundWithCleanup(createExplosionSound);
   }
   score += 100;
 
-  const isAdditionalExplosion = explosionCounter % (Math.random() < 0.5 ? 3 : 4) === 0;
+  const isAdditionalExplosion = explosionCounter % (Math.random() < 0.5 ? 2 : 3) === 0;
   
   const newExplosion = {
     x: x,
     y: y,
     frame: 0,
     img: new Image(),
-    width: isAdditionalExplosion ? 100 : 96,   // Regular explosion now 96 (32 * 3)
-    height: isAdditionalExplosion ? 100 : 96,  // Regular explosion now 96 (32 * 3)
+    width: isAdditionalExplosion ? 150 : 96,   // Regular explosion now 96 (32 * 3)
+    height: isAdditionalExplosion ? 150 : 96,  // Regular explosion now 96 (32 * 3)
   };
   
   // Set the source first, then push to array
