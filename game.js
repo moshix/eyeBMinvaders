@@ -40,8 +40,9 @@
 // 3.4   columns of enemies respond to browser window size 
 // 3.5.1 touch controls now also fire bullets
 // 3.6   monster on top of screen
+// 3.6.1 the monster can shoot!  
     
-const VERSION = "v3.6";  // version showing in index.html
+const VERSION = "v3.6.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -1280,14 +1281,11 @@ monsterHitImage.src = 'monster_shot.svg';
 
 // Add this function to handle monster creation
 function createMonster(currentTime) {
-
-
     if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
-        //console.log('Creating new monster!');
-        // Randomly choose starting side (-1 for left, 1 for right)
         monsterDirection = Math.random() < 0.5 ? 1 : -1;
         
-        const startX = monsterDirection === 1 ? -MONSTER_WIDTH : canvas.width + MONSTER_WIDTH;
+        // Calculate starting position
+        const startX = monsterDirection === 1 ? 0 : canvas.width;  // Changed from off-screen to edge of screen
         const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
         
         monster = {
@@ -1298,6 +1296,20 @@ function createMonster(currentTime) {
             hit: false,
             hitTime: 0
         };
+
+        // Fire exactly 2 missiles when monster appears
+        for (let i = 0; i < 2; i++) {
+            homingMissiles.push({
+                x: monster.x + monster.width/2,  // Center the missile horizontally
+                y: monster.y + monster.height,   // Start from bottom of monster
+                angle: 0,
+                width: 44,
+                height: 44,
+                time: 0
+            });
+        }
+        playSoundWithCleanup(createMissileLaunchSound);
+        
         lastMonsterTime = currentTime;
     }
 }
@@ -1307,9 +1319,8 @@ function moveMonster(deltaTime) {
     if (monster) {
         if (monster.hit) {
             if (Date.now() - monster.hitTime > MONSTER_HIT_DURATION) {
-                console.log('Monster destroyed');
                 monster = null;
-                lastMonsterTime = performance.now();  // Use performance.now() to match requestAnimationFrame timing
+                lastMonsterTime = performance.now();
             }
         } else {
             monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
@@ -1317,9 +1328,8 @@ function moveMonster(deltaTime) {
             // Check if monster has moved off screen
             if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
                 (monsterDirection === -1 && monster.x < -MONSTER_WIDTH)) {
-                console.log('Monster left screen');
                 monster = null;
-                lastMonsterTime = performance.now();  // Use performance.now() to match requestAnimationFrame timing
+                lastMonsterTime = performance.now();
             }
         }
     }
@@ -1341,6 +1351,10 @@ function createMonsterHitSound() {
     sound.volume = 1.0;
     return sound;
 }
+
+// Add with other monster-related constants at the top
+const MONSTER_MISSILE_INTERVAL = 500; // Time between monster's missile shots (500ms)
+let lastMonsterMissileTime = 0;
 
 
 
