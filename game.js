@@ -33,7 +33,11 @@
 // 3.2   defintely show game over when it's over
 // 3.2.1 small parameter tune-ups    
 // 3.2.2 enemies fire more frequent as levels increase 
+// 3.2.3 version taken from the javascript file
     
+const VERSION = "v3.2.3g";  // version showin in index.html
+document.getElementById('version-info').textContent = VERSION;
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
