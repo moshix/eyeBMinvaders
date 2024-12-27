@@ -30,7 +30,8 @@
 // 3.0.2 display game over when enmies reach critical position
 // 3.0.3 aha! (?) only enemies alive can reach wall
 // 3.1   catch bug when no more walls are around 
-// 3.2   defintely show game over when it's over    
+// 3.2   defintely show game over when it's over
+// 3.2.1 small parameter tune-ups    
  
 
 const canvas = document.getElementById("gameCanvas");
@@ -44,8 +45,8 @@ const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of playe
 const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
 const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
 const MIN_MISSILE_INTERVAL = 3000; // 3 seconds
-const MAX_MISSILE_INTERVAL = 6000; // 6 seconds
-const MISSILE_SPEED = 200; // pixels per second
+const MAX_MISSILE_INTERVAL = 6700; // 6 seconds
+const MISSILE_SPEED = 170; // pixels per second
 let lastMissileTime = 0;
 let nextMissileTime = 0;
 let homingMissiles = [];
@@ -68,7 +69,7 @@ let bullets = [];
 let enemies = [];
 let explosions = [];
 let score = 0;
-let enemyHitsToDestroy = 2; // Configurable parameter
+let enemyHitsToDestroy = 2; // how many times an enemy needs to be hit
 let enemySpeed = 0.45;  // Decreased from 0.55
 let enemyDirection = 1; // 1 for right, -1 for left
 let gamePaused = false;
@@ -79,7 +80,7 @@ let lastTime = 0;
 const PLAYER_SPEED = 300; // pixels per second
 const ENEMY_SPEED = 50; // pixels per second
 const FIRE_RATE = 0.2; // Time in seconds between shots (0.1 = 10 shots per second)
-const ENEMY_FIRE_RATE = 1.0; // Time in seconds between enemy shots
+const ENEMY_FIRE_RATE = 0.9; // Time in seconds between enemy shots
 let lastEnemyFireTime = 0;
 
 let hitMessageTimer = 0;
@@ -112,8 +113,8 @@ let chunkImage = new Image();
 chunkImage.src = 'chunk.svg';
 
 const WALL_MAX_HITS = 3;  // Programmer tunable: number of hits before wall disappears
-const WALL_HITS_FROM_BELOW = 4;     // Programmer tunable: hits needed for wall damage from player shots
-const WALL_MAX_HITS_TOTAL = 10;     // Programmer tunable: total hits before wall disappears
+const WALL_HITS_FROM_BELOW = 3;     // Programmer tunable: hits needed for wall damage from player shots
+const WALL_MAX_HITS_TOTAL = 13;     // Programmer tunable: total hits before wall disappears
 const WALL_MAX_MISSILE_HITS = 3;    // Programmer tunable: hits from missiles before wall disappears
 
 let walls = [
