@@ -36,8 +36,10 @@
 // 3.2.3 version taken from the javascript file
 // 3.24  change enemy explosions graphics a bit
 // 3.2.5 clode clean up 
+// 3.3   touch support again !
+// 3.4   columns of enemies respond to browser window size 
     
-const VERSION = "v3.2.5";  // version showing in index.html
+const VERSION = "v3.4";  // version showing in index.html
 document.getElementById('version-info').textContent = VERSION;
 
 const canvas = document.getElementById("gameCanvas");
@@ -181,6 +183,84 @@ const BASE_ENEMY_FIRE_RATE = 0.85;    // Base time in seconds between enemy shot
 const ENEMY_FIRE_RATE_INCREASE = 0.15;// 15% increase per level
 let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
+// Add near the top with other initialization code
+let isTouchDevice = false;
+let isTablet = false;
+
+// Detect if device is a tablet
+function detectTablet() {
+  // Check if touch device
+  isTouchDevice = ('ontouchstart' in window) || 
+                 (navigator.maxTouchPoints > 0) || 
+                 (navigator.msMaxTouchPoints > 0);
+  
+  // Check if tablet based on screen size
+  isTablet = isTouchDevice && 
+             Math.min(window.innerWidth, window.innerHeight) >= 768 && 
+             Math.max(window.innerWidth, window.innerHeight) <= 1366;
+             
+  // Show/hide touch controls based on device
+  const touchControls = document.getElementById('touch-controls');
+  if (touchControls) {
+    touchControls.style.display = isTablet ? 'block' : 'none';
+  }
+}
+
+// Initialize touch controls
+function initTouchControls() {
+  detectTablet();
+  
+  if (!isTablet) return;
+
+  const touchStart = document.getElementById('touch-start');
+  const touchLeft = document.getElementById('touch-left');
+  const touchRight = document.getElementById('touch-right');
+  const touchFire = document.getElementById('touch-fire');
+
+  // Start button
+  touchStart.addEventListener('click', () => {
+    startGame();
+    touchStart.style.display = 'none';
+  });
+
+  // Movement controls
+  touchLeft.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.ArrowLeft = true;
+  });
+
+  touchLeft.addEventListener('touchend', () => {
+    keys.ArrowLeft = false;
+  });
+
+  touchRight.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.ArrowRight = true;
+  });
+
+  touchRight.addEventListener('touchend', () => {
+    keys.ArrowRight = false;
+  });
+
+  // Fire control
+  touchFire.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.Space = true;
+    spaceKeyPressTime = Date.now();
+  });
+
+  touchFire.addEventListener('touchend', () => {
+    keys.Space = false;
+    stopMachineGunSound();
+  });
+}
+
+// Add resize handler to update tablet detection
+window.addEventListener('resize', detectTablet);
+
+// Initialize touch controls when the window loads
+window.addEventListener('load', initTouchControls);
+
 function createExplosion(x, y) {
   explosionCounter++;
   if (explosionCounter % 2 === 0) {
@@ -205,28 +285,37 @@ function createExplosion(x, y) {
 }
 
 function createEnemies() {
-  const rows = 5;
-  const cols = 10;
-  const enemyWidth = 58;  // 
-  const enemyHeight = 58; // 
-  const padding = 20;
-  const offsetTop = 30;
-  const offsetLeft = 30;
+    const rows = 5;
+    // Calculate number of columns based on window width
+    const minCols = 4;  // Minimum number of columns
+    const maxCols = 12; // Maximum number of columns
+    const enemyWidth = 58;
+    const padding = 20;
+    const minTotalWidth = (enemyWidth + padding) * minCols;
+    
+    // Calculate how many columns can fit in the current window width
+    let cols = Math.floor((canvas.width - 60) / (enemyWidth + padding)); // 60 is total side padding
+    cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
+    
+    const enemyHeight = 58;
+    const offsetTop = 30;
+    // Center the enemies horizontally
+    const offsetLeft = (canvas.width - (cols * (enemyWidth + padding))) / 2;
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      let color = ["red", "orange", "yellow", "green", "blue"][r % 5];
-      enemies.push({
-        x: c * (enemyWidth + padding) + offsetLeft,
-        y: r * (enemyHeight + padding) + offsetTop,
-        width: enemyWidth,
-        height: enemyHeight,
-        hits: 0,
-        image: new Image(),
-      });
-      enemies[enemies.length - 1].image.src = `enemy-ship-${color}.svg`;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            let color = ["red", "orange", "yellow", "green", "blue"][r % 5];
+            enemies.push({
+                x: c * (enemyWidth + padding) + offsetLeft,
+                y: r * (enemyHeight + padding) + offsetTop,
+                width: enemyWidth,
+                height: enemyHeight,
+                hits: 0,
+                image: new Image(),
+            });
+            enemies[enemies.length - 1].image.src = `enemy-ship-${color}.svg`;
+        }
     }
-  }
 }
 
 function drawPlayer() {
@@ -698,6 +787,10 @@ function restartGame() {
     }
   ].map(wall => ({...wall, hitCount: 0, missileHits: 0}));
   wallHits = walls.map(() => []);
+  
+  if (isTablet) {
+    document.getElementById("touch-start").style.display = "block";
+  }
 }
 
 function handleEnemyShooting(currentTime) {
@@ -846,9 +939,12 @@ function gameLoop(currentTime) {
 
 function startGame() {
   document.getElementById("legend").style.display = "none";
-  enemies = []; // Clear any existing enemies
+  if (isTablet) {
+    document.getElementById("touch-start").style.display = "none";
+  }
+  enemies = [];
   createEnemies();
-  lastTime = 0; // Reset the time
+  lastTime = 0;
   startGameSound.currentTime = 0;
   startGameSound.play();
   requestAnimationFrame(gameLoop);
