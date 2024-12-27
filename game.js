@@ -42,8 +42,9 @@
 // 3.6   monster on top of screen
 // 3.6.1 the monster can shoot! 
 // 3.6.2 make monster shoot missiles from its position  
-    
-const VERSION = "v3.6.2";  // version showing in index.html
+// 3.6.3 restore walls when mosnter hit   
+      
+const VERSION = "v3.6.3";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -680,6 +681,43 @@ function detectCollisions() {
           monster.hit = true;
           monster.hitTime = Date.now();
           score += 1000;  // Bonus points for hitting monster
+          
+          // Add a new wall if any are missing
+          if (walls.length < 5) {
+            // Calculate position for new wall based on missing positions
+            const existingPositions = walls.map(wall => wall.x);
+            const possiblePositions = [
+              canvas.width / 6 - 50,
+              canvas.width * 2/6 - 50,
+              canvas.width * 3/6 - 50,
+              canvas.width * 4/6 - 50,
+              canvas.width * 5/6 - 50
+            ];
+            
+            // Find first missing position
+            for (let pos of possiblePositions) {
+              if (!existingPositions.includes(pos)) {
+                // Create new wall with properly initialized image
+                const newWall = {
+                  x: pos,
+                  y: canvas.height - 150,
+                  width: 100,
+                  height: 20,
+                  image: wallImage,
+                  hitCount: 0,
+                  missileHits: 0
+                };
+                
+                // Add the new wall and its hits array
+                walls.push(newWall);
+                wallHits.push([]);
+                
+                // Play a sound effect for wall restoration
+                playSoundWithCleanup(createWallGoneSound);
+                break; // Only add one wall per hit
+              }
+            }
+          }
           
           // Play monster death sound
           if (!isMuted) {
