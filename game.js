@@ -40,7 +40,8 @@
 // 3.4   columns of enemies respond to browser window size 
 // 3.5.1 touch controls now also fire bullets
 // 3.6   monster on top of screen
-// 3.6.1 the monster can shoot!  
+// 3.6.1 the monster can shoot! 
+// 3.6.2 make monster shoot missiles from its position  
     
 const VERSION = "v3.6.1";  // version showing in index.html
 
@@ -1284,8 +1285,8 @@ function createMonster(currentTime) {
     if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
         monsterDirection = Math.random() < 0.5 ? 1 : -1;
         
-        // Calculate starting position
-        const startX = monsterDirection === 1 ? 0 : canvas.width;  // Changed from off-screen to edge of screen
+        // Calculate starting position - start just off screen
+        const startX = monsterDirection === 1 ? -MONSTER_WIDTH : canvas.width + MONSTER_WIDTH;
         const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
         
         monster = {
@@ -1294,21 +1295,9 @@ function createMonster(currentTime) {
             width: MONSTER_WIDTH,
             height: MONSTER_HEIGHT,
             hit: false,
-            hitTime: 0
+            hitTime: 0,
+            hasShot: false  // Add flag to track if monster has fired its missiles
         };
-
-        // Fire exactly 2 missiles when monster appears
-        for (let i = 0; i < 2; i++) {
-            homingMissiles.push({
-                x: monster.x + monster.width/2,  // Center the missile horizontally
-                y: monster.y + monster.height,   // Start from bottom of monster
-                angle: 0,
-                width: 44,
-                height: 44,
-                time: 0
-            });
-        }
-        playSoundWithCleanup(createMissileLaunchSound);
         
         lastMonsterTime = currentTime;
     }
@@ -1323,7 +1312,38 @@ function moveMonster(deltaTime) {
                 lastMonsterTime = performance.now();
             }
         } else {
+            // Move the monster
             monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
+            
+            // Debug logging
+          //  console.log("Monster position:", monster.x);
+            console.log("Has shot:", monster.hasShot);
+            console.log("Is on screen:", monster.x > 0 && monster.x + monster.width < canvas.width);
+            
+            // Check if monster is on screen and hasn't shot yet
+            if (!monster.hasShot && 
+                monster.x > 0 && 
+                monster.x + monster.width < canvas.width) {
+                
+                console.log("FIRING MISSILES!");
+                
+                // Fire exactly 2 missiles
+                for (let i = 0; i < 2; i++) {
+                    const missile = {
+                        x: monster.x + (monster.width/2),
+                        y: monster.y + monster.height,
+                        angle: Math.PI/2,  // Point downward
+                        width: 44,
+                        height: 44,
+                        time: 0
+                    };
+                    homingMissiles.push(missile);
+                    console.log("Missile created at:", missile.x, missile.y);
+                }
+                
+                playSoundWithCleanup(createMissileLaunchSound);
+                monster.hasShot = true;
+            }
             
             // Check if monster has moved off screen
             if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
