@@ -35,8 +35,9 @@
 // 3.2.2 enemies fire more frequent as levels increase 
 // 3.2.3 version taken from the javascript file
 // 3.24  change enemy explosions graphics a bit
+// 3.2.5 clode clean up 
     
-const VERSION = "v3.2.4g";  // version showin in index.html
+const VERSION = "v3.2.5";  // version showing in index.html
 document.getElementById('version-info').textContent = VERSION;
 
 const canvas = document.getElementById("gameCanvas");
@@ -44,7 +45,7 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const PLAYER_LIVES = 5; // Programmer tunable parameter for starting lives
+const PLAYER_LIVES = 5;    // starting lives
 const BULLET_SPEED = 300; // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
@@ -52,12 +53,13 @@ const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 sec
 const MIN_MISSILE_INTERVAL = 3000; // 3 seconds
 const MAX_MISSILE_INTERVAL = 6700; // 6 seconds
 const MISSILE_SPEED = 170; // pixels per second
-let lastMissileTime = 0;
+
 let nextMissileTime = 0;
 let homingMissiles = [];
 let missileImage = new Image();
 missileImage.src = 'missile.svg';
-let newMissileLaunched = false;
+
+
 
 let player = {
   x: canvas.width / 2 - 25,
@@ -117,10 +119,9 @@ wallImage.src = 'wall.svg';
 let chunkImage = new Image();
 chunkImage.src = 'chunk.svg';
 
-const WALL_MAX_HITS = 3;  // Programmer tunable: number of hits before wall disappears
-const WALL_HITS_FROM_BELOW = 3;     // Programmer tunable: hits needed for wall damage from player shots
-const WALL_MAX_HITS_TOTAL = 13;     // Programmer tunable: total hits before wall disappears
-const WALL_MAX_MISSILE_HITS = 3;    // Programmer tunable: hits from missiles before wall disappears
+const WALL_HITS_FROM_BELOW = 3;  // hits needed for wall damage from player shots
+const WALL_MAX_HITS_TOTAL = 13;  // total hits before wall disappears
+const WALL_MAX_MISSILE_HITS = 4; // hits from missiles before wall disappears
 
 let walls = [
   {
@@ -163,7 +164,7 @@ let walls = [
 // Initialize wallHits array for all walls
 let wallHits = walls.map(() => []);
 
-// Add a counter for tracking explosions
+//counter for tracking explosions
 let explosionCounter = 0;
 
 // At the start of the game where other assets are loaded
@@ -172,11 +173,12 @@ explosionImg.src = 'explosion.svg';
 let explosionAdditionalImg = new Image();
 explosionAdditionalImg.src = 'explosion_additional.svg';
 
-const BASE_FIRE_RATE = 0.2; // Base time in seconds between shots
+const BASE_FIRE_RATE = 0.2;           // Base time in seconds between shots
 let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
-const BASE_ENEMY_FIRE_RATE = 0.9;  // Base time in seconds between enemy shots
-const ENEMY_FIRE_RATE_INCREASE = 0.15;  // 15% increase per level (programmer tunable)
+// for enemies  
+const BASE_ENEMY_FIRE_RATE = 0.85;    // Base time in seconds between enemy shots
+const ENEMY_FIRE_RATE_INCREASE = 0.15;// 15% increase per level
 let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
 function createExplosion(x, y) {
@@ -184,7 +186,7 @@ function createExplosion(x, y) {
   if (explosionCounter % 2 === 0) {
     playSoundWithCleanup(createExplosionSound);
   }
-  score += 100;
+  score += 30;
 
   const isAdditionalExplosion = explosionCounter % (Math.random() < 0.5 ? 2 : 3) === 0;
   
@@ -193,8 +195,8 @@ function createExplosion(x, y) {
     y: y,
     frame: 0,
     img: new Image(),
-    width: isAdditionalExplosion ? 150 : 96,   // Regular explosion now 96 (32 * 3)
-    height: isAdditionalExplosion ? 150 : 96,  // Regular explosion now 96 (32 * 3)
+    width: isAdditionalExplosion ? 170 : 96,   // Regular explosion now 96 (32 * 3)
+    height: isAdditionalExplosion ? 170 : 96,  // Regular explosion now 96 (32 * 3)
   };
   
   // Set the source first, then push to array
@@ -205,8 +207,8 @@ function createExplosion(x, y) {
 function createEnemies() {
   const rows = 5;
   const cols = 10;
-  const enemyWidth = 58; // Increased by 25% from 40 to 50
-  const enemyHeight = 58; // Increased by 25% from 40 to 50
+  const enemyWidth = 58;  // 
+  const enemyHeight = 58; // 
   const padding = 20;
   const offsetTop = 30;
   const offsetLeft = 30;
@@ -908,8 +910,8 @@ let playerShotSound = new Audio('playershot3.mp3');
 let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
 const MACHINE_GUN_THRESHOLD = 500; // 0.5 seconds in milliseconds
-let machineGunSoundDuration = 500; // 0.5 seconds in milliseconds
-let machineGunSoundTimer = null;
+//let machineGunSoundDuration = 500; // 0.5 seconds in milliseconds
+//let machineGunSoundTimer = null;
 
 let currentLevel = 1;
 
