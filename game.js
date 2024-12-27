@@ -215,7 +215,8 @@ function initTouchControls() {
   const touchStart = document.getElementById('touch-start');
   const touchLeft = document.getElementById('touch-left');
   const touchRight = document.getElementById('touch-right');
-  const touchFire = document.getElementById('touch-fire');
+  const touchFireLeft = document.getElementById('touch-fire-left');
+  const touchFireRight = document.getElementById('touch-fire-right');
 
   // Start button
   touchStart.addEventListener('click', () => {
@@ -242,17 +243,22 @@ function initTouchControls() {
     keys.ArrowRight = false;
   });
 
-  // Fire control
-  touchFire.addEventListener('touchstart', (e) => {
+  // Fire controls - both buttons do the same thing
+  function handleFireStart(e) {
     e.preventDefault();
     keys.Space = true;
     spaceKeyPressTime = Date.now();
-  });
+  }
 
-  touchFire.addEventListener('touchend', () => {
+  function handleFireEnd() {
     keys.Space = false;
     stopMachineGunSound();
-  });
+  }
+
+  touchFireLeft.addEventListener('touchstart', handleFireStart);
+  touchFireLeft.addEventListener('touchend', handleFireEnd);
+  touchFireRight.addEventListener('touchstart', handleFireStart);
+  touchFireRight.addEventListener('touchend', handleFireEnd);
 }
 
 // Add resize handler to update tablet detection
@@ -1027,8 +1033,8 @@ function handleMissileLaunching(currentTime) {
         x: shooter.x + shooter.width/2,
         y: shooter.y + shooter.height,
         angle: 0,
-        width: 30,
-        height: 30,
+        width: 44,
+        height: 44,
         time: 0 // For trajectory calculation
       });
     }
