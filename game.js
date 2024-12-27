@@ -38,8 +38,9 @@
 // 3.2.5 clode clean up 
 // 3.3   touch support again !
 // 3.4   columns of enemies respond to browser window size 
+// 3.5.1 touch controls now also fire bullets
     
-const VERSION = "v3.4";  // version showing in index.html
+const VERSION = "v3.5.1";  // version showing in index.html
 document.getElementById('version-info').textContent = VERSION;
 
 const canvas = document.getElementById("gameCanvas");
@@ -243,18 +244,30 @@ function initTouchControls() {
     keys.ArrowRight = false;
   });
 
-  // Fire controls - both buttons do the same thing
+  // Modified fire controls
   function handleFireStart(e) {
     e.preventDefault();
     keys.Space = true;
     spaceKeyPressTime = Date.now();
+    // Add direct bullet creation here
+    if (!gamePaused && Date.now() - lastFireTime > currentFireRate * 1000) {
+      bullets.push({
+        x: player.x + player.width / 2 - 2.5,
+        y: player.y,
+        isEnemyBullet: false
+      });
+      lastFireTime = Date.now();
+      playSoundWithCleanup(() => playerShotSound);
+    }
   }
 
-  function handleFireEnd() {
+  function handleFireEnd(e) {
+    e.preventDefault();
     keys.Space = false;
     stopMachineGunSound();
   }
 
+  // Add both touchstart and click events for better response
   touchFireLeft.addEventListener('touchstart', handleFireStart);
   touchFireLeft.addEventListener('touchend', handleFireEnd);
   touchFireRight.addEventListener('touchstart', handleFireStart);
