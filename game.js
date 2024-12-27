@@ -39,8 +39,11 @@
 // 3.3   touch support again !
 // 3.4   columns of enemies respond to browser window size 
 // 3.5.1 touch controls now also fire bullets
+// 3.6   monster on top of screen
     
-const VERSION = "v3.5.1";  // version showing in index.html
+const VERSION = "v3.6";  // version showing in index.html
+
+
 document.getElementById('version-info').textContent = VERSION;
 
 const canvas = document.getElementById("gameCanvas");
@@ -539,7 +542,7 @@ function detectCollisions() {
     }
   });
 
-  // Update missile collision with walls to use WALL_MAX_MISSILE_HITS
+  // Update missile collision with walls
   homingMissiles.forEach((missile, mIndex) => {
     walls.forEach((wall, wallIndex) => {
       if (missile.x >= wall.x && 
@@ -564,6 +567,7 @@ function detectCollisions() {
     });
   });
 
+  // Bullet collisions with missiles
   for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
     const bullet = bullets[bIndex];
     
@@ -575,14 +579,13 @@ function detectCollisions() {
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance < (missile.width/2 + 5)) {
-          // Add explosion at missile's position
           missileExplosions.push({
             x: missile.x,
             y: missile.y,
-            width: missile.width * 1.5,  // Make explosion slightly larger
+            width: missile.width * 1.5,
             height: missile.width * 1.5,
             timeCreated: Date.now(),
-            duration: 400  // Match sound duration
+            duration: 400
           });
           
           bullets.splice(bIndex, 1);
@@ -601,6 +604,8 @@ function detectCollisions() {
       }
     }
   }
+
+  // Enemy bullets and player collision
   bullets.forEach((bullet, bIndex) => {
     if (bullet.isEnemyBullet) {
       // Only check player collision if not currently hit
@@ -618,7 +623,7 @@ function detectCollisions() {
           isPlayerHit = true;
           playerHitTimer = Date.now();
           player.image = playerExplosionImage;
-          playerExplosionSound.currentTime = 0; // Reset sound to start
+          playerExplosionSound.currentTime = 0;
           playerExplosionSound.play();
           
           // Clear all enemy bullets
@@ -632,14 +637,12 @@ function detectCollisions() {
         }
       }
     } else {
-      // Existing collision detection for player bullets
+      // Player bullets hitting enemies
       enemies.forEach((enemy, eIndex) => {
-        if (
-          bullet.x < enemy.x + enemy.width &&
-          bullet.x + 5 > enemy.x &&
-          bullet.y < enemy.y + enemy.height &&
-          bullet.y + 10 > enemy.y
-        ) {
+        if (bullet.x < enemy.x + enemy.width &&
+            bullet.x + 5 > enemy.x &&
+            bullet.y < enemy.y + enemy.height &&
+            bullet.y + 10 > enemy.y) {
           enemy.hits++;
           if (enemy.hits >= enemyHitsToDestroy) {
             createExplosion(enemy.x, enemy.y);
@@ -650,49 +653,41 @@ function detectCollisions() {
         }
       });
     }
-
-    walls.forEach((wall) => {
-      if (
-        bullet.x < wall.x + wall.width &&
-        bullet.x + 5 > wall.x &&
-        bullet.y < wall.y + wall.height &&
-        bullet.y + 10 > wall.y
-      ) {
-        bullets.splice(bIndex, 1);
-      }
-    });
   });
 
-  // Check missile collisions with player
-  homingMissiles.forEach((missile, mIndex) => {
-    if (!isPlayerHit) {
-      const dx = (missile.x) - (player.x + player.width/2);
-      const dy = (missile.y) - (player.y + player.height/2);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance < (player.width + missile.width)/2) {
-        homingMissiles.splice(mIndex, 1);
-        player.lives--;
-        showHitMessage = true;
-        hitMessageTimer = Date.now();
-        
-        // Add explosion animation and sound
-        isPlayerHit = true;
-        playerHitTimer = Date.now();
-        player.image = playerExplosionImage;
-        playerExplosionSound.currentTime = 0;
-        playerExplosionSound.play();
-        
-        // Clear all enemy bullets and missiles
-        bullets = bullets.filter(b => !b.isEnemyBullet);
-        homingMissiles = [];
-        
-        if (player.lives <= 0) {
-          gameOverFlag = true;
+  // Monster collision detection
+  if (monster && !monster.hit) {
+    bullets.forEach((bullet, bIndex) => {
+      if (!bullet.isEnemyBullet) {
+        // Check if there are any enemies directly in the bullet's path to the monster
+        const hasEnemyInPath = enemies.some(enemy => 
+          bullet.x >= enemy.x && 
+          bullet.x <= enemy.x + enemy.width && 
+          bullet.y > enemy.y && 
+          bullet.y < monster.y + monster.height
+        );
+
+        // Only check monster collision if no enemies are in the way
+        if (!hasEnemyInPath && 
+            bullet.x < monster.x + monster.width &&
+            bullet.x + 5 > monster.x &&
+            bullet.y < monster.y + monster.height &&
+            bullet.y + 10 > monster.y) {
+          
+          bullets.splice(bIndex, 1);
+          monster.hit = true;
+          monster.hitTime = Date.now();
+          score += 1000;  // Bonus points for hitting monster
+          
+          // Play monster death sound
+          if (!isMuted) {
+            monsterDeadSound.currentTime = 0;
+            monsterDeadSound.play();
+          }
         }
       }
-    }
-  });
+    });
+  }
 }
 
 function drawScore() {
@@ -894,32 +889,38 @@ function drawLevelMessage() {
 }
 
 function gameLoop(currentTime) {
-  if (!lastTime) lastTime = currentTime;
+  // Calculate deltaTime first
+  if (!lastTime) {
+    lastTime = currentTime;
+  }
   const deltaTime = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
 
+  // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Handle player shooting - now using currentFireRate
+  // Handle shooting
   if (keys.Space && !gamePaused && 
       Date.now() - lastFireTime > currentFireRate * 1000) {
-      bullets.push({
-          x: player.x + player.width / 2 - 2.5,
-          y: player.y,
-          isEnemyBullet: false
-      });
-      lastFireTime = Date.now();
-      
-      if (Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD) {
-          playMachineGunSound();
-      } else {
-          playSoundWithCleanup(() => playerShotSound);
-      }
+    bullets.push({
+      x: player.x + player.width / 2 - 2.5,
+      y: player.y,
+      isEnemyBullet: false
+    });
+    lastFireTime = Date.now();
+    playSoundWithCleanup(() => playerShotSound);
   }
 
-  // Draw everything regardless of game state
+  // Game logic
+  if (!gamePaused && !gameOverFlag) {
+    createMonster(currentTime);
+    moveMonster(deltaTime);
+  }
+
+  // Draw everything
   drawPlayer();
   drawEnemies();
+  drawMonster();  // Draw monster after enemies
   drawBullets();
   drawMissiles();
   drawMissileExplosions();
@@ -931,7 +932,7 @@ function gameLoop(currentTime) {
   drawLevelMessage();
   drawPauseMessage();
 
-  // Only update game elements if not paused and game isn't over
+  // Update game elements if not paused
   if (!gamePaused && !gameOverFlag) {
       movePlayer(deltaTime);
       if (player.lives > 0) {
@@ -944,7 +945,7 @@ function gameLoop(currentTime) {
       }
   }
 
-  // Draw game over message if game is over
+  // Draw game over message if needed
   if (gameOverFlag) {
       ctx.fillStyle = "white";
       ctx.font = "50px Arial";
@@ -952,7 +953,6 @@ function gameLoop(currentTime) {
       ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
   }
 
-  // Continue animation frame even if game is over
   requestAnimationFrame(gameLoop);
 }
 
@@ -1015,18 +1015,20 @@ document.addEventListener("keyup", (e) => {
 
 document.addEventListener("keydown", startGame, { once: true });
 
+// mute control boolean
+let isMuted = false;
+
 let playerExplosionSound = new Audio('playerhit.mp3');
 let startGameSound = new Audio('startgame.mp3');
 let gameOverSound = new Audio('overgame.mp3');
-
-let isMuted = false;
+let monsterDeadSound = new Audio('monster_dead.mp3');
 
 let playerShotSound = new Audio('playershot3.mp3');
 let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
 const MACHINE_GUN_THRESHOLD = 500; // 0.5 seconds in milliseconds
-//let machineGunSoundDuration = 500; // 0.5 seconds in milliseconds
-//let machineGunSoundTimer = null;
+
+
 
 let currentLevel = 1;
 
@@ -1260,5 +1262,86 @@ function stopMachineGunSound() {
         machineGunSoundPlaying = false;
     }
 }
+
+// Add near other state variables
+let monster = null;
+let monsterDirection = 1;  // 1 for right, -1 for left
+let lastMonsterTime = 0;
+const MONSTER_INTERVAL = 5000;  // 5 seconds between monster appearances
+const MONSTER_SPEED = 200;      // pixels per second
+const MONSTER_WIDTH = 73;       // monster size
+const MONSTER_HEIGHT = 73;
+const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
+let monsterHit = false;
+let monsterImage = new Image();
+let monsterHitImage = new Image();
+monsterImage.src = 'monster.svg';
+monsterHitImage.src = 'monster_shot.svg';
+
+// Add this function to handle monster creation
+function createMonster(currentTime) {
+
+
+    if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
+        //console.log('Creating new monster!');
+        // Randomly choose starting side (-1 for left, 1 for right)
+        monsterDirection = Math.random() < 0.5 ? 1 : -1;
+        
+        const startX = monsterDirection === 1 ? -MONSTER_WIDTH : canvas.width + MONSTER_WIDTH;
+        const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
+        
+        monster = {
+            x: startX,
+            y: Math.max(topEnemyRow, MONSTER_HEIGHT),
+            width: MONSTER_WIDTH,
+            height: MONSTER_HEIGHT,
+            hit: false,
+            hitTime: 0
+        };
+        lastMonsterTime = currentTime;
+    }
+}
+
+// Add this function to move monster
+function moveMonster(deltaTime) {
+    if (monster) {
+        if (monster.hit) {
+            if (Date.now() - monster.hitTime > MONSTER_HIT_DURATION) {
+                console.log('Monster destroyed');
+                monster = null;
+                lastMonsterTime = performance.now();  // Use performance.now() to match requestAnimationFrame timing
+            }
+        } else {
+            monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
+            
+            // Check if monster has moved off screen
+            if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
+                (monsterDirection === -1 && monster.x < -MONSTER_WIDTH)) {
+                console.log('Monster left screen');
+                monster = null;
+                lastMonsterTime = performance.now();  // Use performance.now() to match requestAnimationFrame timing
+            }
+        }
+    }
+}
+
+// Add this function to draw monster
+function drawMonster() {
+    if (monster) {
+        const image = monster.hit ? monsterHitImage : monsterImage;
+        if (image.complete) {
+            ctx.drawImage(image, monster.x, monster.y, monster.width, monster.height);
+        }
+    }
+}
+
+// Add sound for monster hit
+function createMonsterHitSound() {
+    const sound = new Audio('monster_hit.mp3');
+    sound.volume = 1.0;
+    return sound;
+}
+
+
 
 
