@@ -32,8 +32,8 @@
 // 3.1   catch bug when no more walls are around 
 // 3.2   defintely show game over when it's over
 // 3.2.1 small parameter tune-ups    
- 
-
+// 3.2.2 enemies fire more frequent as levels increase 
+    
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -169,6 +169,10 @@ explosionAdditionalImg.src = 'explosion_additional.svg';
 
 const BASE_FIRE_RATE = 0.2; // Base time in seconds between shots
 let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
+
+const BASE_ENEMY_FIRE_RATE = 0.9;  // Base time in seconds between enemy shots
+const ENEMY_FIRE_RATE_INCREASE = 0.15;  // 15% increase per level (programmer tunable)
+let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
 function createExplosion(x, y) {
   explosionCounter++;
@@ -596,7 +600,12 @@ function gameOver() {
 
 function victory() {
   currentLevel++;
-  enemySpeed *= 1.33;  // Increase enemy speed in each new level
+  enemySpeed *= 1.33;  // Existing speed increase
+  
+  // Increase enemy fire rate by reducing the time between shots
+  currentEnemyFireRate = BASE_ENEMY_FIRE_RATE / 
+      (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
+  
   score += 1000;  // Add 1000 points for completing the level
   enemies = [];
   bullets = [];
@@ -623,6 +632,7 @@ function victory() {
 function restartGame() {
   currentLevel = 1;
   enemySpeed = 0.45;
+  currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
   player.y = canvas.height - 60;
@@ -684,12 +694,12 @@ function restartGame() {
 }
 
 function handleEnemyShooting(currentTime) {
-  if (currentTime - lastEnemyFireTime < ENEMY_FIRE_RATE * 1000) return;
+  if (currentTime - lastEnemyFireTime < currentEnemyFireRate * 1000) return;
   
   // Find the lowest enemy in each column
   const lowestEnemies = [];
   enemies.forEach(enemy => {
-    const columnIndex = Math.floor(enemy.x / (enemy.width + 20)); // Using padding of 20
+    const columnIndex = Math.floor(enemy.x / (enemy.width + 20));
     if (!lowestEnemies[columnIndex] || enemy.y > lowestEnemies[columnIndex].y) {
       lowestEnemies[columnIndex] = enemy;
     }
@@ -707,7 +717,7 @@ function handleEnemyShooting(currentTime) {
     bullets.push({
       x: closestEnemy.x + closestEnemy.width / 2,
       y: closestEnemy.y + closestEnemy.height,
-      dy: -5, // Negative because enemy bullets move down
+      dy: -5,
       isEnemyBullet: true
     });
     lastEnemyFireTime = currentTime;
