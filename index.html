@@ -136,6 +136,12 @@
                 padding: 15px 30px;
                 font-size: 20px;
             }
+
+            #gameCanvas {
+                display: none;  /* Initially hidden */
+                margin: 0 auto;
+                height: 600px;
+            }
         </style>
     </head>
     <body>
@@ -207,6 +213,50 @@
                 }
             }
         </script>
-        <script src="game.js"></script>
+        <script>
+            function startGame() {
+                // Hide the legend
+                document.getElementById('legend').style.display = 'none';
+                
+                // Create and show firebirds.html in an iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '100vh';
+                iframe.style.border = 'none';
+                iframe.src = 'firebirds.html';
+                document.body.appendChild(iframe);
+                
+                // After 3 seconds, remove iframe and start the game
+                setTimeout(() => {
+                    // Remove the iframe
+                    iframe.remove();
+                    
+                    // Show the canvas
+                    const canvas = document.getElementById('gameCanvas');
+                    canvas.style.display = 'block';
+                    
+                    // Load and start game.js
+                    const gameScript = document.createElement('script');
+                    gameScript.src = 'game.js';
+                    gameScript.onload = () => {
+                        console.log('Game script loaded');
+                        // Initialize the game after script loads
+                        createEnemies();
+                        startGameSound.currentTime = 0;
+                        startGameSound.play();
+                        requestAnimationFrame(gameLoop);
+                    };
+                    document.body.appendChild(gameScript);
+                }, 3000);
+            }
+
+            // Add debug logs
+            document.addEventListener('keydown', function(e) {
+                if (document.getElementById('legend').style.display !== 'none') {
+                    console.log('Starting game sequence'); // Debug log
+                    startGame();
+                }
+            });
+        </script>
     </body>
 </html>

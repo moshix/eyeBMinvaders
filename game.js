@@ -48,9 +48,10 @@
 // 3.6.6 Small tune ups (due to monster death regenerating walls again) 
 // 3.7   Show lives with space ships instead of just numbers 
 // 3.7.1 Show brief animation in lower right corner when life is list
-// 3.8   Every 5th shot down missile, player gets a bonus    
+// 3.8   Every 5th shot down missile, player gets a bonus   
+// 3.9   firebirds opening screen, and walls protect from bullets 
 
-const VERSION = "v3.8";  // version showing in index.html
+const VERSION = "v3.9";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -518,6 +519,36 @@ function moveEnemies(deltaTime) {
 }
 
 function detectCollisions() {
+  // Handle all bullet collisions with walls (both player and enemy bullets)
+  bullets.forEach((bullet, bIndex) => {
+    walls.forEach((wall, wallIndex) => {
+      if (bullet.x >= wall.x &&
+        bullet.x <= wall.x + wall.width &&
+        bullet.y >= wall.y &&
+        bullet.y <= wall.y + wall.height) {
+        
+        // Remove the bullet
+        bullets.splice(bIndex, 1);
+
+        // Add damage mark
+        wallHits[wallIndex].push({
+          x: bullet.x - wall.x,
+          y: bullet.y - wall.y
+        });
+
+        // Count hits for this wall
+        wall.hitCount = (wall.hitCount || 0) + 1;
+
+        // Remove wall if total hits exceeded
+        if (wall.hitCount >= WALL_MAX_HITS_TOTAL) {
+          playSoundWithCleanup(createWallGoneSound);
+          walls.splice(wallIndex, 1);
+          wallHits.splice(wallIndex, 1);
+        }
+      }
+    });
+  });
+
   // Add missile-player collision detection near the start of the function
   if (!isPlayerHit) {  // Only check if player isn't already hit
     homingMissiles.forEach((missile, mIndex) => {
@@ -551,28 +582,26 @@ function detectCollisions() {
     });
   }
 
-  // Check player bullet collisions with walls
+  // Add enemy bullet collision with walls
   bullets.forEach((bullet, bIndex) => {
-    if (!bullet.isEnemyBullet) {  // Only player bullets
+    if (bullet.isEnemyBullet) {  // Check only enemy bullets
       walls.forEach((wall, wallIndex) => {
         if (bullet.x >= wall.x &&
           bullet.x <= wall.x + wall.width &&
           bullet.y >= wall.y &&
           bullet.y <= wall.y + wall.height) {
+          
+          // Remove the enemy bullet
+          bullets.splice(bIndex, 1);
+
+          // Add damage mark
+          wallHits[wallIndex].push({
+            x: bullet.x - wall.x,
+            y: bullet.y - wall.y
+          });
 
           // Count hits for this wall
           wall.hitCount = (wall.hitCount || 0) + 1;
-
-          // Add damage mark every WALL_HITS_FROM_BELOW shots
-          if (wall.hitCount % WALL_HITS_FROM_BELOW === 0) {
-            wallHits[wallIndex].push({
-              x: bullet.x - wall.x,
-              y: bullet.y - wall.y
-            });
-          }
-
-          // Remove bullet
-          bullets.splice(bIndex, 1);
 
           // Remove wall if total hits exceeded
           if (wall.hitCount >= WALL_MAX_HITS_TOTAL) {
