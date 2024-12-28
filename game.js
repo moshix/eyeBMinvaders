@@ -43,9 +43,10 @@
 // 3.6.1 the monster can shoot! 
 // 3.6.2 make monster shoot missiles from its position  
 // 3.6.3 restore walls when mosnter hit  
-// 3.6.4 fix collision detection regression with missiles...arghhh    
+// 3.6.4 fix collision detection regression with missiles...arghhh   
+// 3.6.5 Yannai fixed F11 race condition  
       
-const VERSION = "v3.6.4";  // version showing in index.html
+const VERSION = "v3.6.5";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -1046,6 +1047,7 @@ function startGame() {
 }
 
 document.addEventListener("keydown", (e) => {
+
   if (e.code === "F11") {
     // Clear all enemies to trigger victory condition
     enemies = [];
@@ -1053,8 +1055,10 @@ document.addEventListener("keydown", (e) => {
     Object.keys(keys).forEach(key => {
         keys[key] = false;
     });
-    victory();
+     
+   // victory(); // not needed !! thanks Yannai !!!
   }
+   
   if (e.code === "KeyP") {
     gamePaused = !gamePaused;
     if (!gamePaused) {
@@ -1394,7 +1398,7 @@ function moveMonster(deltaTime) {
                                   monster.x + monster.width <= canvas.width;
             
             if (!monster.hasShot && isFullyOnScreen) {
-                // Fire exactly 2 missiles with proper positioning
+                // Fire missiles with proper positioning
                 const missileOffsets = [-monster.width/4, monster.width/4]; // Left and right positions
                 
                 missileOffsets.forEach(offset => {
