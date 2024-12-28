@@ -47,7 +47,7 @@
 // 3.6.5 Yannai fixed F11 race condition 
 // 3.6.6 Small tune ups (due to monster death regenerating walls again) 
       
-const VERSION = "v3.6.5";  // version showing in index.html
+const VERSION = "v3.6.6";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -718,7 +718,7 @@ function detectCollisions() {
           bullets.splice(bIndex, 1);
           monster.hit = true;
           monster.hitTime = Date.now();
-          score += 1000;  // Bonus points for hitting monster
+          score += 500;  // Bonus points for hitting monster
           
           // Add a new wall if any are missing
           if (walls.length < 5) {
@@ -794,7 +794,7 @@ function victory() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE / 
       (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
   
-  score += 1000;  // Add 1000 points for completing the level
+  score += 2500;  // Add 1000 points for completing the level
   enemies = [];
   bullets = [];
   
