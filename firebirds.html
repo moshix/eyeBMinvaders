@@ -41,7 +41,11 @@
     <canvas id="firebirdsCanvas"></canvas>
     <div id="copyright">copyright by HotDog Studios (moshix)</div>
     <script>
-        // Add countdown logic
+        // Add birds sound
+        const birdsSound = new Audio('birds.mp3');
+        birdsSound.play();
+        
+        // Add countdown logic with sound cleanup
         const countdownEl = document.getElementById('countdown');
         let count = 5;
         
@@ -53,6 +57,8 @@
                 countdownEl.innerHTML = 'FIGHT!';
                 setTimeout(() => {
                     countdownEl.style.display = 'none';
+                    birdsSound.pause();  // Stop the birds sound
+                    birdsSound.currentTime = 0;
                 }, 500);
                 clearInterval(countdown);
             }
