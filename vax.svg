@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
   <!-- Upward-pointing Triangle -->
-  <polygon points="100,30 90,50 110,50" fill="#5f9ea0" />
+  <polygon points="120,36 108,60 132,60" fill="#5f9ea0" />
 
   <!-- Text -->
-  <text x="10" y="130" font-family="Arial, sans-serif" font-size="100" font-weight="bold" fill="#add8e6">
+  <text x="12" y="156" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="#add8e6">
     VAX
   </text>
 </svg>
