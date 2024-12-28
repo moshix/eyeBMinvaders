@@ -47,8 +47,9 @@
 // 3.6.5 Yannai fixed F11 race condition 
 // 3.6.6 Small tune ups (due to monster death regenerating walls again) 
 // 3.7   Show lives with space ships instead of just numbers 
+// 3.7.1 Show brief animation in lower right corner when life is list
       
-const VERSION = "v3.7";  // version showing in index.html
+const VERSION = "v3.7.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -526,9 +527,7 @@ function detectCollisions() {
       // If distance is less than combined radii, we have a collision
       if (distance < (player.width/2 + missile.width/4)) {
         homingMissiles.splice(mIndex, 1);
-        player.lives--;
-        showHitMessage = true;
-        hitMessageTimer = Date.now();
+        handlePlayerHit();
         
         // Add explosion animation and sound
         isPlayerHit = true;
@@ -657,9 +656,7 @@ function detectCollisions() {
             bullet.y < player.y + player.height &&
             bullet.y + 10 > player.y) {
           bullets.splice(bIndex, 1);
-          player.lives--;
-          showHitMessage = true;
-          hitMessageTimer = Date.now();
+          handlePlayerHit();
           
           // Add explosion animation and sound
           isPlayerHit = true;
@@ -973,13 +970,12 @@ function drawLives() {
   
   // Add text "Lives:" above the icons
   ctx.save();
-  ctx.fillStyle = '#39FF14'; // Neon green color
-  ctx.font = '21px Arial';
+  ctx.fillStyle = '#39FF14';
+  ctx.font = '16px Arial';
   ctx.textAlign = 'right';
   const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
   const startY = canvas.height - LIFE_ICON_SIZE - PADDING;
-  ctx.fillText('Lives', startX + PADDING, startY - 5); // Position text above icons
-  ctx.restore();
+  ctx.fillText('Lives:', startX + PADDING, startY - 5);
   
   // Draw life icons
   for (let i = 0; i < player.lives; i++) {
@@ -991,6 +987,25 @@ function drawLives() {
       LIFE_ICON_SIZE
     );
   }
+  
+  // Draw removal animation if active
+  if (lifeRemovalAnimation) {
+    const now = Date.now();
+    if (now - lifeRemovalAnimation.startTime < 1500) { // 1.5 seconds
+      const x = startX - (lifeRemovalAnimation.position * (LIFE_ICON_SIZE + PADDING));
+      ctx.drawImage(
+        vaxGoneImage,
+        x - LIFE_ICON_SIZE, // Bigger area
+        startY - LIFE_ICON_SIZE,
+        LIFE_ICON_SIZE * 2, // 3x size for emphasis
+        LIFE_ICON_SIZE * 2
+      );
+    } else {
+      lifeRemovalAnimation = null;
+    }
+  }
+  
+  ctx.restore();
 }
 
 function gameLoop(currentTime) {
@@ -1476,6 +1491,36 @@ function createMonsterHitSound() {
 // Add with other monster-related constants at the top
 const MONSTER_MISSILE_INTERVAL = 500; // Time between monster's missile shots (500ms)
 let lastMonsterMissileTime = 0;
+
+// Add near other state variables at the top
+let lifeRemovalAnimation = null;
+let vaxGoneImage = new Image();
+vaxGoneImage.src = 'vax_gone.svg';
+
+// Modify where player gets hit (in detectCollisions or similar)
+function handlePlayerHit() {
+  player.lives--;
+  showHitMessage = true;
+  hitMessageTimer = Date.now();
+  
+  // Add life removal animation
+  lifeRemovalAnimation = {
+    startTime: Date.now(),
+    position: player.lives // Position of the removed life
+  };
+  
+  isPlayerHit = true;
+  playerHitTimer = Date.now();
+  player.image = playerExplosionImage;
+  playerExplosionSound.currentTime = 0;
+  playerExplosionSound.play();
+  
+  if (player.lives <= 0) {
+    gameOverFlag = true;
+    gameOverSound.currentTime = 0;
+    gameOverSound.play();
+  }
+}
 
 
 
