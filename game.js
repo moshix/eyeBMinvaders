@@ -50,8 +50,9 @@
 // 3.7.1 Show brief animation in lower right corner when life is list
 // 3.8   Every 5th shot down missile, player gets a bonus   
 // 3.9   firebirds opening screen, and walls protect from bullets 
+// 4.0   Every 7 bonus grants, player gets one life back!
 
-const VERSION = "v3.9";  // version showing in index.html
+const VERSION = "v4.0";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -62,7 +63,9 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 const PLAYER_LIVES = 5;    // starting lives
-const BULLET_SPEED = 300; // Player bullet speed (pixels per second)
+let   bonusGrants = 0;     // no bonus grants so far
+const BONUS2LIVES = 7;     // every 7 bonuses, player gets one life
+const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
 const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
@@ -88,7 +91,7 @@ let player = {
   image: new Image(),
 };
 
-
+let bonusgrants = 0; // tracks how many bonuses player got, every 7th lives++
 let bullets = [];
 let enemies = [];
 let explosions = [];
@@ -654,9 +657,25 @@ function detectCollisions() {
         if (distance < (missile.width / 2 + 5)) {
           homingMissileHits++;
           if (homingMissileHits % 5 === 0) {
-            score += 500; // bonus for every 5th missile shot down
-            //console.log('Playing bonus sound now!');
-            bonusSound.play();
+            score += 500; // bonus for every 4th missile shot down
+            bonusSound.play(); // normal bonus sound
+             
+            // every BONUS2LIVES (7 normally) bonus, lives++ but not over PLAYER_LIVES max defined by programmer 
+            bonusGrants++;
+            if (bonusGrants >= BONUS2LIVES){ // normally 7
+               player.lives++; // every nth  bonus grants player gets one life back!
+              
+               if (player.lives > PLAYER_LIVES) {
+                player.lives = PLAYER_LIVES; // don't go over max
+               } else {
+                newLifeSound.volume = 1.0; // max volume
+                newLifeSound.play();
+               }
+              //console.log('bonusGrants: ',bonusGrants, '   - BONUS2LIVES: ',BONUS2LIVES); 
+              bonusGrants = 0; // reset to zero again 
+            }
+
+            
             // Trigger bonus animation
             showBonusAnimation = true;
             bonusAnimationStart = Date.now();
@@ -1007,13 +1026,13 @@ function drawLevelMessage() {
 }
 
 function drawLives() {
-  const LIFE_ICON_SIZE = 25;
+  const LIFE_ICON_SIZE = 35;
   const PADDING = 5;
 
 
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '20px Arial';
+  ctx.font = '24px Arial';
   ctx.textAlign = 'right';
   const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
   const startY = canvas.height - LIFE_ICON_SIZE - PADDING;
@@ -1113,7 +1132,11 @@ function gameLoop(currentTime) {
     ctx.fillStyle = "white";
     ctx.font = "50px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
+    ctx.fillText("YOU LOST! GAME OVER!", canvas.width / 2, canvas.height / 2);
+    ctx.fillStyle = "cyan";
+    ctx.font = "35px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 +150)
   }
 
   drawBonusAnimation();
@@ -1190,11 +1213,12 @@ let playerExplosionSound = new Audio('playerhit.mp3');
 let startGameSound = new Audio('startgame.mp3');
 let gameOverSound = new Audio('overgame.mp3');
 let monsterDeadSound = new Audio('monster_dead.mp3');
-let bonusSound = new Audio('bonus.mp3'); // for every 5th missile shot down 
+let bonusSound = new Audio('bonus.mp3');   // for every 5th missile shot down 
+let newLifeSound = new Audio('tadaa.mp3'); // new life granted!                 // max volume
 let playerShotSound = new Audio('playershot3.mp3');
 let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
-const MACHINE_GUN_THRESHOLD = 500; // 0.5 seconds in milliseconds
+const MACHINE_GUN_THRESHOLD = 500;          // 0.5 seconds in milliseconds
 
 
 
