@@ -1010,14 +1010,14 @@ function drawLives() {
   const LIFE_ICON_SIZE = 25;
   const PADDING = 5;
 
-  // Add text "Lives:" above the icons
+
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '16px Arial';
+  ctx.font = '20px Arial';
   ctx.textAlign = 'right';
   const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
   const startY = canvas.height - LIFE_ICON_SIZE - PADDING;
-  ctx.fillText('Lives:', startX + PADDING, startY - 5);
+  ctx.fillText('Lives', startX + PADDING, startY - 5);
 
   // Draw life icons
   for (let i = 0; i < player.lives; i++) {
