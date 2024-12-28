@@ -42,9 +42,10 @@
 // 3.6   monster on top of screen
 // 3.6.1 the monster can shoot! 
 // 3.6.2 make monster shoot missiles from its position  
-// 3.6.3 restore walls when mosnter hit   
+// 3.6.3 restore walls when mosnter hit  
+// 3.6.4 fix collision detection regression with missiles...arghhh    
       
-const VERSION = "v3.6.3";  // version showing in index.html
+const VERSION = "v3.6.4";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -511,6 +512,41 @@ function moveEnemies(deltaTime) {
 }
 
 function detectCollisions() {
+  // Add missile-player collision detection near the start of the function
+  if (!isPlayerHit) {  // Only check if player isn't already hit
+    homingMissiles.forEach((missile, mIndex) => {
+      // Calculate distance between missile center and player center
+      const dx = (missile.x) - (player.x + player.width/2);
+      const dy = (missile.y) - (player.y + player.height/2);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // If distance is less than combined radii, we have a collision
+      if (distance < (player.width/2 + missile.width/4)) {
+        homingMissiles.splice(mIndex, 1);
+        player.lives--;
+        showHitMessage = true;
+        hitMessageTimer = Date.now();
+        
+        // Add explosion animation and sound
+        isPlayerHit = true;
+        playerHitTimer = Date.now();
+        player.image = playerExplosionImage;
+        playerExplosionSound.currentTime = 0;
+        playerExplosionSound.play();
+        
+        // Clear all enemy bullets and missiles
+        bullets = bullets.filter(b => !b.isEnemyBullet);
+        homingMissiles = [];
+        
+        if (player.lives <= 0) {
+          gameOverFlag = true;
+          gameOverSound.currentTime = 0;
+          gameOverSound.play();
+        }
+      }
+    });
+  }
+  
   // Check player bullet collisions with walls
   bullets.forEach((bullet, bIndex) => {
     if (!bullet.isEnemyBullet) {  // Only player bullets
@@ -1353,37 +1389,31 @@ function moveMonster(deltaTime) {
             // Move the monster
             monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
             
-            // Debug logging
-          //  console.log("Monster position:", monster.x);
-            console.log("Has shot:", monster.hasShot);
-            console.log("Is on screen:", monster.x > 0 && monster.x + monster.width < canvas.width);
+            // Check if monster is fully on screen and hasn't shot yet
+            const isFullyOnScreen = monster.x >= 0 && 
+                                  monster.x + monster.width <= canvas.width;
             
-            // Check if monster is on screen and hasn't shot yet
-            if (!monster.hasShot && 
-                monster.x > 0 && 
-                monster.x + monster.width < canvas.width) {
+            if (!monster.hasShot && isFullyOnScreen) {
+                // Fire exactly 2 missiles with proper positioning
+                const missileOffsets = [-monster.width/4, monster.width/4]; // Left and right positions
                 
-                console.log("FIRING MISSILES!");
-                
-                // Fire exactly 2 missiles
-                for (let i = 0; i < 2; i++) {
-                    const missile = {
-                        x: monster.x + (monster.width/2),
+                missileOffsets.forEach(offset => {
+                    homingMissiles.push({
+                        x: monster.x + (monster.width/2) + offset,
                         y: monster.y + monster.height,
-                        angle: Math.PI/2,  // Point downward
+                        angle: Math.PI/2, // Point downward
                         width: 44,
                         height: 44,
-                        time: 0
-                    };
-                    homingMissiles.push(missile);
-                    console.log("Missile created at:", missile.x, missile.y);
-                }
+                        time: 0,
+                        fromMonster: true // Flag to identify monster missiles
+                    });
+                });
                 
                 playSoundWithCleanup(createMissileLaunchSound);
                 monster.hasShot = true;
             }
             
-            // Check if monster has moved off screen
+            // Remove monster when off screen
             if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
                 (monsterDirection === -1 && monster.x < -MONSTER_WIDTH)) {
                 monster = null;
