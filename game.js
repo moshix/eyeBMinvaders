@@ -42,9 +42,10 @@
 // 3.6   monster on top of screen
 // 3.6.1 the monster can shoot! 
 // 3.6.2 make monster shoot missiles from its position  
-// 3.6.3 restore walls when mosnter hit  
+// 3.6.3 restore walls when monster hit  
 // 3.6.4 fix collision detection regression with missiles...arghhh   
-// 3.6.5 Yannai fixed F11 race condition  
+// 3.6.5 Yannai fixed F11 race condition 
+// 3.6.6 Small tune ups (due to monster death regenerating walls again) 
       
 const VERSION = "v3.6.5";  // version showing in index.html
 
@@ -131,8 +132,8 @@ let chunkImage = new Image();
 chunkImage.src = 'chunk.svg';
 
 const WALL_HITS_FROM_BELOW = 3;  // hits needed for wall damage from player shots
-const WALL_MAX_HITS_TOTAL = 13;  // total hits before wall disappears
-const WALL_MAX_MISSILE_HITS = 4; // hits from missiles before wall disappears
+const WALL_MAX_HITS_TOTAL = 12;  // total hits before wall disappears
+const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
 
 let walls = [
   {
