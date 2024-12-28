@@ -10,5 +10,5 @@ A space invaders game for the mainframe, and any other computers out there.
 
 December 25, somewhere in Mexico  
 
-<img src="https://moshix.dynu.net/eyebminvaders.png">
+<img src="screenshot.png">
 
