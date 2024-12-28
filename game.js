@@ -51,8 +51,9 @@
 // 3.8   Every 5th shot down missile, player gets a bonus   
 // 3.9   firebirds opening screen, and walls protect from bullets 
 // 4.0   Every 7 bonus grants, player gets one life back!
+// 4.0.1 Small fixes in restart logic (reset values)
 
-const VERSION = "v4.0";  // version showing in index.html
+const VERSION = "v4.0.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -877,6 +878,8 @@ function victory() {
 }
 
 function restartGame() {
+  bonusGrants = 0;
+  homingMissileHits = 0;
   currentLevel = 1;
   enemySpeed = 0.45;
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
