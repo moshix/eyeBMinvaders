@@ -46,8 +46,9 @@
 // 3.6.4 fix collision detection regression with missiles...arghhh   
 // 3.6.5 Yannai fixed F11 race condition 
 // 3.6.6 Small tune ups (due to monster death regenerating walls again) 
+// 3.7   Show lives with space ships instead of just numbers 
       
-const VERSION = "v3.6.6";  // version showing in index.html
+const VERSION = "v3.7";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -966,6 +967,32 @@ function drawLevelMessage() {
   }
 }
 
+function drawLives() {
+  const LIFE_ICON_SIZE = 25; 
+  const PADDING = 5; 
+  
+  // Add text "Lives:" above the icons
+  ctx.save();
+  ctx.fillStyle = '#39FF14'; // Neon green color
+  ctx.font = '21px Arial';
+  ctx.textAlign = 'right';
+  const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
+  const startY = canvas.height - LIFE_ICON_SIZE - PADDING;
+  ctx.fillText('Lives', startX + PADDING, startY - 5); // Position text above icons
+  ctx.restore();
+  
+  // Draw life icons
+  for (let i = 0; i < player.lives; i++) {
+    ctx.drawImage(
+      playerNormalImage, 
+      startX - (i * (LIFE_ICON_SIZE + PADDING)), 
+      startY, 
+      LIFE_ICON_SIZE, 
+      LIFE_ICON_SIZE
+    );
+  }
+}
+
 function gameLoop(currentTime) {
   // Calculate deltaTime first
   if (!lastTime) {
@@ -1008,6 +1035,7 @@ function gameLoop(currentTime) {
   drawHitMessage();
   drawMuteStatus();
   drawLevelMessage();
+  drawLives();
   drawPauseMessage();
 
   // Update game elements if not paused
