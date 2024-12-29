@@ -52,9 +52,10 @@
 // 3.9   firebirds opening screen, and walls protect from bullets 
 // 4.0   Every 7 bonus grants, player gets one life back!
 // 4.0.1 Small fixes in restart logic (reset values)
-// 4.1   With new life, user is informed thru life grand animation  
+// 4.1   With new life, user is informed thru life grand animation 
+// 4.2   Adjustements to canvas size, redo all html, and scale conten 
 
-const VERSION = "v4.1";  // version showing in index.html
+const VERSION = "v4.2";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -63,6 +64,13 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+// Add resize handler
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
 let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
 let   bonusGrants = 0;     // no bonus grants so far
@@ -85,7 +93,7 @@ missileImage.src = 'missile.svg';
 
 let player = {
   x: canvas.width / 2 - 25,
-  y: canvas.height - 60,
+  y: canvas.height - 40,
   width: 50,
   height: 50,
   dx: 5,
@@ -148,40 +156,40 @@ const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
 let walls = [
   {
     x: canvas.width / 6 - 50,
-    y: canvas.height - 150,
+    y: canvas.height - 100,
     width: 100,
     height: 20,
     image: wallImage
   },
   {
     x: canvas.width * 2 / 6 - 50,
-    y: canvas.height - 150,
+    y: canvas.height - 100,
     width: 100,
     height: 20,
     image: wallImage
   },
   {
     x: canvas.width * 3 / 6 - 50,
-    y: canvas.height - 150,
+    y: canvas.height - 100,
     width: 100,
     height: 20,
     image: wallImage
   },
   {
     x: canvas.width * 4 / 6 - 50,
-    y: canvas.height - 150,
+    y: canvas.height - 100,
     width: 100,
     height: 20,
     image: wallImage
   },
   {
     x: canvas.width * 5 / 6 - 50,
-    y: canvas.height - 150,
+    y: canvas.height - 100,
     width: 100,
     height: 20,
     image: wallImage
   }
-];
+].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
 
 // Initialize wallHits array for all walls
 let wallHits = walls.map(() => []);
@@ -824,7 +832,7 @@ function detectCollisions() {
                 // Create new wall with properly initialized image
                 const newWall = {
                   x: pos,
-                  y: canvas.height - 150,
+                  y: canvas.height - 100,
                   width: 100,
                   height: 20,
                   image: wallImage,
@@ -911,7 +919,7 @@ function restartGame() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
-  player.y = canvas.height - 60;
+  player.y = canvas.height - 25;
   player.image = playerNormalImage;
   isPlayerHit = false;
   score = 0;
@@ -932,35 +940,35 @@ function restartGame() {
   walls = [
     {
       x: canvas.width / 6 - 50,
-      y: canvas.height - 150,
+      y: canvas.height - 60,
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 2 / 6 - 50,
-      y: canvas.height - 150,
+      y: canvas.height - 60,
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 3 / 6 - 50,
-      y: canvas.height - 150,
+      y: canvas.height - 60,
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 4 / 6 - 50,
-      y: canvas.height - 150,
+      y: canvas.height - 60,
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 5 / 6 - 50,
-      y: canvas.height - 150,
+      y: canvas.height - 60,
       width: 100,
       height: 20,
       image: wallImage
@@ -1057,14 +1065,13 @@ function drawLevelMessage() {
 function drawLives() {
   const LIFE_ICON_SIZE = 35;
   const PADDING = 5;
-
+  const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
+  const startY = canvas.height - 20;
 
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '24px Arial';
+  ctx.font = '44px Arial';
   ctx.textAlign = 'right';
-  const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
-  const startY = canvas.height - LIFE_ICON_SIZE - PADDING;
   ctx.fillText('Lives', startX + PADDING, startY - 5);
 
   // Draw life icons
@@ -1104,6 +1111,7 @@ function gameLoop(currentTime) {
     lastTime = currentTime;
   }
   const deltaTime = (currentTime - lastTime) / 1000;
+  //const deltaTime = Math.min((currentTime - lastTime) / 1000 * 0.85, 0.1);  // Multiply by 0.85 to speed up by ~15%
   lastTime = currentTime;
 
   // Clear canvas

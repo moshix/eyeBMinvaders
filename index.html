@@ -6,173 +6,229 @@
         <title>eyeBMInvaders!</title>
         <link rel="icon" type="image/webp" href="favicon.webp">
         <style>
-            body {
+            html, body {
                 margin: 0;
+                padding: 0;
+                height: 100%;
                 overflow: hidden;
-                background: black;
+                background: #000000;
                 color: white;
-                font-family: Arial, sans-serif;
+                font-family: 'Arial', sans-serif;
             }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
             canvas {
                 display: block;
                 margin: 0 auto;
-                height: 600px;
+                height: 100vh;
+                max-width: 100%;
             }
+
             #score {
-                position: absolute;
-                top: 30px;
-                left: 10px;
-                color: white;
-                font-size: 20px;
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                color: #00ff00;
+                font-size: 24px;
+                text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
             }
+
             #version-info {
-                position: absolute;
-                top: 10px;
+                position: fixed;
+                top: 30px;
                 right: 10px;
-                color: white;
+                color: #888;
                 font-size: 14px;
             }
+
             #copyright {
-                position: absolute;
-                bottom: 10px;
-                left: 10px;
-                color: white;
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                color: #888;
                 font-size: 12px;
             }
+
             #legend {
+                position: relative;
                 color: white;
-                font-size: 19px;
-                line-height: 1.3;
-                text-align: left;
-                margin: 30px auto;
-                width: 600px;
-                padding-left: 0;
+                font-size: 18px;
+                line-height: 1.4;
+                text-align: center;
+                margin: 20px auto;
+                width: min(600px, 90%);
+                padding: 20px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 15px;
+                box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
             }
+
             #legend-title {
-                color: cyan;
-                font-size: 24px;
+                color: rgb(84, 206, 70);
+                font-size: 32px;
                 font-weight: bold;
                 text-align: center;
-                margin: 20px 0 10px 0;
+                margin: 10px 0;
+                text-shadow: 0 0 15px rgba(84, 206, 70, 0.5);
+                letter-spacing: 2px;
             }
+
             .screenshot {
-                width: 400px;
+                width: min(400px, 100%);
                 height: auto;
                 display: block;
-                border-radius: 7px;
-            }
-            .screenshot-frame {
-                background: #333;
-                border: 3px solid #666;
                 border-radius: 10px;
+            }
+
+            .screenshot-frame {
+                background: linear-gradient(145deg, #2a2a2a, #333);
+                border: 2px solid #444;
+                border-radius: 12px;
                 padding: 10px;
                 width: fit-content;
                 margin: 20px auto;
-                box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                transform: perspective(1000px) rotateX(5deg);
+                transition: transform 0.3s ease;
             }
-            h1 {
-                color: white;
-                text-align: center;
-                font-family: 'Arial', sans-serif;
-                font-size: 2.5em;
-                margin: 20px 0;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+
+            .screenshot-frame:hover {
+                transform: perspective(1000px) rotateX(0deg);
             }
-            #version {
-                color: white;
-                position: fixed;
-                right: 220px;
-                bottom: 10px;
+
+            #legend p {
+                margin: 8px 0;
+                padding: 5px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 5px;
+                transition: background-color 0.3s ease;
             }
-            /* Touch controls - hidden by default */
+
+            #legend p:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            .key-instruction {
+                display: inline-block;
+                padding: 3px 8px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                margin: 0 5px;
+                font-weight: bold;
+            }
+
+            /* Touch controls styling updates */
             #touch-controls {
-                display: none;
                 position: fixed;
                 bottom: 40px;
                 left: 0;
                 right: 0;
                 z-index: 1000;
-            }
-
-            /* Left side controls */
-            #left-controls {
-                position: absolute;
-                left: 20px;
-                bottom: 20px;
-            }
-
-            /* Right side controls */
-            #right-controls {
-                position: absolute;
-                right: 20px;
-                bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                padding: 0 20px;
             }
 
             .touch-button {
-                background: rgba(255, 255, 255, 0.2);
-                border: 2px solid rgba(255, 255, 255, 0.4);
+                background: rgba(255, 255, 255, 0.15);
+                border: 2px solid rgba(255, 255, 255, 0.3);
                 color: white;
-                padding: 20px 40px;
-                margin: 10px;
-                border-radius: 10px;
-                font-size: 24px;
+                padding: 15px 30px;
+                margin: 5px;
+                border-radius: 8px;
+                font-size: 20px;
                 cursor: pointer;
-                touch-action: manipulation;
+                backdrop-filter: blur(5px);
+                transition: all 0.3s ease;
+            }
+
+            .touch-button:active {
+                transform: scale(0.95);
+                background: rgba(255, 255, 255, 0.25);
             }
 
             .fire-button {
-                background: rgba(255, 0, 0, 0.2);
-                border-color: rgba(255, 0, 0, 0.4);
+                background: rgba(255, 50, 50, 0.2);
+                border-color: rgba(255, 50, 50, 0.4);
             }
 
-            #touch-start {
-                display: none;  /* Hidden by default */
+            /* Media queries for better responsiveness */
+            @media (max-width: 768px) {
+                #legend {
+                    font-size: 16px;
+                    padding: 15px;
+                }
+
+                #legend-title {
+                    font-size: 28px;
+                }
+
+                .touch-button {
+                    padding: 12px 24px;
+                    font-size: 18px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                #legend {
+                    font-size: 14px;
+                    padding: 10px;
+                }
+
+                #legend-title {
+                    font-size: 24px;
+                }
+
+                .touch-button {
+                    padding: 10px 20px;
+                    font-size: 16px;
+                }
+            }
+
+            .hits-counter {
                 position: absolute;
-                right: 50px;
-                top: 50%;
-                transform: translateY(-50%);
-                background: rgba(84, 206, 70, 0.3);
-                border: 2px solid rgba(84, 206, 70, 0.6);
-                padding: 15px 30px;
-                font-size: 20px;
+                left: 20px;
+                margin-top: -40px;
+                z-index: 100;
             }
 
-            #gameCanvas {
-                display: none;  /* Initially hidden */
-                margin: 0 auto;
-                height: 600px;
+            .game-header {
+                display: none;
+            }
+
+            #legend p:last-child {
+                margin-bottom: 0;
             }
         </style>
     </head>
     <body>
+        <div id="score">Score: 0</div>
+        
         <div id="version-info"></div>
         <div id="copyright">© Hotdog Studios (moshix) & NAMCO</div>
-        <div id="score">Score: 0</div>
+        
         <div id="legend">
             <div class="screenshot-frame">
                 <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
             </div>
-            <img src="eye.webp" alt="Eye" style="width: 70px; height: auto; display: block; margin: 10px auto;">
-            <div id="legend-title" style="color: rgb(84, 206, 70);">eyeBMInvaders!</div>
+            <div id="legend-title">eyeBMInvaders!</div>
             <p>Use Arrow Keys, or A and D</p>
-            <p>Space to shoot -   M to mute/unmute</p>
-            <p>P to pause     -   R to restart</p>
-            <script>
-                // More precise phone detection
-                function isPhone() {
-                    const isMobile = /iPhone|Android.*Mobile/i.test(navigator.userAgent);
-                    const isSmallScreen = window.innerWidth <= 767; // Typical phone width
-                    return isMobile && isSmallScreen;
-                }
+            <p>Space to shoot - M to mute/unmute</p>
+            <p>P to pause - R to restart</p>
+            <p style="color: red; margin-top: 20px;">press any key to start</p>
+        </div>
 
-                if (isPhone()) {
-                    document.write('<p style="color: yellow; font-weight: bold; margin-top: 20px; text-align: center;">eyeBMInvaders only works on PC and tablet browsers. Sorry!</p>');
-                }
-            </script>
-            <p style="color: red; margin-top: 20px; text-align: center; margin-left: 50px;">press any key to start</p>
+        <div class="hits-counter">
+            <a href="https://hits.seeyoufarm.com">
+                <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fmoshix.github.io%2FeyeBMinvaders%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/>
+            </a>
         </div>
         
-        <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fmoshix.github.io%2FeyeBMinvaders%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
         <canvas id="gameCanvas"></canvas>
         <div id="touch-controls">
             <div id="left-controls">
@@ -186,6 +242,64 @@
         </div>
         <button id="touch-start" class="touch-button">Start Game</button>
 
+        <script>
+            // More precise device detection
+            function detectDevice() {
+                const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+                const isTablet = /(iPad|Android(?!.*Mobile))/i.test(navigator.userAgent);
+                const isPC = !isMobile && !isTablet;
+                const screenWidth = window.innerWidth;
+                
+                return {
+                    isMobile,
+                    isTablet,
+                    isPC,
+                    screenWidth
+                };
+            }
+
+            // Handle device-specific display
+            function handleDeviceSpecificDisplay() {
+                const device = detectDevice();
+                const touchControls = document.getElementById('touch-controls');
+                const touchStart = document.getElementById('touch-start');
+                const legend = document.getElementById('legend');
+
+                // Hide touch controls on PC
+                if (touchControls) touchControls.style.display = 'none';
+                if (touchStart) touchStart.style.display = 'none';
+
+                if (device.isMobile || (device.screenWidth < 768)) {
+                    // Show message for phones or narrow screens
+                    legend.innerHTML = `
+                        <div style="
+                            padding: 20px;
+                            background: rgba(255, 0, 0, 0.1);
+                            border: 2px solid rgba(255, 0, 0, 0.3);
+                            border-radius: 10px;
+                            margin: 20px;
+                            text-align: center;
+                            font-size: 18px;
+                            color: #fff;
+                        ">
+                            <h2 style="color: #ff6b6b; margin-bottom: 15px;">Device Not Supported</h2>
+                            eyeBMInvaders needs a wide enough screen.<br>
+                            It only works on PC and tablet browsers.<br>
+                            Thank you!
+                        </div>`;
+                } else if (device.isTablet) {
+                    // Show touch controls only for tablets
+                    if (touchControls) touchControls.style.display = 'flex';
+                    if (touchStart) touchStart.style.display = 'block';
+                }
+            }
+
+            // Run on page load
+            document.addEventListener('DOMContentLoaded', handleDeviceSpecificDisplay);
+
+            // Run on resize
+            window.addEventListener('resize', handleDeviceSpecificDisplay);
+        </script>
         <script>
             // Proper touch device detection
             function isTouchTablet() {
