@@ -66,6 +66,7 @@
                 background: rgba(0, 0, 0, 0.3);
                 border-radius: 15px;
                 box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+                margin-bottom: 60px;
             }
 
             #legend-title {
@@ -191,10 +192,12 @@
             }
 
             .hits-counter {
-                position: absolute;
+                position: fixed;
+                bottom: 20px;
                 left: 20px;
-                margin-top: -40px;
-                z-index: 100;
+                z-index: 1000;
+                opacity: 1;
+                pointer-events: all;
             }
 
             .game-header {
@@ -327,6 +330,12 @@
         </script>
         <script>
             function startGame() {
+                // Remove the hits counter completely from the DOM before transitioning
+                const hitsCounter = document.querySelector('.hits-counter');
+                if (hitsCounter) {
+                    hitsCounter.remove();  // Actually remove the element, not just hide it
+                }
+                
                 // Hide the legend
                 document.getElementById('legend').style.display = 'none';
                 
