@@ -52,8 +52,9 @@
 // 3.9   firebirds opening screen, and walls protect from bullets 
 // 4.0   Every 7 bonus grants, player gets one life back!
 // 4.0.1 Small fixes in restart logic (reset values)
+// 4.1   With new life, user is informed thru life grand animation  
 
-const VERSION = "v4.0.1";  // version showing in index.html
+const VERSION = "v4.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -62,16 +63,16 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-
+let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
 let   bonusGrants = 0;     // no bonus grants so far
-const BONUS2LIVES = 7;     // every 7 bonuses, player gets one life
+const BONUS2LIVES = 2;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
 const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
-const MIN_MISSILE_INTERVAL = 3000; // 3 seconds
-const MAX_MISSILE_INTERVAL = 6700; // 6 seconds
+const MIN_MISSILE_INTERVAL = 3200; // 3 seconds
+const MAX_MISSILE_INTERVAL = 6900; // 6 seconds
 const MISSILE_SPEED = 170; // pixels per second
 
 let nextMissileTime = 0;
@@ -478,11 +479,23 @@ function moveEnemies(deltaTime) {
   // Add safety check for large deltaTime values
   if (deltaTime > 0.1) deltaTime = 0.1;  // Cap maximum deltaTime at 100ms
 
+  // First check if there are any enemies at all
+  if (enemies.length === 0) {
+    if (!gameOverFlag) {
+      gamePaused = true;
+      victory();
+    }
+    return;
+  }
+
   const currentEnemySpeed = (ENEMY_SPEED * enemySpeed) * deltaTime;
   let needsToMoveDown = false;
 
   // First check if any enemy needs to change direction
   enemies.forEach((enemy) => {
+    // Skip any null or undefined enemies
+    if (!enemy) return;
+
     // Skip any "dead" enemies that might still be in the array
     if (enemy.hits >= enemyHitsToDestroy) return;
 
@@ -497,12 +510,19 @@ function moveEnemies(deltaTime) {
   if (needsToMoveDown) {
     enemyDirection *= -1;
     const moveDownAmount = 20;
+    
     enemies.forEach((enemy) => {
+      // Skip any null or undefined enemies
+      if (!enemy) return;
+      
       // Only check active enemies
       if (enemy.hits < enemyHitsToDestroy) {
         enemy.y += moveDownAmount;
-        if (enemy.y + enemy.height >= walls[0].y - 50) {
-          console.log('Game Over triggered by ACTIVE enemy position:', enemy.y + enemy.height, 'wall position:', walls[0].y - 50);
+        // Check if there are any walls before checking position
+        const wallY = walls.length > 0 ? walls[0].y - 20 : canvas.height * 0.90;
+        
+        if (enemy.y + enemy.height >= wallY) {
+          //console.log('Game Over triggered by ACTIVE enemy position:', enemy.y + enemy.height, 'wall position:', wallY);
           gameOverFlag = true;
           gameOver();
         }
@@ -511,13 +531,10 @@ function moveEnemies(deltaTime) {
   }
 
   // Clean up any destroyed enemies
-  enemies = enemies.filter(enemy => enemy.hits < enemyHitsToDestroy);
+  enemies = enemies.filter(enemy => enemy && enemy.hits < enemyHitsToDestroy);
 
   if (enemies.length === 0 && !gameOverFlag) {
     gamePaused = true;
-    Object.keys(keys).forEach(key => {
-      keys[key] = false;
-    });
     victory();
   }
 }
@@ -671,6 +688,15 @@ function detectCollisions() {
                } else {
                 newLifeSound.volume = 1.0; // max volume
                 newLifeSound.play();
+                
+                // Initialize the animation properties with debug logging
+                //console.log('Starting life grant animation');
+                lifeGrant = true;
+                animations.lifeGrant = {
+                    startTime: Date.now(),
+                    startX: canvas.width / 2,
+                    startY: canvas.height - 100  // Start a bit higher for better visibility
+                };
                }
               //console.log('bonusGrants: ',bonusGrants, '   - BONUS2LIVES: ',BONUS2LIVES); 
               bonusGrants = 0; // reset to zero again 
@@ -1116,6 +1142,7 @@ function gameLoop(currentTime) {
   drawLevelMessage();
   drawLives();
   drawPauseMessage();
+  drawLifeGrant();
 
   // Update game elements if not paused
   if (!gamePaused && !gameOverFlag) {
@@ -1352,7 +1379,7 @@ function playSound(sound) {
       playPromise.catch(error => {
         if (error.name === "AbortError") {
           // Ignore abort errors - these happen when rapidly firing
-          console.log("Sound play aborted");
+         // console.log("Sound play aborted");
         } else {
           console.error("Error playing sound:", error);
         }
@@ -1602,7 +1629,7 @@ let showBonusAnimation = false;
 let bonusAnimationStart = 0;
 const BONUS_ANIMATION_DURATION = 1000; // 1 second to show bonus
 
-// Add function to draw bonus animation
+// draw bonus animation
 function drawBonusAnimation() {
   if (showBonusAnimation) {
     const age = Date.now() - bonusAnimationStart;
@@ -1621,3 +1648,71 @@ function drawBonusAnimation() {
     }
   }
 }
+
+// Add these constants near the top with other constants
+const LIFE_GRANT_ANIMATION = {
+    DURATION: 3500,  // Changed from 1500 to 3000 (3 seconds)
+    ICON_SIZE: 100
+};
+
+// Add this with other state variables
+let animations = {
+    lifeGrant: {
+        startTime: 0,
+        startX: 0,
+        startY: 0
+    }
+};
+
+// Add near the top with other image loads
+let lifeImage = new Image();
+lifeImage.src = 'life.svg';
+
+function drawLifeGrant() {
+    if (lifeGrant) {
+        const elapsed = Date.now() - animations.lifeGrant.startTime;
+        const progress = Math.min(elapsed / LIFE_GRANT_ANIMATION.DURATION, 1);
+
+        if (progress < 1) {
+            const easeOut = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
+
+            ctx.save();
+            ctx.globalAlpha = 1 - easeOut;
+            
+            // Reduced the movement multiplier from 0.6 to 0.3 for slower upward movement
+            const currentY = animations.lifeGrant.startY - (canvas.height * 0.3 * easeOut);
+            
+            if (lifeImage.complete) {
+                ctx.drawImage(
+                    lifeImage,
+                    animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+                    currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+                    LIFE_GRANT_ANIMATION.ICON_SIZE,
+                    LIFE_GRANT_ANIMATION.ICON_SIZE
+                );
+            } else {
+                // Fallback if image not loaded
+                ctx.fillStyle = 'green';
+                ctx.fillRect(
+                    animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+                    currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+                    LIFE_GRANT_ANIMATION.ICON_SIZE,
+                    LIFE_GRANT_ANIMATION.ICON_SIZE
+                );
+            }
+            
+            ctx.restore();
+        } else {
+            lifeGrant = false;
+        }
+    }
+}
+
+// Make sure lifeImage is loaded properly
+lifeImage.onload = () => {
+    //console.log('Life image loaded successfully');
+};
+
+lifeImage.onerror = () => {
+    //console.error('Failed to load life.svg');
+};
