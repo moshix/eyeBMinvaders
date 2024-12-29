@@ -49,13 +49,15 @@
 // 3.7   Show lives with space ships instead of just numbers 
 // 3.7.1 Show brief animation in lower right corner when life is list
 // 3.8   Every 5th shot down missile, player gets a bonus   
-// 3.9   firebirds opening screen, and walls protect from bullets 
+// 3.9   Firebirds opening screen, and walls protect from bullets 
 // 4.0   Every 7 bonus grants, player gets one life back!
 // 4.0.1 Small fixes in restart logic (reset values)
 // 4.1   With new life, user is informed thru life grand animation 
-// 4.2   Adjustements to canvas size, redo all html, and scale conten 
+// 4.2   Adjustements to canvas size, redo all html, and scale content
+// 4.2.1 Some adjustements to positiongs and reset logic 
 
-const VERSION = "v4.2";  // version showing in index.html
+
+const VERSION = "v4.2.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -142,6 +144,7 @@ const keys = {
   p: false,
   R: false,
   r: false,
+  KeyB: false,
 };
 
 let wallImage = new Image();
@@ -919,7 +922,7 @@ function restartGame() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
-  player.y = canvas.height - 25;
+  player.y = canvas.height - 60;  // Consistent with initial position
   player.image = playerNormalImage;
   isPlayerHit = false;
   score = 0;
@@ -937,38 +940,40 @@ function restartGame() {
   startGameSound.play();
   requestAnimationFrame(gameLoop);
   missileExplosions = [];
+  
+  // Reset walls to their initial positions
   walls = [
     {
       x: canvas.width / 6 - 50,
-      y: canvas.height - 60,
+      y: canvas.height - 100,  // Changed to match initial wall position
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 2 / 6 - 50,
-      y: canvas.height - 60,
+      y: canvas.height - 100,  // Changed to match initial wall position
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 3 / 6 - 50,
-      y: canvas.height - 60,
+      y: canvas.height - 100,  // Changed to match initial wall position
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 4 / 6 - 50,
-      y: canvas.height - 60,
+      y: canvas.height - 100,  // Changed to match initial wall position
       width: 100,
       height: 20,
       image: wallImage
     },
     {
       x: canvas.width * 5 / 6 - 50,
-      y: canvas.height - 60,
+      y: canvas.height - 100,  // Changed to match initial wall position
       width: 100,
       height: 20,
       image: wallImage
@@ -1066,11 +1071,11 @@ function drawLives() {
   const LIFE_ICON_SIZE = 35;
   const PADDING = 5;
   const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
-  const startY = canvas.height - 20;
+  const startY = canvas.height - 40;  // Changed from canvas.height - 20 to move up
 
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '44px Arial';
+  ctx.font = '36px Arial';
   ctx.textAlign = 'right';
   ctx.fillText('Lives', startX + PADDING, startY - 5);
 
@@ -1196,40 +1201,47 @@ function startGame() {
 }
 
 document.addEventListener("keydown", (e) => {
+    //console.log("Key pressed:", e.code);  // Debug line to verify key detection
+    
+  if (e.code === 'KeyB') {
+    const bossScreen = document.getElementById('boss-screen');
+    const wasGamePaused = gamePaused;
 
-  if (e.code === "F11") {
-    // Clear all enemies to trigger victory condition
-    enemies = [];
-    // Reset all key states
-    Object.keys(keys).forEach(key => {
-      keys[key] = false;
-    });
-
-    // victory(); // not needed !! thanks Yannai !!!
-  }
-
-  if (e.code === "KeyP") {
-    gamePaused = !gamePaused;
-    if (!gamePaused) {
-      lastTime = 0;
-      requestAnimationFrame(gameLoop);
+    if (bossScreen.style.display === 'none' || bossScreen.style.display === '') {
+      // Show boss screen
+      bossScreen.style.display = 'block';
+      gamePaused = true;
+    } else {
+      // Hide boss screen and resume game
+      bossScreen.style.display = 'none';
+      gamePaused = wasGamePaused;
+      if (!gamePaused) {
+        lastTime = 0;
+        requestAnimationFrame(gameLoop);
+      }
     }
   }
-  if (e.code === "KeyR") {
-    restartGame();
-  }
-  if (e.code in keys) {
-    keys[e.code] = true;
-    if (e.code === "Space" && !keys.Space) {
-      spaceKeyPressTime = Date.now();
+    if (e.code === "KeyP") {
+        gamePaused = !gamePaused;
+        if (!gamePaused) {
+            lastTime = 0;
+            requestAnimationFrame(gameLoop);
+        }
     }
-  }
-  if (e.code === "KeyM") {
-    isMuted = !isMuted;
-    // Mute/unmute all sounds except startgame
-    playerExplosionSound.muted = isMuted;
-    gameOverSound.muted = isMuted;
-  }
+    if (e.code === "KeyR") {
+        restartGame();
+    }
+    if (e.code in keys) {
+        keys[e.code] = true;
+        if (e.code === "Space" && !keys.Space) {
+            spaceKeyPressTime = Date.now();
+        }
+    }
+    if (e.code === "KeyM") {
+        isMuted = !isMuted;
+        playerExplosionSound.muted = isMuted;
+        gameOverSound.muted = isMuted;
+    }
 });
 
 document.addEventListener("keyup", (e) => {
