@@ -55,9 +55,10 @@
 // 4.1   With new life, user is informed thru life grand animation 
 // 4.2   Adjustements to canvas size, redo all html, and scale content
 // 4.2.1 Some adjustements to positiongs and reset logic 
+// 4.2.2 Put enemies a bit further down   
+   
 
-
-const VERSION = "v4.2.1";  // version showing in index.html
+const VERSION = "v4.2.2";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -159,37 +160,37 @@ const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
 let walls = [
   {
     x: canvas.width / 6 - 50,
-    y: canvas.height - 100,
+    y: canvas.height - 130,
     width: 100,
-    height: 20,
+    height: 40,
     image: wallImage
   },
   {
     x: canvas.width * 2 / 6 - 50,
-    y: canvas.height - 100,
+    y: canvas.height - 130,
     width: 100,
-    height: 20,
+    height: 40,
     image: wallImage
   },
   {
     x: canvas.width * 3 / 6 - 50,
-    y: canvas.height - 100,
+    y: canvas.height - 130,
     width: 100,
-    height: 20,
+    height: 40,
     image: wallImage
   },
   {
     x: canvas.width * 4 / 6 - 50,
-    y: canvas.height - 100,
+    y: canvas.height - 130,
     width: 100,
-    height: 20,
+    height: 40,
     image: wallImage
   },
   {
     x: canvas.width * 5 / 6 - 50,
-    y: canvas.height - 100,
+    y: canvas.height - 130,
     width: 100,
-    height: 20,
+    height: 40,
     image: wallImage
   }
 ].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
@@ -347,7 +348,7 @@ function createEnemies() {
   cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
 
   const enemyHeight = 58;
-  const offsetTop = 30;
+  const offsetTop = 70;  // Changed from 30 to 70 to start enemies lower
   // Center the enemies horizontally
   const offsetLeft = (canvas.width - (cols * (enemyWidth + padding))) / 2;
 
@@ -837,7 +838,7 @@ function detectCollisions() {
                   x: pos,
                   y: canvas.height - 100,
                   width: 100,
-                  height: 20,
+                  height: 40,
                   image: wallImage,
                   hitCount: 0,
                   missileHits: 0
@@ -922,7 +923,7 @@ function restartGame() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
   player.lives = PLAYER_LIVES;
   player.x = canvas.width / 2;
-  player.y = canvas.height - 60;  // Consistent with initial position
+  player.y = canvas.height - 80;  // Changed from -80 to -85 to move player up 5 pixels
   player.image = playerNormalImage;
   isPlayerHit = false;
   score = 0;
@@ -945,37 +946,37 @@ function restartGame() {
   walls = [
     {
       x: canvas.width / 6 - 50,
-      y: canvas.height - 100,  // Changed to match initial wall position
+      y: canvas.height - 140,
       width: 100,
-      height: 20,
+      height: 30,
       image: wallImage
     },
     {
       x: canvas.width * 2 / 6 - 50,
-      y: canvas.height - 100,  // Changed to match initial wall position
+      y: canvas.height - 140,
       width: 100,
-      height: 20,
+      height: 30,
       image: wallImage
     },
     {
       x: canvas.width * 3 / 6 - 50,
-      y: canvas.height - 100,  // Changed to match initial wall position
+      y: canvas.height - 140,
       width: 100,
-      height: 20,
+      height: 30,
       image: wallImage
     },
     {
       x: canvas.width * 4 / 6 - 50,
-      y: canvas.height - 100,  // Changed to match initial wall position
+      y: canvas.height - 140,
       width: 100,
-      height: 20,
+      height: 30,
       image: wallImage
     },
     {
       x: canvas.width * 5 / 6 - 50,
-      y: canvas.height - 100,  // Changed to match initial wall position
+      y: canvas.height - 140,
       width: 100,
-      height: 20,
+      height: 30,
       image: wallImage
     }
   ].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
@@ -1075,7 +1076,7 @@ function drawLives() {
 
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '36px Arial';
+  ctx.font = '30px Arial';
   ctx.textAlign = 'right';
   ctx.fillText('Lives', startX + PADDING, startY - 5);
 
