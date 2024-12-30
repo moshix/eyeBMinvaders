@@ -107,10 +107,10 @@ missileImage.src = 'missile.svg';
 
 
 let player = {
-  x: canvas.width / 2 - 33,
-  y: canvas.height - 27,
-  width: 33,
-  height: 33,
+  x: canvas.width / 2 - 37,
+  y: canvas.height - 30,
+  width: 37,
+  height: 37,
   dx: 5,
   lives: PLAYER_LIVES,
   image: new Image(),
@@ -351,15 +351,15 @@ function createEnemies() {
   // Calculate number of columns based on window width
   const minCols = 4;  // Minimum number of columns
   const maxCols = 12; // Maximum number of columns
-  const enemyWidth = 38;  // Increased from 33
-  const padding = 14;     // Increased from 12
+  const enemyWidth = 43;  // Increased from 38
+  const padding = 16;     // Increased from 14
   const minTotalWidth = (enemyWidth + padding) * minCols;
 
   // Calculate how many columns can fit in the current window width
   let cols = Math.floor((canvas.width - 60) / (enemyWidth + padding)); // 60 is total side padding
   cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
 
-  const enemyHeight = 38; // Increased from 33
+  const enemyHeight = 43; // Increased from 38
   
   // Calculate the optimal starting position based on canvas height
   // Use a percentage of canvas height instead of fixed pixels
@@ -1319,8 +1319,8 @@ function handleMissileLaunching(currentTime) {
         x: shooter.x + shooter.width / 2,
         y: shooter.y + shooter.height,
         angle: 0,
-        width: 51,  // Increased from 44
-        height: 51, // Increased from 44
+        width: 57,  // Increased from 51
+        height: 57, // Increased from 51
         time: 0
       });
     }
@@ -1380,8 +1380,8 @@ function drawMissiles() {
       missileImage,
       -missile.width / 2,
       -missile.height / 2,
-      29,  // Increased from 25
-      29   // Increased from 25
+      33,  // Increased from 29
+      33   // Increased from 29
     );
     ctx.restore();
   });
@@ -1539,8 +1539,8 @@ let monsterDirection = 1;  // 1 for right, -1 for left
 let lastMonsterTime = 0;
 const MONSTER_INTERVAL = 5000;  // 5 seconds between monster appearances
 const MONSTER_SPEED = 200;      // pixels per second
-const MONSTER_WIDTH = 50;       // Increased from 43
-const MONSTER_HEIGHT = 50;      // Increased from 43
+const MONSTER_WIDTH = 56;       // Increased from 50
+const MONSTER_HEIGHT = 56;      // Increased from 50
 const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
 let monsterHit = false;
 let monsterImage = new Image();
