@@ -57,9 +57,10 @@
 // 4.2.1 Some adjustements to positiongs and reset logic 
 // 4.2.2 Put enemies a bit further down   
 // 4.3   Make canvas always 1024x576, and center it on the screen
+// 4.3.1 Scale up a bit more, and make bonusSound and new life grand silent if muted
    
 
-const VERSION = "v4.3";  // version showing in index.html
+const VERSION = "v4.3.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -106,10 +107,10 @@ missileImage.src = 'missile.svg';
 
 
 let player = {
-  x: canvas.width / 2 - 29,
-  y: canvas.height - 23,
-  width: 29,
-  height: 29,
+  x: canvas.width / 2 - 33,
+  y: canvas.height - 27,
+  width: 33,
+  height: 33,
   dx: 5,
   lives: PLAYER_LIVES,
   image: new Image(),
@@ -130,8 +131,8 @@ let victoryFlag = false;
 let lastTime = 0;
 const PLAYER_SPEED = 300; // pixels per second
 const ENEMY_SPEED = 50; // pixels per second
-const FIRE_RATE = 0.2; // Time in seconds between shots (0.1 = 10 shots per second)
-const ENEMY_FIRE_RATE = 0.9; // Time in seconds between enemy shots
+const FIRE_RATE = 0.17; // Time in seconds between shots (0.1 = 10 shots per second)
+const ENEMY_FIRE_RATE = 0.7; // Time in seconds between enemy shots
 let lastEnemyFireTime = 0;
 
 let hitMessageTimer = 0;
@@ -350,15 +351,15 @@ function createEnemies() {
   // Calculate number of columns based on window width
   const minCols = 4;  // Minimum number of columns
   const maxCols = 12; // Maximum number of columns
-  const enemyWidth = 33;
-  const padding = 12;
+  const enemyWidth = 38;  // Increased from 33
+  const padding = 14;     // Increased from 12
   const minTotalWidth = (enemyWidth + padding) * minCols;
 
   // Calculate how many columns can fit in the current window width
   let cols = Math.floor((canvas.width - 60) / (enemyWidth + padding)); // 60 is total side padding
   cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
 
-  const enemyHeight = 33;
+  const enemyHeight = 38; // Increased from 33
   
   // Calculate the optimal starting position based on canvas height
   // Use a percentage of canvas height instead of fixed pixels
@@ -1318,9 +1319,9 @@ function handleMissileLaunching(currentTime) {
         x: shooter.x + shooter.width / 2,
         y: shooter.y + shooter.height,
         angle: 0,
-        width: 44,
-        height: 44,
-        time: 0 // For trajectory calculation
+        width: 51,  // Increased from 44
+        height: 51, // Increased from 44
+        time: 0
       });
     }
     newMissileLaunched = true;
@@ -1379,8 +1380,8 @@ function drawMissiles() {
       missileImage,
       -missile.width / 2,
       -missile.height / 2,
-      22,
-      22
+      29,  // Increased from 25
+      29   // Increased from 25
     );
     ctx.restore();
   });
@@ -1538,8 +1539,8 @@ let monsterDirection = 1;  // 1 for right, -1 for left
 let lastMonsterTime = 0;
 const MONSTER_INTERVAL = 5000;  // 5 seconds between monster appearances
 const MONSTER_SPEED = 200;      // pixels per second
-const MONSTER_WIDTH = 37;       // monster size
-const MONSTER_HEIGHT = 37;
+const MONSTER_WIDTH = 50;       // Increased from 43
+const MONSTER_HEIGHT = 50;      // Increased from 43
 const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
 let monsterHit = false;
 let monsterImage = new Image();
