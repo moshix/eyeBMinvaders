@@ -56,22 +56,33 @@
 // 4.2   Adjustements to canvas size, redo all html, and scale content
 // 4.2.1 Some adjustements to positiongs and reset logic 
 // 4.2.2 Put enemies a bit further down   
+// 4.3   Make canvas always 1024x576, and center it on the screen
    
 
-const VERSION = "v4.2.2";  // version showing in index.html
+const VERSION = "v4.3";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
 
+const GAME_WIDTH = 1024;
+const GAME_HEIGHT = 576;
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
-// Add resize handler
+// Set the fixed canvas size
+canvas.width = GAME_WIDTH;
+canvas.height = GAME_HEIGHT;
+
+// Style the canvas for centered positioning
+canvas.style.position = 'absolute';
+canvas.style.left = '0';
+canvas.style.top = '0';
+canvas.style.backgroundColor = '#000000';
+
+// Update resize handler
 window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // No positioning updates needed
 });
 
 let lifeGrant = false;
@@ -95,10 +106,10 @@ missileImage.src = 'missile.svg';
 
 
 let player = {
-  x: canvas.width / 2 - 25,
-  y: canvas.height - 40,
-  width: 50,
-  height: 50,
+  x: canvas.width / 2 - 29,
+  y: canvas.height - 23,
+  width: 29,
+  height: 29,
   dx: 5,
   lives: PLAYER_LIVES,
   image: new Image(),
@@ -110,7 +121,7 @@ let enemies = [];
 let explosions = [];
 let score = 0;
 let enemyHitsToDestroy = 2; // how many times an enemy needs to be hit
-let enemySpeed = 0.45;  // Decreased from 0.55
+let enemySpeed = 0.54;  // Decreased from 0.55
 let enemyDirection = 1; // 1 for right, -1 for left
 let gamePaused = false;
 let lastFireTime = 0;
@@ -159,38 +170,38 @@ const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
 
 let walls = [
   {
-    x: canvas.width / 6 - 50,
-    y: canvas.height - 130,
-    width: 100,
-    height: 40,
+    x: canvas.width / 6 - 29,
+    y: canvas.height - 75,
+    width: 58,
+    height: 23,
     image: wallImage
   },
   {
-    x: canvas.width * 2 / 6 - 50,
-    y: canvas.height - 130,
-    width: 100,
-    height: 40,
+    x: canvas.width * 2 / 6 - 29,
+    y: canvas.height - 75,
+    width: 58,
+    height: 23,
     image: wallImage
   },
   {
-    x: canvas.width * 3 / 6 - 50,
-    y: canvas.height - 130,
-    width: 100,
-    height: 40,
+    x: canvas.width * 3 / 6 - 29,
+    y: canvas.height - 75,
+    width: 58,
+    height: 23,
     image: wallImage
   },
   {
-    x: canvas.width * 4 / 6 - 50,
-    y: canvas.height - 130,
-    width: 100,
-    height: 40,
+    x: canvas.width * 4 / 6 - 29,
+    y: canvas.height - 75,
+    width: 58,
+    height: 23,
     image: wallImage
   },
   {
-    x: canvas.width * 5 / 6 - 50,
-    y: canvas.height - 130,
-    width: 100,
-    height: 40,
+    x: canvas.width * 5 / 6 - 29,
+    y: canvas.height - 75,
+    width: 58,
+    height: 23,
     image: wallImage
   }
 ].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
@@ -339,16 +350,34 @@ function createEnemies() {
   // Calculate number of columns based on window width
   const minCols = 4;  // Minimum number of columns
   const maxCols = 12; // Maximum number of columns
-  const enemyWidth = 58;
-  const padding = 20;
+  const enemyWidth = 33;
+  const padding = 12;
   const minTotalWidth = (enemyWidth + padding) * minCols;
 
   // Calculate how many columns can fit in the current window width
   let cols = Math.floor((canvas.width - 60) / (enemyWidth + padding)); // 60 is total side padding
   cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
 
-  const enemyHeight = 58;
-  const offsetTop = 70;  // Changed from 30 to 70 to start enemies lower
+  const enemyHeight = 33;
+  
+  // Calculate the optimal starting position based on canvas height
+  // Use a percentage of canvas height instead of fixed pixels
+  const maxOffsetTop = 35; // minimum starting position
+  const desiredOffsetTop = Math.min(canvas.height * 0.2, maxOffsetTop); // 20% of canvas height or 70px, whichever is smaller
+  
+  // Calculate the ideal gap between enemies and walls
+  const idealGapToWalls = canvas.height * 0.3; // 30% of canvas height
+  const wallY = walls[0]?.y || (canvas.height - 75); // fallback if no walls
+  
+  // Calculate where the bottom row of enemies should end
+  const bottomRowY = wallY - idealGapToWalls;
+  
+  // Calculate total height needed for all rows
+  const totalEnemyHeight = rows * (enemyHeight + padding);
+  
+  // Calculate final offsetTop to position enemies properly
+  const offsetTop = Math.max(desiredOffsetTop, bottomRowY - totalEnemyHeight);
+  
   // Center the enemies horizontally
   const offsetLeft = (canvas.width - (cols * (enemyWidth + padding))) / 2;
 
@@ -373,12 +402,12 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
-      player.width = 50;
-      player.height = 50;
+      player.width = 25;
+      player.height = 25;
     } else {
       player.image = playerExplosionImage;
-      player.width = 50 * 2;
-      player.height = 50 * 2;
+      player.width = 25 * 2;
+      player.height = 25 * 2;
       // Only draw if image is loaded
       if (player.image.complete) {
         ctx.drawImage(
@@ -419,7 +448,7 @@ function drawBullets() {
     } else {
       ctx.fillStyle = "white"; // Player bullets remain white
     }
-    ctx.fillRect(bullet.x, bullet.y, 5, 10);
+    ctx.fillRect(bullet.x, bullet.y, 2.5, 5);
   });
 }
 
@@ -688,7 +717,7 @@ function detectCollisions() {
           homingMissileHits++;
           if (homingMissileHits % 5 === 0) {
             score += 500; // bonus for every 4th missile shot down
-            bonusSound.play(); // normal bonus sound
+            if (!isMuted) bonusSound.play(); // normal bonus sound
              
             // every BONUS2LIVES (7 normally) bonus, lives++ but not over PLAYER_LIVES max defined by programmer 
             bonusGrants++;
@@ -698,9 +727,10 @@ function detectCollisions() {
                if (player.lives > PLAYER_LIVES) {
                 player.lives = PLAYER_LIVES; // don't go over max
                } else {
-                newLifeSound.volume = 1.0; // max volume
-                newLifeSound.play();
-                
+                if (!isMuted) {
+                  newLifeSound.volume = 1.0; // max volume
+                  newLifeSound.play();
+               }
                 // Initialize the animation properties with debug logging
                 //console.log('Starting life grant animation');
                 lifeGrant = true;
@@ -867,13 +897,11 @@ function detectCollisions() {
 }
 
 function drawScore() {
-  ctx.save();
-  ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
-  ctx.textAlign = "left";
-  document.getElementById("score").innerText =
-    `Score: ${score}\nLives: ${player.lives}/${PLAYER_LIVES}\nLevel: ${currentLevel}`;
-  ctx.restore();
+  document.getElementById('score').innerHTML = 
+      `Score: ${score}<br>` +
+      `Lives: ${player.lives}/${PLAYER_LIVES}<br>` +
+      `Level: ${currentLevel}`;
+  document.getElementById('version-info').textContent = VERSION;
 }
 
 function gameOver() {
@@ -1069,18 +1097,17 @@ function drawLevelMessage() {
 }
 
 function drawLives() {
-  const LIFE_ICON_SIZE = 35;
-  const PADDING = 5;
+  const LIFE_ICON_SIZE = 17;
+  const PADDING = 3;
   const startX = canvas.width - LIFE_ICON_SIZE - PADDING;
-  const startY = canvas.height - 40;  // Changed from canvas.height - 20 to move up
+  const startY = canvas.height - 20;
 
   ctx.save();
   ctx.fillStyle = '#39FF14';
-  ctx.font = '30px Arial';
+  ctx.font = '15px Arial';
   ctx.textAlign = 'right';
-  ctx.fillText('Lives', startX + PADDING, startY - 5);
+  ctx.fillText('Lives', startX + PADDING, startY - 3);
 
-  // Draw life icons
   for (let i = 0; i < player.lives; i++) {
     ctx.drawImage(
       playerNormalImage,
@@ -1347,13 +1374,13 @@ function drawMissiles() {
   homingMissiles.forEach(missile => {
     ctx.save();
     ctx.translate(missile.x, missile.y);
-    ctx.rotate(missile.angle + Math.PI / 2); // Rotate missile to face direction of travel
+    ctx.rotate(missile.angle + Math.PI / 2);
     ctx.drawImage(
       missileImage,
       -missile.width / 2,
       -missile.height / 2,
-      missile.width,
-      missile.height
+      22,
+      22
     );
     ctx.restore();
   });
@@ -1511,8 +1538,8 @@ let monsterDirection = 1;  // 1 for right, -1 for left
 let lastMonsterTime = 0;
 const MONSTER_INTERVAL = 5000;  // 5 seconds between monster appearances
 const MONSTER_SPEED = 200;      // pixels per second
-const MONSTER_WIDTH = 73;       // monster size
-const MONSTER_HEIGHT = 73;
+const MONSTER_WIDTH = 37;       // monster size
+const MONSTER_HEIGHT = 37;
 const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
 let monsterHit = false;
 let monsterImage = new Image();
@@ -1660,8 +1687,8 @@ function drawBonusAnimation() {
           bonusImage,
           player.x + player.width + 10, // Position next to player
           player.y,                     // At player's height
-          50,  // width
-          50   // height
+          25,  // width
+          25   // height
         );
       }
     } else {
@@ -1708,8 +1735,8 @@ function drawLifeGrant() {
                     lifeImage,
                     animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
                     currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE
+                    LIFE_GRANT_ANIMATION.ICON_SIZE-5,
+                    LIFE_GRANT_ANIMATION.ICON_SIZE-5
                 );
             } else {
                 // Fallback if image not loaded
