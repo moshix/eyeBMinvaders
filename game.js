@@ -160,7 +160,7 @@ let playerNormalImage = new Image();
 let playerExplosionImage = new Image();
 
 playerNormalImage.src = "vax.svg";
-playerExplosionImage.src = "explosion_player.jpg";
+playerExplosionImage.src = "player_explosion.svg";
 player.image = playerNormalImage;
 
 const keys = {
