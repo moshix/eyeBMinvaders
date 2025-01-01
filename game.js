@@ -125,8 +125,8 @@ missileImage.src = 'missile.svg';
 let player = {
   x: canvas.width / 2 - 37,
   y: canvas.height - 30,
-  width: 37,
-  height: 37,
+  width: 48,
+  height: 48,
   dx: 5,
   lives: PLAYER_LIVES,
   image: new Image(),
