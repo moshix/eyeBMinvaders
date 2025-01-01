@@ -483,9 +483,9 @@ function drawWalls() {
           ctx.drawImage(
             chunkImage,
             wall.x + hit.x - 10, // Center chunk on hit location
-            wall.y + hit.y - 10,
-            10,  // chunk size
-            10
+            wall.y + hit.y -1,
+            8,  // chunk size
+            14
           );
         }
       });
