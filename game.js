@@ -63,8 +63,9 @@
 // 4.4.2 better threat trajectory analysis  
 // 4.4.3 better bullets avoidance in lateral movement for AI mode
 // 4.4   also look sideways for bullets when moving in AI mode
+// 4.5   Use space background image instead of solid color
 
-const VERSION = "v4.4.4";  // version showing in index.html
+const VERSION = "v4.5";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -79,11 +80,22 @@ const ctx = canvas.getContext("2d");
 canvas.width = GAME_WIDTH;
 canvas.height = GAME_HEIGHT;
 
-// Style the canvas for centered positioning
+// Remove the solid background from canvas to let space background show through
 canvas.style.position = 'absolute';
 canvas.style.left = '0';
 canvas.style.top = '0';
-canvas.style.backgroundColor = '#000000';
+canvas.style.backgroundColor = 'transparent';
+
+// Background styles for the body
+document.body.style.margin = '0';
+document.body.style.padding = '0';
+document.body.style.width = '100vw';
+document.body.style.height = '100vh';
+document.body.style.overflow = 'hidden';
+document.body.style.backgroundImage = 'url(space.jpg)';
+document.body.style.backgroundSize = 'cover';
+document.body.style.backgroundPosition = 'center';
+document.body.style.backgroundRepeat = 'no-repeat';
 
 // Update resize handler
 window.addEventListener('resize', () => {
@@ -167,7 +179,7 @@ const keys = {
 let wallImage = new Image();
 wallImage.src = 'wall.svg';
 let chunkImage = new Image();
-chunkImage.src = 'chunk.svg';
+chunkImage.src = 'chunk.png';
 
 const WALL_HITS_FROM_BELOW = 3;  // hits needed for wall damage from player shots
 const WALL_MAX_HITS_TOTAL = 12;  // total hits before wall disappears
@@ -472,8 +484,8 @@ function drawWalls() {
             chunkImage,
             wall.x + hit.x - 10, // Center chunk on hit location
             wall.y + hit.y - 10,
-            20,  // chunk size
-            20
+            10,  // chunk size
+            10
           );
         }
       });
@@ -1403,7 +1415,7 @@ function drawMissiles() {
 let missileBoomSound = new Audio('explode_missile.mp3');
 
 let missileExplosionImage = new Image();
-missileExplosionImage.src = 'explode_missile.jpg';
+missileExplosionImage.src = 'explode_missile.svg';
 
 // Add missile explosions array with other state variables
 let missileExplosions = [];
