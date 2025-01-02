@@ -67,8 +67,9 @@
 // 4.5.1 Fix player size  
 // 4.5.3 fix wall restoratin and re-initialization of game
 // 4.5.4 wall damage handling
+// 4.5.5 wall damage look nicer    
 
-const VERSION = "v4.5.4";  // version showing in index.html
+const VERSION = "v4.5.5";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -474,19 +475,39 @@ function drawBullets() {
 
 function drawWalls() {
   walls.forEach((wall, index) => {
-    // Draw the wall
+    // Save the current context state
+    ctx.save();
+    
+    // First draw the wall
     ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
     
-    // Draw chunks with rotation, but don't filter them out
+    // Set up compositing to "cut out" the damage spots
+    ctx.globalCompositeOperation = 'destination-out';
+    
+    // Draw the damage holes (they will create transparent areas)
     if (wallHits[index]) {
       wallHits[index].forEach(hit => {
         ctx.save();
         ctx.translate(wall.x + hit.x + 10, wall.y + hit.y);
         ctx.rotate(hit.rotation);
-        ctx.drawImage(chunkImage, -10, -10, 20, 20);
+        
+        // Create circular/oval holes instead of drawing chunk images
+        ctx.beginPath();
+        if (hit.fromEnemy) {
+          // Elongated oval for enemy hits
+          ctx.ellipse(0, 0, 10, 7, 0, 0, Math.PI * 2);
+        } else {
+          // Circular hole for player hits
+          ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        
         ctx.restore();
       });
     }
+    
+    // Restore the original context state
+    ctx.restore();
   });
 }
 

@@ -14,9 +14,19 @@
             font-family: Arial, sans-serif;
         }
 
+        #invaders-image {
+            position: absolute;
+            top: 2%;          /* Position at the very top */
+            left: 50%;
+            transform: translateX(-50%);  /* Center horizontally */
+            z-index: 1;
+            max-width: 300px;  /* Adjust this value based on your needs */
+            height: auto;
+        }
+
         #countdown {
             position: absolute;
-            top: 5%;          /* Position near the top */
+            top: 25%;          /* Moved down to make room for image */
             width: 100%;
             color: #fff;
             font-size: 48px;
@@ -43,6 +53,7 @@
 </head>
 <body>
     <canvas id="firebirdsCanvas"></canvas>
+    <img id="invaders-image" src="invaders.png" alt="Invaders">
     <div id="countdown">Prepare for battle!<br>5</div>
     <div id="copyright">copyright by HotDog Studios (moshix)</div>
     <script>
