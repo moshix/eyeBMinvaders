@@ -66,7 +66,7 @@
 // 4.5   Use space background image instead of solid color
 // 4.5.1 Fix player size  
 
-const VERSION = "v4.5.1";  // version showing in index.html
+const VERSION = "v4.5.2";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -884,9 +884,9 @@ function detectCollisions() {
                 // Create new wall with properly initialized image
                 const newWall = {
                   x: pos,
-                  y: canvas.height - 100,
-                  width: 100,
-                  height: 40,
+                  y: canvas.height - 75,
+                  width: 58,
+                  height: 23,
                   image: wallImage,
                   hitCount: 0,
                   missileHits: 0
