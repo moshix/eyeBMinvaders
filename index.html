@@ -5,6 +5,23 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>eyeBMInvaders!</title>
         <link rel="icon" type="image/webp" href="favicon.webp">
+        
+        <!-- Preload game assets -->
+        <link rel="preload" href="player.svg" as="image">
+        <link rel="preload" href="playerexplosion.svg" as="image">
+        <link rel="preload" href="enemy.svg" as="image">
+        <link rel="preload" href="wall.svg" as="image">
+        <link rel="preload" href="chunk.svg" as="image">
+        <link rel="preload" href="missile.svg" as="image">
+        
+        <!-- Preload audio -->
+        <link rel="preload" href="playerhit.mp3" as="audio">
+        <link rel="preload" href="enemyhit.mp3" as="audio">
+        <link rel="preload" href="shoot.mp3" as="audio">
+        <link rel="preload" href="gameover.mp3" as="audio">
+        <link rel="preload" href="clear-level-sfx.wav" as="audio">
+        <link rel="preload" href="startgame.mp3" as="audio">
+
         <style>
             html, body {
                 margin: 0;
