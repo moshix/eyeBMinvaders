@@ -68,8 +68,9 @@
 // 4.5.3 fix wall restoratin and re-initialization of game
 // 4.5.4 wall damage handling
 // 4.5.5 wall damage look nicer    
+// 4.5.6 revised sounds 
 
-const VERSION = "v4.5.5";  // version showing in index.html
+const VERSION = "v4.5.6";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -920,6 +921,9 @@ function gameOver() {
   gamePaused = true;
 }
 
+// Add with other sound declarations at the top
+let clearLevelSound = new Audio('clear-level-sfx.wav');
+
 function victory() {
   currentLevel++;
   enemySpeed *= 1.33;  // Existing speed increase
@@ -928,9 +932,15 @@ function victory() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE /
     (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
 
-  score += 2500;  // Add 1000 points for completing the level
+  score += 2500;  // Add points for completing the level
   enemies = [];
   bullets = [];
+
+  // Play the level clear sound if not muted
+  if (!isMuted) {
+    clearLevelSound.currentTime = 0;
+    clearLevelSound.play();
+  }
 
   // Draw the level message
   ctx.save();
@@ -1272,7 +1282,7 @@ document.addEventListener("keydown", startGame, { once: true });
 // mute control boolean
 let isMuted = false;
 
-let playerExplosionSound = new Audio('playerhit.mp3');
+let playerExplosionSound = new Audio('player_explosion.wav');
 let startGameSound = new Audio('startgame.mp3');
 let gameOverSound = new Audio('overgame.mp3');
 let monsterDeadSound = new Audio('monster_dead.mp3');
