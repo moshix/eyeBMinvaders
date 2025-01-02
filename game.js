@@ -64,8 +64,9 @@
 // 4.4.3 better bullets avoidance in lateral movement for AI mode
 // 4.4   also look sideways for bullets when moving in AI mode
 // 4.5   Use space background image instead of solid color
+// 4.5.1 Fix player size  
 
-const VERSION = "v4.5";  // version showing in index.html
+const VERSION = "v4.5.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -99,12 +100,12 @@ document.body.style.backgroundRepeat = 'no-repeat';
 
 // Update resize handler
 window.addEventListener('resize', () => {
-    // No positioning updates needed
+  // No positioning updates needed
 });
 
 let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
-let   bonusGrants = 0;     // no bonus grants so far
+let bonusGrants = 0;     // no bonus grants so far
 const BONUS2LIVES = 5;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
@@ -376,25 +377,25 @@ function createEnemies() {
   cols = Math.max(minCols, Math.min(maxCols, cols)); // Clamp between min and max
 
   const enemyHeight = 43; // Increased from 38
-  
+
   // Calculate the optimal starting position based on canvas height
   // Use a percentage of canvas height instead of fixed pixels
   const maxOffsetTop = 35; // minimum starting position
   const desiredOffsetTop = Math.min(canvas.height * 0.2, maxOffsetTop); // 20% of canvas height or 70px, whichever is smaller
-  
+
   // Calculate the ideal gap between enemies and walls
   const idealGapToWalls = canvas.height * 0.3; // 30% of canvas height
   const wallY = walls[0]?.y || (canvas.height - 75); // fallback if no walls
-  
+
   // Calculate where the bottom row of enemies should end
   const bottomRowY = wallY - idealGapToWalls;
-  
+
   // Calculate total height needed for all rows
   const totalEnemyHeight = rows * (enemyHeight + padding);
-  
+
   // Calculate final offsetTop to position enemies properly
   const offsetTop = Math.max(desiredOffsetTop, bottomRowY - totalEnemyHeight);
-  
+
   // Center the enemies horizontally
   const offsetLeft = (canvas.width - (cols * (enemyWidth + padding))) / 2;
 
@@ -419,8 +420,8 @@ function drawPlayer() {
     if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
-      player.width = 25;
-      player.height = 25;
+      player.width = 48;
+      player.height = 48;
     } else {
       player.image = playerExplosionImage;
       player.width = 25 * 2;
@@ -431,8 +432,8 @@ function drawPlayer() {
           player.image,
           player.x - (player.width / 2),
           player.y - (player.height / 2),
-          player.width,
-          player.height
+          48,
+          48
         );
       }
       return;
@@ -483,7 +484,7 @@ function drawWalls() {
           ctx.drawImage(
             chunkImage,
             wall.x + hit.x - 10, // Center chunk on hit location
-            wall.y + hit.y -1,
+            wall.y + hit.y - 1,
             8,  // chunk size
             14
           );
@@ -568,17 +569,17 @@ function moveEnemies(deltaTime) {
   if (needsToMoveDown) {
     enemyDirection *= -1;
     const moveDownAmount = 20;
-    
+
     enemies.forEach((enemy) => {
       // Skip any null or undefined enemies
       if (!enemy) return;
-      
+
       // Only check active enemies
       if (enemy.hits < enemyHitsToDestroy) {
         enemy.y += moveDownAmount;
         // Check if there are any walls before checking position
         const wallY = walls.length > 0 ? walls[0].y - 20 : canvas.height * 0.90;
-        
+
         if (enemy.y + enemy.height >= wallY) {
           //console.log('Game Over triggered by ACTIVE enemy position:', enemy.y + enemy.height, 'wall position:', wallY);
           gameOverFlag = true;
@@ -605,7 +606,7 @@ function detectCollisions() {
         bullet.x <= wall.x + wall.width &&
         bullet.y >= wall.y &&
         bullet.y <= wall.y + wall.height) {
-        
+
         // Remove the bullet
         bullets.splice(bIndex, 1);
 
@@ -669,7 +670,7 @@ function detectCollisions() {
           bullet.x <= wall.x + wall.width &&
           bullet.y >= wall.y &&
           bullet.y <= wall.y + wall.height) {
-          
+
           // Remove the enemy bullet
           bullets.splice(bIndex, 1);
 
@@ -735,33 +736,33 @@ function detectCollisions() {
           if (homingMissileHits % 5 === 0) {
             score += 500; // bonus for every 4th missile shot down
             if (!isMuted) bonusSound.play(); // normal bonus sound
-             
+
             // every BONUS2LIVES (7 normally) bonus, lives++ but not over PLAYER_LIVES max defined by programmer 
             bonusGrants++;
-            if (bonusGrants >= BONUS2LIVES){ // normally 7
-               player.lives++; // every nth  bonus grants player gets one life back!
-              
-               if (player.lives > PLAYER_LIVES) {
+            if (bonusGrants >= BONUS2LIVES) { // normally 7
+              player.lives++; // every nth  bonus grants player gets one life back!
+
+              if (player.lives > PLAYER_LIVES) {
                 player.lives = PLAYER_LIVES; // don't go over max
-               } else {
+              } else {
                 if (!isMuted) {
                   newLifeSound.volume = 1.0; // max volume
                   newLifeSound.play();
-               }
+                }
                 // Initialize the animation properties with debug logging
                 //console.log('Starting life grant animation');
                 lifeGrant = true;
                 animations.lifeGrant = {
-                    startTime: Date.now(),
-                    startX: canvas.width / 2,
-                    startY: canvas.height - 100  // Start a bit higher for better visibility
+                  startTime: Date.now(),
+                  startX: canvas.width / 2,
+                  startY: canvas.height - 100  // Start a bit higher for better visibility
                 };
-               }
+              }
               //console.log('bonusGrants: ',bonusGrants, '   - BONUS2LIVES: ',BONUS2LIVES); 
               bonusGrants = 0; // reset to zero again 
             }
 
-            
+
             // Trigger bonus animation
             showBonusAnimation = true;
             bonusAnimationStart = Date.now();
@@ -914,10 +915,10 @@ function detectCollisions() {
 }
 
 function drawScore() {
-  document.getElementById('score').innerHTML = 
-      `Score: ${score}<br>` +
-      `Lives: ${player.lives}/${PLAYER_LIVES}<br>` +
-      `Level: ${currentLevel}`;
+  document.getElementById('score').innerHTML =
+    `Score: ${score}<br>` +
+    `Lives: ${player.lives}/${PLAYER_LIVES}<br>` +
+    `Level: ${currentLevel}`;
   document.getElementById('version-info').textContent = VERSION;
 }
 
@@ -986,7 +987,7 @@ function restartGame() {
   startGameSound.play();
   requestAnimationFrame(gameLoop);
   missileExplosions = [];
-  
+
   // Reset walls to their initial positions
   walls = [
     {
@@ -1227,7 +1228,7 @@ function gameLoop(currentTime) {
     ctx.fillStyle = "cyan";
     ctx.font = "35px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 +150)
+    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150)
   }
 
   requestAnimationFrame(gameLoop);
@@ -1247,8 +1248,8 @@ function startGame() {
 }
 
 document.addEventListener("keydown", (e) => {
-    //console.log("Key pressed:", e.code);  // Debug line to verify key detection
-    
+  //console.log("Key pressed:", e.code);  // Debug line to verify key detection
+
   if (e.code === 'KeyB') {
     const bossScreen = document.getElementById('boss-screen');
     const wasGamePaused = gamePaused;
@@ -1267,34 +1268,34 @@ document.addEventListener("keydown", (e) => {
       }
     }
   }
-    if (e.code === "KeyP") {
-        gamePaused = !gamePaused;
-        if (!gamePaused) {
-            lastTime = 0;
-            requestAnimationFrame(gameLoop);
-        }
+  if (e.code === "KeyP") {
+    gamePaused = !gamePaused;
+    if (!gamePaused) {
+      lastTime = 0;
+      requestAnimationFrame(gameLoop);
     }
-    if (e.code === "KeyR") {
-        restartGame();
+  }
+  if (e.code === "KeyR") {
+    restartGame();
+  }
+  if (e.code in keys) {
+    keys[e.code] = true;
+    if (e.code === "Space" && !keys.Space) {
+      spaceKeyPressTime = Date.now();
     }
-    if (e.code in keys) {
-        keys[e.code] = true;
-        if (e.code === "Space" && !keys.Space) {
-            spaceKeyPressTime = Date.now();
-        }
-    }
-    if (e.code === "KeyM") {
-        isMuted = !isMuted;
-        playerExplosionSound.muted = isMuted;
-        gameOverSound.muted = isMuted;
-    }
-    if (e.code === "F1") {
-        autoPlayEnabled = !autoPlayEnabled;
-        // Reset movement keys when toggling to prevent stuck movement
-        keys.ArrowLeft = false;
-        keys.ArrowRight = false;
-        keys.Space = false;
-    }
+  }
+  if (e.code === "KeyM") {
+    isMuted = !isMuted;
+    playerExplosionSound.muted = isMuted;
+    gameOverSound.muted = isMuted;
+  }
+  if (e.code === "F1") {
+    autoPlayEnabled = !autoPlayEnabled;
+    // Reset movement keys when toggling to prevent stuck movement
+    keys.ArrowLeft = false;
+    keys.ArrowRight = false;
+    keys.Space = false;
+  }
 });
 
 document.addEventListener("keyup", (e) => {
@@ -1452,7 +1453,7 @@ function playSound(sound) {
       playPromise.catch(error => {
         if (error.name === "AbortError") {
           // Ignore abort errors - these happen when rapidly firing
-         // console.log("Sound play aborted");
+          // console.log("Sound play aborted");
         } else {
           console.error("Error playing sound:", error);
         }
@@ -1724,17 +1725,17 @@ function drawBonusAnimation() {
 
 // Add these constants near the top with other constants
 const LIFE_GRANT_ANIMATION = {
-    DURATION: 3500,  // Changed from 1500 to 3000 (3 seconds)
-    ICON_SIZE: 100
+  DURATION: 3500,  // Changed from 1500 to 3000 (3 seconds)
+  ICON_SIZE: 100
 };
 
 // Add this with other state variables
 let animations = {
-    lifeGrant: {
-        startTime: 0,
-        startX: 0,
-        startY: 0
-    }
+  lifeGrant: {
+    startTime: 0,
+    startX: 0,
+    startY: 0
+  }
 };
 
 // Add near the top with other image loads
@@ -1742,52 +1743,52 @@ let lifeImage = new Image();
 lifeImage.src = 'life.svg';
 
 function drawLifeGrant() {
-    if (lifeGrant) {
-        const elapsed = Date.now() - animations.lifeGrant.startTime;
-        const progress = Math.min(elapsed / LIFE_GRANT_ANIMATION.DURATION, 1);
+  if (lifeGrant) {
+    const elapsed = Date.now() - animations.lifeGrant.startTime;
+    const progress = Math.min(elapsed / LIFE_GRANT_ANIMATION.DURATION, 1);
 
-        if (progress < 1) {
-            const easeOut = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
+    if (progress < 1) {
+      const easeOut = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
 
-            ctx.save();
-            ctx.globalAlpha = 1 - easeOut;
-            
-            // Reduced the movement multiplier from 0.6 to 0.3 for slower upward movement
-            const currentY = animations.lifeGrant.startY - (canvas.height * 0.3 * easeOut);
-            
-            if (lifeImage.complete) {
-                ctx.drawImage(
-                    lifeImage,
-                    animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
-                    currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE-5,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE-5
-                );
-            } else {
-                // Fallback if image not loaded
-                ctx.fillStyle = 'green';
-                ctx.fillRect(
-                    animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
-                    currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE,
-                    LIFE_GRANT_ANIMATION.ICON_SIZE
-                );
-            }
-            
-            ctx.restore();
-        } else {
-            lifeGrant = false;
-        }
+      ctx.save();
+      ctx.globalAlpha = 1 - easeOut;
+
+      // Reduced the movement multiplier from 0.6 to 0.3 for slower upward movement
+      const currentY = animations.lifeGrant.startY - (canvas.height * 0.3 * easeOut);
+
+      if (lifeImage.complete) {
+        ctx.drawImage(
+          lifeImage,
+          animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+          currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+          LIFE_GRANT_ANIMATION.ICON_SIZE - 5,
+          LIFE_GRANT_ANIMATION.ICON_SIZE - 5
+        );
+      } else {
+        // Fallback if image not loaded
+        ctx.fillStyle = 'green';
+        ctx.fillRect(
+          animations.lifeGrant.startX - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+          currentY - LIFE_GRANT_ANIMATION.ICON_SIZE / 2,
+          LIFE_GRANT_ANIMATION.ICON_SIZE,
+          LIFE_GRANT_ANIMATION.ICON_SIZE
+        );
+      }
+
+      ctx.restore();
+    } else {
+      lifeGrant = false;
     }
+  }
 }
 
 // Make sure lifeImage is loaded properly
 lifeImage.onload = () => {
-    //console.log('Life image loaded successfully');
+  //console.log('Life image loaded successfully');
 };
 
 lifeImage.onerror = () => {
-    //console.error('Failed to load life.svg');
+  //console.error('Failed to load life.svg');
 };
 
 // Add near other state variables
@@ -1795,187 +1796,187 @@ let autoPlayEnabled = false;
 
 // Add this new function for AI logic
 function updateAutoPlay() {
-    if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
+  if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
 
-    const threats = [];
-    const playerCenter = player.x + player.width/2;
-    
-    // Check for both falling bullets and horizontally nearby bullets
-    function isUnderBullet(newX) {
-        return bullets.some(bullet => {
-            if (!bullet.isEnemyBullet) return false;
-            
-            // Check falling bullets above
-            if (bullet.y < player.y) {
-                const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
-                if (timeToImpact > 0 && timeToImpact < 0.3) {
-                    if (!willBulletHitWall(bullet, timeToImpact)) {
-                        return Math.abs(bullet.x - newX) < player.width * 0.8;
-                    }
-                }
-            }
-            
-            // Check bullets at similar height
-            const heightDiff = Math.abs(bullet.y - player.y);
-            if (heightDiff < player.height * 1.5) {
-                // If moving right, check bullets to the right
-                if (newX > playerCenter) {
-                    return bullet.x > playerCenter && bullet.x < newX + player.width;
-                }
-                // If moving left, check bullets to the left
-                else if (newX < playerCenter) {
-                    return bullet.x < playerCenter && bullet.x > newX - player.width;
-                }
-            }
-            
-            return false;
-        });
-    }
+  const threats = [];
+  const playerCenter = player.x + player.width / 2;
 
-    // Helper function to check if bullet will hit wall
-    function willBulletHitWall(bullet, timeToImpact) {
-        const futureY = bullet.y + (ENEMY_BULLET_SPEED * timeToImpact);
-        return walls.some(wall => {
-            if (bullet.x >= wall.x && bullet.x <= wall.x + wall.width) {
-                return bullet.y < wall.y && futureY >= wall.y;
-            }
-            return false;
-        });
-    }
+  // Check for both falling bullets and horizontally nearby bullets
+  function isUnderBullet(newX) {
+    return bullets.some(bullet => {
+      if (!bullet.isEnemyBullet) return false;
 
-    // Collect threats
-    bullets.forEach(bullet => {
-        if (bullet.isEnemyBullet) {
-            const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
-            if (timeToImpact > 0 && timeToImpact < 1.0 && !willBulletHitWall(bullet, timeToImpact)) {
-                threats.push({
-                    x: bullet.x,
-                    y: bullet.y,
-                    type: 'bullet',
-                    timeToImpact: timeToImpact,
-                    priority: timeToImpact < 0.5 ? 3 : 2
-                });
-            }
+      // Check falling bullets above
+      if (bullet.y < player.y) {
+        const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
+        if (timeToImpact > 0 && timeToImpact < 0.3) {
+          if (!willBulletHitWall(bullet, timeToImpact)) {
+            return Math.abs(bullet.x - newX) < player.width * 0.8;
+          }
         }
-    });
+      }
 
-    // Rest of threat collection remains the same
-    homingMissiles.forEach(missile => {
-        const dx = playerCenter - missile.x;
-        const dy = player.y - missile.y;
-        const distanceToPlayer = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distanceToPlayer < 200) {
-            threats.push({
-                x: missile.x,
-                y: missile.y,
-                type: 'missile',
-                priority: 3
-            });
+      // Check bullets at similar height
+      const heightDiff = Math.abs(bullet.y - player.y);
+      if (heightDiff < player.height * 1.5) {
+        // If moving right, check bullets to the right
+        if (newX > playerCenter) {
+          return bullet.x > playerCenter && bullet.x < newX + player.width;
         }
-    });
-
-    const bottomRowY = Math.max(...enemies.map(e => e.y));
-    enemies.forEach(enemy => {
-        const isBottomRow = Math.abs(enemy.y - bottomRowY) < 20;
-        if (isBottomRow) {
-            threats.push({
-                x: enemy.x + enemy.width / 2,
-                y: enemy.y,
-                type: 'enemy',
-                priority: 1
-            });
+        // If moving left, check bullets to the left
+        else if (newX < playerCenter) {
+          return bullet.x < playerCenter && bullet.x > newX - player.width;
         }
-    });
+      }
 
-    if (monster && !monster.hit) {
+      return false;
+    });
+  }
+
+  // Helper function to check if bullet will hit wall
+  function willBulletHitWall(bullet, timeToImpact) {
+    const futureY = bullet.y + (ENEMY_BULLET_SPEED * timeToImpact);
+    return walls.some(wall => {
+      if (bullet.x >= wall.x && bullet.x <= wall.x + wall.width) {
+        return bullet.y < wall.y && futureY >= wall.y;
+      }
+      return false;
+    });
+  }
+
+  // Collect threats
+  bullets.forEach(bullet => {
+    if (bullet.isEnemyBullet) {
+      const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
+      if (timeToImpact > 0 && timeToImpact < 1.0 && !willBulletHitWall(bullet, timeToImpact)) {
         threats.push({
-            x: monster.x + monster.width / 2,
-            y: monster.y + monster.height / 2,
-            type: 'monster',
-            priority: 4
+          x: bullet.x,
+          y: bullet.y,
+          type: 'bullet',
+          timeToImpact: timeToImpact,
+          priority: timeToImpact < 0.5 ? 3 : 2
         });
+      }
     }
+  });
 
-    threats.sort((a, b) => b.priority - a.priority);
+  // Rest of threat collection remains the same
+  homingMissiles.forEach(missile => {
+    const dx = playerCenter - missile.x;
+    const dy = player.y - missile.y;
+    const distanceToPlayer = Math.sqrt(dx * dx + dy * dy);
 
-    // Reset controls
-    keys.ArrowLeft = false;
-    keys.ArrowRight = false;
-    keys.Space = false;
+    if (distanceToPlayer < 200) {
+      threats.push({
+        x: missile.x,
+        y: missile.y,
+        type: 'missile',
+        priority: 3
+      });
+    }
+  });
 
-    if (threats.length > 0) {
-        const dangerousThreats = threats.filter(t => 
-            (t.type === 'bullet' && t.timeToImpact < 0.5 && Math.abs(t.x - playerCenter) < 50) ||
-            (t.type === 'missile' && Math.abs(t.x - playerCenter) < 60)
+  const bottomRowY = Math.max(...enemies.map(e => e.y));
+  enemies.forEach(enemy => {
+    const isBottomRow = Math.abs(enemy.y - bottomRowY) < 20;
+    if (isBottomRow) {
+      threats.push({
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y,
+        type: 'enemy',
+        priority: 1
+      });
+    }
+  });
+
+  if (monster && !monster.hit) {
+    threats.push({
+      x: monster.x + monster.width / 2,
+      y: monster.y + monster.height / 2,
+      type: 'monster',
+      priority: 4
+    });
+  }
+
+  threats.sort((a, b) => b.priority - a.priority);
+
+  // Reset controls
+  keys.ArrowLeft = false;
+  keys.ArrowRight = false;
+  keys.Space = false;
+
+  if (threats.length > 0) {
+    const dangerousThreats = threats.filter(t =>
+      (t.type === 'bullet' && t.timeToImpact < 0.5 && Math.abs(t.x - playerCenter) < 50) ||
+      (t.type === 'missile' && Math.abs(t.x - playerCenter) < 60)
+    );
+
+    if (dangerousThreats.length > 0) {
+      // Dodge mode
+      const threat = dangerousThreats[0];
+      const moveLeft = threat.x > playerCenter;
+      const newPos = moveLeft ?
+        playerCenter - PLAYER_SPEED / 30 :
+        playerCenter + PLAYER_SPEED / 30;
+
+      // Check movement safety
+      const movementSafe = !isUnderBullet(newPos);
+
+      if (movementSafe) {
+        if (moveLeft && player.x > 0) {
+          keys.ArrowLeft = true;
+        } else if (!moveLeft && player.x < canvas.width - player.width) {
+          keys.ArrowRight = true;
+        }
+      }
+    } else {
+      // Attack mode
+      const target = threats.find(t => t.type === 'enemy' || t.type === 'monster');
+      if (target) {
+        const targetX = target.x;
+        const tolerance = 8;
+
+        if (Math.abs(playerCenter - targetX) > tolerance) {
+          const moveLeft = targetX < playerCenter;
+          const newPos = moveLeft ?
+            playerCenter - PLAYER_SPEED / 30 :
+            playerCenter + PLAYER_SPEED / 30;
+
+          // Check movement safety
+          const movementSafe = !isUnderBullet(newPos);
+
+          if (movementSafe) {
+            if (moveLeft && player.x > 0) {
+              keys.ArrowLeft = true;
+            } else if (!moveLeft && player.x < canvas.width - player.width) {
+              keys.ArrowRight = true;
+            }
+          }
+        }
+
+        // Only shoot if no wall in the way
+        const wallBlocking = walls.some(wall =>
+          target.y > wall.y &&
+          targetX >= wall.x &&
+          targetX <= wall.x + wall.width
         );
 
-        if (dangerousThreats.length > 0) {
-            // Dodge mode
-            const threat = dangerousThreats[0];
-            const moveLeft = threat.x > playerCenter;
-            const newPos = moveLeft ? 
-                playerCenter - PLAYER_SPEED/30 : 
-                playerCenter + PLAYER_SPEED/30;
-            
-            // Check movement safety
-            const movementSafe = !isUnderBullet(newPos);
-            
-            if (movementSafe) {
-                if (moveLeft && player.x > 0) {
-                    keys.ArrowLeft = true;
-                } else if (!moveLeft && player.x < canvas.width - player.width) {
-                    keys.ArrowRight = true;
-                }
-            }
-        } else {
-            // Attack mode
-            const target = threats.find(t => t.type === 'enemy' || t.type === 'monster');
-            if (target) {
-                const targetX = target.x;
-                const tolerance = 8;
-                
-                if (Math.abs(playerCenter - targetX) > tolerance) {
-                    const moveLeft = targetX < playerCenter;
-                    const newPos = moveLeft ? 
-                        playerCenter - PLAYER_SPEED/30 : 
-                        playerCenter + PLAYER_SPEED/30;
-                    
-                    // Check movement safety
-                    const movementSafe = !isUnderBullet(newPos);
-                    
-                    if (movementSafe) {
-                        if (moveLeft && player.x > 0) {
-                            keys.ArrowLeft = true;
-                        } else if (!moveLeft && player.x < canvas.width - player.width) {
-                            keys.ArrowRight = true;
-                        }
-                    }
-                }
-                
-                // Only shoot if no wall in the way
-                const wallBlocking = walls.some(wall => 
-                    target.y > wall.y && 
-                    targetX >= wall.x && 
-                    targetX <= wall.x + wall.width
-                );
-                
-                if (!wallBlocking) {
-                    keys.Space = Math.abs(playerCenter - targetX) < tolerance * 1.5;
-                }
-            }
+        if (!wallBlocking) {
+          keys.Space = Math.abs(playerCenter - targetX) < tolerance * 1.5;
         }
+      }
     }
+  }
 }
 
 // Add near other drawing functions
 function drawAIStatus() {
-    if (autoPlayEnabled) {
-        ctx.save();
-        ctx.fillStyle = '#39FF14'; // Bright green color
-        ctx.font = '19px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText('AI ACTIVE', canvas.width - 10, 20);
-        ctx.restore();
-    }
+  if (autoPlayEnabled) {
+    ctx.save();
+    ctx.fillStyle = '#39FF14'; // Bright green color
+    ctx.font = '19px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText('AI ACTIVE', canvas.width - 10, 20);
+    ctx.restore();
+  }
 }
