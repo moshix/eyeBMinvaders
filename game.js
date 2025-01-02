@@ -66,8 +66,9 @@
 // 4.5   Use space background image instead of solid color
 // 4.5.1 Fix player size  
 // 4.5.3 fix wall restoratin and re-initialization of game
+// 4.5.4 wall damage handling
 
-const VERSION = "v4.5.3";  // version showing in index.html
+const VERSION = "v4.5.4";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -473,23 +474,17 @@ function drawBullets() {
 
 function drawWalls() {
   walls.forEach((wall, index) => {
-    // Draw wall SVG first
-    if (wall.image.complete) {
-      ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
-    }
-
-    // Draw damage chunks on top
+    // Draw the wall
+    ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
+    
+    // Draw chunks with rotation, but don't filter them out
     if (wallHits[index]) {
       wallHits[index].forEach(hit => {
-        if (chunkImage.complete) {
-          ctx.drawImage(
-            chunkImage,
-            wall.x + hit.x - 10, // Center chunk on hit location
-            wall.y + hit.y - 1,
-            8,  // chunk size
-            14
-          );
-        }
+        ctx.save();
+        ctx.translate(wall.x + hit.x + 10, wall.y + hit.y);
+        ctx.rotate(hit.rotation);
+        ctx.drawImage(chunkImage, -10, -10, 20, 20);
+        ctx.restore();
       });
     }
   });
@@ -600,32 +595,33 @@ function moveEnemies(deltaTime) {
 }
 
 function detectCollisions() {
-  // Handle all bullet collisions with walls (both player and enemy bullets)
-  bullets.forEach((bullet, bIndex) => {
+  // Check bullet collisions with walls
+  bullets.forEach((bullet, bulletIndex) => {
     walls.forEach((wall, wallIndex) => {
-      if (bullet.x >= wall.x &&
-        bullet.x <= wall.x + wall.width &&
-        bullet.y >= wall.y &&
-        bullet.y <= wall.y + wall.height) {
-
-        // Remove the bullet
-        bullets.splice(bIndex, 1);
-
-        // Add damage mark
+      if (bullet.x < wall.x + wall.width &&
+        bullet.x + 5 > wall.x &&
+        bullet.y < wall.y + wall.height &&
+        bullet.y + 10 > wall.y) {
+        
+        // Add chunk at bullet impact point with rotation info
         wallHits[wallIndex].push({
-          x: bullet.x - wall.x,
-          y: bullet.y - wall.y
+          x: bullet.x - wall.x - 10,
+          y: bullet.isEnemyBullet ? 
+              bullet.y - wall.y + 10 :   // Moved enemy bullet impact much lower
+              bullet.y - wall.y,         // Player bullet position unchanged
+          timeCreated: Date.now(),
+          rotation: bullet.isEnemyBullet ? 0 : Math.PI
         });
 
-        // Count hits for this wall
-        wall.hitCount = (wall.hitCount || 0) + 1;
-
-        // Remove wall if total hits exceeded
-        if (wall.hitCount >= WALL_MAX_HITS_TOTAL) {
-          playSoundWithCleanup(createWallGoneSound);
-          walls.splice(wallIndex, 1);
-          wallHits.splice(wallIndex, 1);
+        // Update wall damage
+        if (!bullet.isEnemyBullet) {
+          wall.hitCount++;
+        } else {
+          wall.missileHits++;
         }
+
+        bullets.splice(bulletIndex, 1);
+        return;
       }
     });
   });
