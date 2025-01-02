@@ -3,10 +3,11 @@
 eyeBMinvaders
 =============    
 
-A space invaders game for the mainframe, and any other computers out [there](https://computerarcheology.com/Arcade/SpaceInvaders/Code.html) 
+A space invaders game for the mainframe, and any other computers out there. All it needs is a simple webserver like python3 -m http.server
 
 
-The original code from NAMCO is here: 
+The original code from NAMCO is [here](https://computerarcheology.com/Arcade/SpaceInvaders/Code.html) 
+
 December 25, somewhere in Mexico  
 
 <img src="screenshot.png">
