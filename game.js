@@ -65,8 +65,9 @@
 // 4.4   also look sideways for bullets when moving in AI mode
 // 4.5   Use space background image instead of solid color
 // 4.5.1 Fix player size  
+// 4.5.3 fix wall restoratin and re-initialization of game
 
-const VERSION = "v4.5.2";  // version showing in index.html
+const VERSION = "v4.5.3";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -186,43 +187,43 @@ const WALL_HITS_FROM_BELOW = 3;  // hits needed for wall damage from player shot
 const WALL_MAX_HITS_TOTAL = 12;  // total hits before wall disappears
 const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
 
-let walls = [
-  {
-    x: canvas.width / 6 - 29,
-    y: canvas.height - 75,
-    width: 58,
-    height: 23,
-    image: wallImage
-  },
-  {
-    x: canvas.width * 2 / 6 - 29,
-    y: canvas.height - 75,
-    width: 58,
-    height: 23,
-    image: wallImage
-  },
-  {
-    x: canvas.width * 3 / 6 - 29,
-    y: canvas.height - 75,
-    width: 58,
-    height: 23,
-    image: wallImage
-  },
-  {
-    x: canvas.width * 4 / 6 - 29,
-    y: canvas.height - 75,
-    width: 58,
-    height: 23,
-    image: wallImage
-  },
-  {
-    x: canvas.width * 5 / 6 - 29,
-    y: canvas.height - 75,
-    width: 58,
-    height: 23,
-    image: wallImage
-  }
-].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
+// Original wall positions with evenly spaced walls
+const INITIAL_WALLS = [
+    {
+        x: canvas.width * 1/5 - 29,  // First wall at 1/5
+        y: canvas.height - 75,
+        width: 58,
+        height: 23,
+        image: wallImage
+    },
+    {
+        x: canvas.width * 2/5 - 29,  // Second wall at 2/5
+        y: canvas.height - 75,
+        width: 58,
+        height: 23,
+        image: wallImage
+    },
+    {
+        x: canvas.width * 3/5 - 29,  // Third wall at 3/5
+        y: canvas.height - 75,
+        width: 58,
+        height: 23,
+        image: wallImage
+    },
+    {
+        x: canvas.width * 4/5 - 29,  // Fourth wall at 4/5
+        y: canvas.height - 75,
+        width: 58,
+        height: 23,
+        image: wallImage
+    }
+];
+
+let walls = INITIAL_WALLS.map(wall => ({
+    ...wall,
+    hitCount: 0,
+    missileHits: 0
+}));
 
 // Initialize wallHits array for all walls
 let wallHits = walls.map(() => []);
@@ -866,44 +867,16 @@ function detectCollisions() {
           monster.hitTime = Date.now();
           score += 500;  // Bonus points for hitting monster
 
-          // Add a new wall if any are missing
-          if (walls.length < 5) {
-            // Calculate position for new wall based on missing positions
-            const existingPositions = walls.map(wall => wall.x);
-            const possiblePositions = [
-              canvas.width / 6 - 50,
-              canvas.width * 2 / 6 - 50,
-              canvas.width * 3 / 6 - 50,
-              canvas.width * 4 / 6 - 50,
-              canvas.width * 5 / 6 - 50
-            ];
+          // Restore walls to original positions
+          walls = INITIAL_WALLS.map(wall => ({
+            ...wall,
+            hitCount: 0,
+            missileHits: 0
+          }));
+          
+          // Reset wall hits array
+          wallHits = walls.map(() => []);
 
-            // Find first missing position
-            for (let pos of possiblePositions) {
-              if (!existingPositions.includes(pos)) {
-                // Create new wall with properly initialized image
-                const newWall = {
-                  x: pos,
-                  y: canvas.height - 75,
-                  width: 58,
-                  height: 23,
-                  image: wallImage,
-                  hitCount: 0,
-                  missileHits: 0
-                };
-
-                // Add the new wall and its hits array
-                walls.push(newWall);
-                wallHits.push([]);
-
-                // Play a sound effect for wall restoration
-                playSoundWithCleanup(createWallGoneSound);
-                break; // Only add one wall per hit
-              }
-            }
-          }
-
-          // Play monster death sound
           if (!isMuted) {
             monsterDeadSound.currentTime = 0;
             monsterDeadSound.play();
@@ -962,75 +935,44 @@ function victory() {
 }
 
 function restartGame() {
-  bonusGrants = 0;
-  homingMissileHits = 0;
-  currentLevel = 1;
-  enemySpeed = 0.45;
-  currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;  // Reset enemy fire rate
-  player.lives = PLAYER_LIVES;
-  player.x = canvas.width / 2;
-  player.y = canvas.height - 80;  // Changed from -80 to -85 to move player up 5 pixels
-  player.image = playerNormalImage;
-  isPlayerHit = false;
+  // Reset player to initial position and state
+  player = {
+    x: canvas.width / 2 - 37,  // Center player horizontally, offset by half width
+    y: canvas.height - 30,     // Same vertical position as game start
+    width: 48,                 // Original width
+    height: 48,                // Original height
+    dx: 5,
+    lives: PLAYER_LIVES,
+    image: playerNormalImage
+  };
+
+  // Reset other game variables
   score = 0;
-  bullets = [];
-  enemies = [];
-  homingMissiles = [];
-  createEnemies();
-  explosions = [];
-  showHitMessage = false;
-  gamePaused = false;
+  currentLevel = 1;
   gameOverFlag = false;
-  victoryFlag = false;
+  isPlayerHit = false;
+  gamePaused = false;
   lastTime = 0;
-  startGameSound.currentTime = 0;
-  startGameSound.play();
-  requestAnimationFrame(gameLoop);
-  missileExplosions = [];
-
-  // Reset walls to their initial positions
-  walls = [
-    {
-      x: canvas.width / 6 - 50,
-      y: canvas.height - 140,
-      width: 100,
-      height: 30,
-      image: wallImage
-    },
-    {
-      x: canvas.width * 2 / 6 - 50,
-      y: canvas.height - 140,
-      width: 100,
-      height: 30,
-      image: wallImage
-    },
-    {
-      x: canvas.width * 3 / 6 - 50,
-      y: canvas.height - 140,
-      width: 100,
-      height: 30,
-      image: wallImage
-    },
-    {
-      x: canvas.width * 4 / 6 - 50,
-      y: canvas.height - 140,
-      width: 100,
-      height: 30,
-      image: wallImage
-    },
-    {
-      x: canvas.width * 5 / 6 - 50,
-      y: canvas.height - 140,
-      width: 100,
-      height: 30,
-      image: wallImage
-    }
-  ].map(wall => ({ ...wall, hitCount: 0, missileHits: 0 }));
+  
+  // Reset walls to initial state
+  walls = INITIAL_WALLS.map(wall => ({
+    ...wall,
+    hitCount: 0,
+    missileHits: 0
+  }));
   wallHits = walls.map(() => []);
-
-  if (isTablet) {
-    document.getElementById("touch-start").style.display = "block";
-  }
+  
+  // Reset enemies
+  enemies = [];
+  createEnemies();
+  
+  // Reset other game elements
+  bullets = [];
+  homingMissiles = [];
+  monster = null;
+  
+  // Start the game loop
+  requestAnimationFrame(gameLoop);
 }
 
 function handleEnemyShooting(currentTime) {
