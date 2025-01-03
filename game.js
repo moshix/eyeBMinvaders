@@ -69,8 +69,9 @@
 // 4.5.4 wall damage handling
 // 4.5.5 wall damage look nicer    
 // 4.5.6 revised sounds 
+// 4.6   first stable version with preloading of assets and sound
 
-const VERSION = "v4.5.6";  // version showing in index.html
+const VERSION = "v4.6G";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
