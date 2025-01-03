@@ -55,7 +55,37 @@
     <canvas id="firebirdsCanvas"></canvas>
     <img id="invaders-image" src="invaders.png" alt="Invaders">
     <div id="countdown">Prepare for battle!<br>5</div>
-    <div id="copyright">copyright by HotDog Studios (moshix)</div>
+    <div id="copyright">copyright by hot dog studios</div>
+
+    <!-- Game.js assets preload -->
+    <link rel="preload" href="wall.svg" as="image">
+    <link rel="preload" href="player_explosion.svg" as="image">
+    <link rel="preload" href="chunk.png" as="image">
+    <link rel="preload" href="explosion.svg" as="image">
+    <link rel="preload" href="explosion_additional.svg" as="image">
+    <link rel="preload" href="enemy-ship-blue.svg" as="image">
+    <link rel="preload" href="enemy-ship-green.svg" as="image">
+    <link rel="preload" href="enemy-ship-orange.svg" as="image">
+    <link rel="preload" href="enemy-ship-red.svg" as="image">
+    <link rel="preload" href="enemy-ship-yellow.svg" as="image">
+    <link rel="preload" href="explode_missile.svg" as="image">
+    <link rel="preload" href="monster.svg" as="image">
+    <link rel="preload" href="monster_shot.svg" as="image">
+    <link rel="preload" href="vax_gone.svg" as="image">
+    <link rel="preload" href="bonus.svg" as="image">
+    <link rel="preload" href="life.svg" as="image">  
+    <link rel="preload" href="missile.svg" as="image">
+    <!-- Game sounds preload -->
+    <link rel="preload" href="player_explosion.wav" as="fetch">
+    <link rel="preload" href="startgame.mp3" as="fetch">
+    <link rel="preload" href="overgame.mp3" as="fetch">
+    <link rel="preload" href="monster_dead.mp3" as="fetch">
+    <link rel="preload" href="clear-level-sfx.wav" as="fetch">
+    <link rel="preload" href="bonus.mp3" as="fetch">    
+    <link rel="preload" href="tadaa.mp3" as="fetch">                   
+    <link rel="preload" href="playershot3.mp3" as="fetch">
+    <link rel="preload" href="mgun.mp3" as="fetch">
+              
     <script>
         // Add birds sound
         const birdsSound = new Audio('birds.mp3');
