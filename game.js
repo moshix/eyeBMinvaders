@@ -70,10 +70,8 @@
 // 4.5.5 wall damage look nicer    
 // 4.5.6 revised sounds 
 // 4.6   first stable version with preloading of assets and sound
-// 4.6.1 improved AI mode with shooting at missiles 
 
-
-const VERSION = "v4.6.1";  // version showing in index.html
+const VERSION = "v4.6G";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -1773,63 +1771,170 @@ function updateAutoPlay() {
   const threats = [];
   const playerCenter = player.x + player.width / 2;
 
-  // Check if player is under a wall
-  const isUnderWall = walls.some(wall => 
-    playerCenter >= wall.x && 
-    playerCenter <= wall.x + wall.width && 
-    player.y > wall.y - 30
-  );
+  // Check for both falling bullets and horizontally nearby bullets
+  function isUnderBullet(newX) {
+    return bullets.some(bullet => {
+      if (!bullet.isEnemyBullet) return false;
 
-  // Always shoot if not under wall and enough time has passed since last shot
-  if (!isUnderWall && Date.now() - lastFireTime > currentFireRate * 1000) {
-    keys.Space = true;
-    setTimeout(() => { keys.Space = false; }, 50);
+      // Check falling bullets above
+      if (bullet.y < player.y) {
+        const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
+        if (timeToImpact > 0 && timeToImpact < 0.3) {
+          if (!willBulletHitWall(bullet, timeToImpact)) {
+            return Math.abs(bullet.x - newX) < player.width * 0.8;
+          }
+        }
+      }
+
+      // Check bullets at similar height
+      const heightDiff = Math.abs(bullet.y - player.y);
+      if (heightDiff < player.height * 1.5) {
+        // If moving right, check bullets to the right
+        if (newX > playerCenter) {
+          return bullet.x > playerCenter && bullet.x < newX + player.width;
+        }
+        // If moving left, check bullets to the left
+        else if (newX < playerCenter) {
+          return bullet.x < playerCenter && bullet.x > newX - player.width;
+        }
+      }
+
+      return false;
+    });
   }
 
-  // Missile threat detection
+  // Helper function to check if bullet will hit wall
+  function willBulletHitWall(bullet, timeToImpact) {
+    const futureY = bullet.y + (ENEMY_BULLET_SPEED * timeToImpact);
+    return walls.some(wall => {
+      if (bullet.x >= wall.x && bullet.x <= wall.x + wall.width) {
+        return bullet.y < wall.y && futureY >= wall.y;
+      }
+      return false;
+    });
+  }
+
+  // Collect threats
+  bullets.forEach(bullet => {
+    if (bullet.isEnemyBullet) {
+      const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
+      if (timeToImpact > 0 && timeToImpact < 1.0 && !willBulletHitWall(bullet, timeToImpact)) {
+        threats.push({
+          x: bullet.x,
+          y: bullet.y,
+          type: 'bullet',
+          timeToImpact: timeToImpact,
+          priority: timeToImpact < 0.5 ? 3 : 2
+        });
+      }
+    }
+  });
+
+  // Rest of threat collection remains the same
   homingMissiles.forEach(missile => {
-    const horizontalDistance = Math.abs(missile.x - playerCenter);
-    
-    // If missile is nearly overhead or close by, move to shoot it
-    if (horizontalDistance < player.width * 2) {
+    const dx = playerCenter - missile.x;
+    const dy = player.y - missile.y;
+    const distanceToPlayer = Math.sqrt(dx * dx + dy * dy);
+
+    if (distanceToPlayer < 200) {
       threats.push({
-        type: 'missile',
         x: missile.x,
+        y: missile.y,
+        type: 'missile',
         priority: 3
       });
     }
   });
 
-  // Regular bullet threat detection
-  bullets.forEach(bullet => {
-    if (!bullet.isEnemyBullet) return;
-    // Only dodge bullets that are very close to hitting
-    const distanceY = player.y - bullet.y;
-    if (distanceY < 100 && // Only consider close bullets
-        bullet.x > player.x - 20 && 
-        bullet.x < player.x + player.width + 20) {
+  const bottomRowY = Math.max(...enemies.map(e => e.y));
+  enemies.forEach(enemy => {
+    const isBottomRow = Math.abs(enemy.y - bottomRowY) < 20;
+    if (isBottomRow) {
       threats.push({
-        type: 'bullet',
-        x: bullet.x,
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y,
+        type: 'enemy',
         priority: 1
       });
     }
   });
 
-  // Handle movement
+  if (monster && !monster.hit) {
+    threats.push({
+      x: monster.x + monster.width / 2,
+      y: monster.y + monster.height / 2,
+      type: 'monster',
+      priority: 4
+    });
+  }
+
+  threats.sort((a, b) => b.priority - a.priority);
+
+  // Reset controls
+  keys.ArrowLeft = false;
+  keys.ArrowRight = false;
+  keys.Space = false;
+
   if (threats.length > 0) {
-    const mostUrgentThreat = threats[0];
-    
-    if (mostUrgentThreat.type === 'missile') {
-      // Move to shoot the missile
-      if (Math.abs(playerCenter - mostUrgentThreat.x) > 5) {
-        keys.ArrowLeft = playerCenter > mostUrgentThreat.x;
-        keys.ArrowRight = playerCenter < mostUrgentThreat.x;
+    const dangerousThreats = threats.filter(t =>
+      (t.type === 'bullet' && t.timeToImpact < 0.5 && Math.abs(t.x - playerCenter) < 50) ||
+      (t.type === 'missile' && Math.abs(t.x - playerCenter) < 60)
+    );
+
+    if (dangerousThreats.length > 0) {
+      // Dodge mode
+      const threat = dangerousThreats[0];
+      const moveLeft = threat.x > playerCenter;
+      const newPos = moveLeft ?
+        playerCenter - PLAYER_SPEED / 30 :
+        playerCenter + PLAYER_SPEED / 30;
+
+      // Check movement safety
+      const movementSafe = !isUnderBullet(newPos);
+
+      if (movementSafe) {
+        if (moveLeft && player.x > 0) {
+          keys.ArrowLeft = true;
+        } else if (!moveLeft && player.x < canvas.width - player.width) {
+          keys.ArrowRight = true;
+        }
       }
     } else {
-      // Dodge bullets only when very close
-      keys.ArrowLeft = mostUrgentThreat.x > playerCenter;
-      keys.ArrowRight = mostUrgentThreat.x < playerCenter;
+      // Attack mode
+      const target = threats.find(t => t.type === 'enemy' || t.type === 'monster');
+      if (target) {
+        const targetX = target.x;
+        const tolerance = 8;
+
+        if (Math.abs(playerCenter - targetX) > tolerance) {
+          const moveLeft = targetX < playerCenter;
+          const newPos = moveLeft ?
+            playerCenter - PLAYER_SPEED / 30 :
+            playerCenter + PLAYER_SPEED / 30;
+
+          // Check movement safety
+          const movementSafe = !isUnderBullet(newPos);
+
+          if (movementSafe) {
+            if (moveLeft && player.x > 0) {
+              keys.ArrowLeft = true;
+            } else if (!moveLeft && player.x < canvas.width - player.width) {
+              keys.ArrowRight = true;
+            }
+          }
+        }
+
+        // Only shoot if no wall in the way
+        const wallBlocking = walls.some(wall =>
+          target.y > wall.y &&
+          targetX >= wall.x &&
+          targetX <= wall.x + wall.width
+        );
+
+        if (!wallBlocking) {
+          keys.Space = Math.abs(playerCenter - targetX) < tolerance * 1.5;
+        }
+      }
     }
   }
 }
