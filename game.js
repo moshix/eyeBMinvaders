@@ -70,8 +70,9 @@
 // 4.5.5 wall damage look nicer    
 // 4.5.6 revised sounds 
 // 4.6   first stable version with preloading of assets and sound
+// 4.6.1 restrict certain locales, adjust monster position            
 
-const VERSION = "v4.6G";  // version showing in index.html
+const VERSION = "v4.6.1G";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -1557,7 +1558,7 @@ function createMonster(currentTime) {
 
     monster = {
       x: startX,
-      y: Math.max(topEnemyRow, MONSTER_HEIGHT),
+      y: Math.max(topEnemyRow, MONSTER_HEIGHT) -45,
       width: MONSTER_WIDTH,
       height: MONSTER_HEIGHT,
       hit: false,

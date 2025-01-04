@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>eyeBMInvaders!</title>
+        <title>Invaders!</title>
         <link rel="icon" type="image/webp" href="favicon.webp">
         <style>
             html, body {
@@ -232,7 +232,7 @@
             <div class="screenshot-frame">
                 <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
             </div>
-            <div id="legend-title">eyeBMInvaders!</div>
+            <div id="legend-title">Invaders! Possibly from space!</div>
             <p>Use <span style="color: cyan;">cursor</span> keys, or <span style="color: cyan;">A</span> and <span style="color: cyan;">D</span></p>
             <p><span style="color: cyan;">Space</span> to shoot - <span style="color: cyan;">M</span> to mute/unmute</p>
             <p><span style="color: cyan;">P</span> to pause - <span style="color: cyan;">R</span> to restart - <span style="color: cyan;">F1</span> AI mode!</p>
@@ -281,12 +281,16 @@
                 const touchStart = document.getElementById('touch-start');
                 const legend = document.getElementById('legend');
 
+                // Get user's language
+                const userLanguage = navigator.language || navigator.userLanguage;
+                const isUnsupportedLocale = /^(ar|zh|ga|no|nb|nn|es)/i.test(userLanguage);
+
                 // Hide touch controls on PC
                 if (touchControls) touchControls.style.display = 'none';
                 if (touchStart) touchStart.style.display = 'none';
 
-                if (device.isMobile || (device.screenWidth < 768)) {
-                    // Show message for phones or narrow screens
+                if (device.isMobile || (device.screenWidth < 768) || isUnsupportedLocale) {
+                    // Show message for phones, narrow screens, or unsupported locales
                     legend.innerHTML = `
                         <div style="
                             padding: 20px;
