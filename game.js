@@ -72,8 +72,9 @@
 // 4.6   first stable version with preloading of assets and sound
 // 4.6.1 restrict certain locales, adjust monster position 
 // 4.6.2 only advance speed of enemies by 9% between levels to make it more playable
+// 4.6.3 limit enemy firing rate in new levels to make game more playable
 
-const VERSION = "v4.6.2G";  // version showing in index.html
+const VERSION = "v4.6.3G";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -248,7 +249,7 @@ let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
 // for enemies  
 const BASE_ENEMY_FIRE_RATE = 0.85;    // Base time in seconds between enemy shots
-const ENEMY_FIRE_RATE_INCREASE = 0.9;// 9% increase per level
+const ENEMY_FIRE_RATE_INCREASE = 0.4;// 9% increase per level
 let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
 // Add near the top with other initialization code
