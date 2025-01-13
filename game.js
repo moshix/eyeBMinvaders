@@ -1764,17 +1764,17 @@ lifeImage.onerror = () => {
   //console.error('Failed to load life.svg');
 };
 
-// Add near other state variables
+// is AI enabled?
 let autoPlayEnabled = false;
 
-// Add this new function for AI logic
+// for AI logic
 function updateAutoPlay() {
   if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
 
   const threats = [];
   const playerCenter = player.x + player.width / 2;
 
-  // Check for both falling bullets and horizontally nearby bullets
+  // Check for both falling bullets and horizontally nearby bullets for AI mode
   function isUnderBullet(newX) {
     return bullets.some(bullet => {
       if (!bullet.isEnemyBullet) return false;
@@ -1806,7 +1806,7 @@ function updateAutoPlay() {
     });
   }
 
-  // Helper function to check if bullet will hit wall
+  // Will bullet hit wall?
   function willBulletHitWall(bullet, timeToImpact) {
     const futureY = bullet.y + (ENEMY_BULLET_SPEED * timeToImpact);
     return walls.some(wall => {
@@ -1942,7 +1942,6 @@ function updateAutoPlay() {
   }
 }
 
-// Add near other drawing functions
 function drawAIStatus() {
   if (autoPlayEnabled) {
     ctx.save();
