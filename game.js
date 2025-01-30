@@ -73,8 +73,9 @@
 // 4.6.1 restrict certain locales, adjust monster position 
 // 4.6.2 only advance speed of enemies by 9% between levels to make it more playable
 // 4.6.3 limit enemy firing rate in new levels to make game more playable
+// 4.6.4 make bullets a bit bigger
 
-const VERSION = "v4.6.3G";  // version showing in index.html
+const VERSION = "v4.6.4G";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -474,7 +475,7 @@ function drawBullets() {
     } else {
       ctx.fillStyle = "white"; // Player bullets remain white
     }
-    ctx.fillRect(bullet.x, bullet.y, 2.5, 5);
+    ctx.fillRect(bullet.x, bullet.y, 2.8, 5.2);
   });
 }
 
