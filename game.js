@@ -470,7 +470,7 @@ function drawEnemies() {
 function drawBullets() {
   bullets.forEach((bullet) => {
     if (bullet.isEnemyBullet) {
-      ctx.fillStyle = "red";  // Enemy bullets are red
+      ctx.fillStyle = "#39ff14";  // Enemy bullets neon green
     } else {
       ctx.fillStyle = "white"; // Player bullets remain white
     }
