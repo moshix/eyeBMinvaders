@@ -74,8 +74,9 @@
 // 4.6.2 only advance speed of enemies by 9% between levels to make it more playable
 // 4.6.3 limit enemy firing rate in new levels to make game more playable
 // 4.6.4 make bullets a bit bigger
+// 4.7 various playability improvements (no bullets while player is hit)     
 
-const VERSION = "v4.6.4G";  // version showing in index.html
+const VERSION = "v4.7";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -114,15 +115,15 @@ window.addEventListener('resize', () => {
 
 let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
-let bonusGrants = 0;     // no bonus grants so far
+let bonusGrants = 0;       // start with no bonus
 const BONUS2LIVES = 5;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
-const HIT_MESSAGE_DURATION = 1000; // How long to show "HIT!" message in milliseconds
-const PLAYER_HIT_ANIMATION_DURATION = 1500; // Duration in milliseconds (1.5 seconds)
-const MIN_MISSILE_INTERVAL = 3200; // 3 seconds
-const MAX_MISSILE_INTERVAL = 6900; // 6 seconds
-const MISSILE_SPEED = 170; // pixels per second
+const HIT_MESSAGE_DURATION = 900;            // How long to show "HIT!" message in milliseconds
+const PLAYER_HIT_ANIMATION_DURATION = 750;   // Duration in milliseconds   (0.5 seconds)
+const MIN_MISSILE_INTERVAL = 3200;           // 3 seconds
+const MAX_MISSILE_INTERVAL = 7200;           // 
+const MISSILE_SPEED = 170;                   // pixels per second
 
 let nextMissileTime = 0;
 let homingMissiles = [];
@@ -142,7 +143,7 @@ let player = {
   image: new Image(),
 };
 
-let bonusgrants = 0; // tracks how many bonuses player got, every 7th lives++
+//let bonusgrants = 0; // tracks how many bonuses player got, every 7th lives++
 let bullets = [];
 let enemies = [];
 let explosions = [];
@@ -155,9 +156,9 @@ let lastFireTime = 0;
 let gameOverFlag = false;
 let victoryFlag = false;
 let lastTime = 0;
-const PLAYER_SPEED = 300; // pixels per second
-const ENEMY_SPEED = 50; // pixels per second
-const FIRE_RATE = 0.17; // Time in seconds between shots (0.1 = 10 shots per second)
+const PLAYER_SPEED = 300;    // pixels per second
+const ENEMY_SPEED = 50;      // pixels per second
+const FIRE_RATE = 0.17;      // Time in seconds between shots (0.1 = 10 shots per second)
 const ENEMY_FIRE_RATE = 0.7; // Time in seconds between enemy shots
 let lastEnemyFireTime = 0;
 
@@ -166,6 +167,7 @@ let showHitMessage = false;
 
 let playerHitTimer = 0;
 let isPlayerHit = false;
+let whilePlayerHit = false;
 let playerNormalImage = new Image();
 let playerExplosionImage = new Image();
 
@@ -192,8 +194,8 @@ let chunkImage = new Image();
 chunkImage.src = 'chunk.png';
 
 const WALL_HITS_FROM_BELOW = 3;  // hits needed for wall damage from player shots
-const WALL_MAX_HITS_TOTAL = 12;  // total hits before wall disappears
-const WALL_MAX_MISSILE_HITS = 3; // hits from missiles before wall disappears
+const WALL_MAX_HITS_TOTAL = 11;  // total hits before wall disappears
+const WALL_MAX_MISSILE_HITS = 4; // hits from missiles before wall disappears
 
 // Original wall positions with evenly spaced walls
 const INITIAL_WALLS = [
@@ -250,10 +252,10 @@ let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
 // for enemies  
 const BASE_ENEMY_FIRE_RATE = 0.85;    // Base time in seconds between enemy shots
-const ENEMY_FIRE_RATE_INCREASE = 0.4;// 9% increase per level
+const ENEMY_FIRE_RATE_INCREASE = 0.10;// % increase per level
 let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 
-// Add near the top with other initialization code
+//  other initialization code
 let isTouchDevice = false;
 let isTablet = false;
 
@@ -319,7 +321,7 @@ function initTouchControls() {
     keys.Space = true;
     spaceKeyPressTime = Date.now();
     // Add direct bullet creation here
-    if (!gamePaused && Date.now() - lastFireTime > currentFireRate * 1000) {
+    if (!gamePausedt && Date.now() - lastFireTime > currentFireRate * 1000) {
       bullets.push({
         x: player.x + player.width / 2 - 2.5,
         y: player.y,
@@ -336,14 +338,14 @@ function initTouchControls() {
     stopMachineGunSound();
   }
 
-  // Add both touchstart and click events for better response
+  // touchstart and click events for better response
   touchFireLeft.addEventListener('touchstart', handleFireStart);
   touchFireLeft.addEventListener('touchend', handleFireEnd);
   touchFireRight.addEventListener('touchstart', handleFireStart);
   touchFireRight.addEventListener('touchend', handleFireEnd);
 }
 
-// Add resize handler to update tablet detection
+// handler to update tablet detection
 window.addEventListener('resize', detectTablet);
 
 // Initialize touch controls when the window loads
@@ -426,7 +428,8 @@ function createEnemies() {
 
 function drawPlayer() {
   if (isPlayerHit) {
-    if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
+      whilePlayerHit = true; // flag player is in hit mode and during this time we don't allow bullets
+      if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
       player.image = playerNormalImage;
       player.width = 48;
@@ -447,6 +450,7 @@ function drawPlayer() {
       }
       return;
     }
+    whilePlayerHit = false; // flag player is not in hit mode
   }
   // Only draw if image is loaded
   if (player.image.complete) {
@@ -547,9 +551,9 @@ function movePlayer(deltaTime) {
 function moveBullets(deltaTime) {
   bullets.forEach((bullet) => {
     if (bullet.isEnemyBullet) {
-      bullet.y += ENEMY_BULLET_SPEED * deltaTime; // Slower enemy bullets
+      if (!whilePlayerHit) bullet.y += ENEMY_BULLET_SPEED * deltaTime; // Slower enemy bullets
     } else {
-      bullet.y -= BULLET_SPEED * deltaTime;
+      if (!whilePlayerHit) bullet.y -= BULLET_SPEED * deltaTime; // no bullets during player hit
     }
   });
   bullets = bullets.filter((bullet) =>
@@ -558,7 +562,7 @@ function moveBullets(deltaTime) {
 }
 
 function moveEnemies(deltaTime) {
-  // Add safety check for large deltaTime values
+  // safety check for large deltaTime values
   if (deltaTime > 0.1) deltaTime = 0.1;  // Cap maximum deltaTime at 100ms
 
   // First check if there are any enemies at all
@@ -630,7 +634,7 @@ function detectCollisions() {
         bullet.y < wall.y + wall.height &&
         bullet.y + 10 > wall.y) {
         
-        // Add chunk at bullet impact point with rotation info
+        // chunk at bullet impact point with rotation info
         wallHits[wallIndex].push({
           x: bullet.x - wall.x - 10,
           y: bullet.isEnemyBullet ? 
@@ -653,7 +657,7 @@ function detectCollisions() {
     });
   });
 
-  // Add missile-player collision detection near the start of the function
+  // missile-player collision detection near the start of the function
   if (!isPlayerHit) {  // Only check if player isn't already hit
     homingMissiles.forEach((missile, mIndex) => {
       // Calculate distance between missile center and player center
@@ -666,7 +670,7 @@ function detectCollisions() {
         homingMissiles.splice(mIndex, 1);
         handlePlayerHit();
 
-        // Add explosion animation and sound
+        // explosion animation and sound
         isPlayerHit = true;
         playerHitTimer = Date.now();
         player.image = playerExplosionImage;
@@ -686,7 +690,7 @@ function detectCollisions() {
     });
   }
 
-  // Add enemy bullet collision with walls
+  //  enemy bullet collision with walls
   bullets.forEach((bullet, bIndex) => {
     if (bullet.isEnemyBullet) {  // Check only enemy bullets
       walls.forEach((wall, wallIndex) => {
@@ -698,7 +702,7 @@ function detectCollisions() {
           // Remove the enemy bullet
           bullets.splice(bIndex, 1);
 
-          // Add damage mark
+          // damage mark
           wallHits[wallIndex].push({
             x: bullet.x - wall.x,
             y: bullet.y - wall.y
@@ -830,7 +834,7 @@ function detectCollisions() {
           bullets.splice(bIndex, 1);
           handlePlayerHit();
 
-          // Add explosion animation and sound
+          // explosion animation and sound
           isPlayerHit = true;
           playerHitTimer = Date.now();
           player.image = playerExplosionImage;
@@ -926,7 +930,7 @@ function gameOver() {
   gamePaused = true;
 }
 
-// Add with other sound declarations at the top
+// sound declarations at the top
 let clearLevelSound = new Audio('clear-level-sfx.wav');
 
 function victory() {
@@ -937,7 +941,7 @@ function victory() {
   currentEnemyFireRate = BASE_ENEMY_FIRE_RATE /
     (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
 
-  score += 2500;  // Add points for completing the level
+  score += 2500;  //points for completing the level
   enemies = [];
   bullets = [];
 
@@ -983,6 +987,7 @@ function restartGame() {
   currentLevel = 1;
   gameOverFlag = false;
   isPlayerHit = false;
+  whilePlayerHit = false;
   gamePaused = false;
   lastTime = 0;
   
@@ -1143,7 +1148,7 @@ function gameLoop(currentTime) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Handle shooting
-  if (keys.Space && !gamePaused &&
+  if (keys.Space && !isPlayerHit && !whilePlayerHit && !gamePaused &&
     Date.now() - lastFireTime > currentFireRate * 1000) {
     bullets.push({
       x: player.x + player.width / 2 - 2.5,
@@ -1302,14 +1307,14 @@ const MACHINE_GUN_THRESHOLD = 500;          // 0.5 seconds in milliseconds
 
 let currentLevel = 1;
 
-// Add function to get random enemy from top row
+// get random enemy from top row
 function getRandomTopRowEnemy() {
   const topY = Math.min(...enemies.map(e => e.y));
   const topRowEnemies = enemies.filter(e => e.y === topY);
   return topRowEnemies[Math.floor(Math.random() * topRowEnemies.length)];
 }
 
-// Add function to handle missile launching
+// handle missile launching
 function handleMissileLaunching(currentTime) {
   if (currentTime >= nextMissileTime) {
     const shooter = getRandomTopRowEnemy();
@@ -1333,7 +1338,7 @@ function handleMissileLaunching(currentTime) {
   }
 }
 
-// Add function to move missiles
+//  move missiles
 function moveMissiles(deltaTime) {
   homingMissiles.forEach(missile => {
     missile.time += deltaTime;
@@ -1354,7 +1359,7 @@ function moveMissiles(deltaTime) {
     }
     // else keep the last angle
 
-    // Add curved trajectory
+    //  curved trajectory for rockets
     const curve = Math.sin(missile.time * 2) * 100;
 
     // Move missile
@@ -1369,7 +1374,7 @@ function moveMissiles(deltaTime) {
   );
 }
 
-// Add function to draw missiles
+// draw missiles
 function drawMissiles() {
   homingMissiles.forEach(missile => {
     ctx.save();
@@ -1392,10 +1397,10 @@ let missileBoomSound = new Audio('explode_missile.mp3');
 let missileExplosionImage = new Image();
 missileExplosionImage.src = 'explode_missile.svg';
 
-// Add missile explosions array with other state variables
+// missile explosions array with other state variables
 let missileExplosions = [];
 
-// Add function to draw missile explosions
+// draw missile explosions
 function drawMissileExplosions() {
   missileExplosions = missileExplosions.filter(explosion => {
     const age = Date.now() - explosion.timeCreated;
@@ -1532,7 +1537,7 @@ function stopMachineGunSound() {
   }
 }
 
-// Add near other state variables
+// state variables
 let monster = null;
 let monsterDirection = 1;  // 1 for right, -1 for left
 let lastMonsterTime = 0;
@@ -1550,7 +1555,7 @@ monsterHitImage.src = 'monster_shot.svg';
 //let bonusImage = new Image();
 //bonusImage.src = 'bonus.svg'; // for every 5th missile shot down 
 
-// Add this function to handle monster creation
+// handle monster creation
 function createMonster(currentTime) {
   if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
     monsterDirection = Math.random() < 0.5 ? 1 : -1;
@@ -1566,14 +1571,14 @@ function createMonster(currentTime) {
       height: MONSTER_HEIGHT,
       hit: false,
       hitTime: 0,
-      hasShot: false  // Add flag to track if monster has fired its missiles
+      hasShot: false  // flag to track if monster has fired its missiles
     };
 
     lastMonsterTime = currentTime;
   }
 }
 
-// Add this function to move monster
+//  move monster
 function moveMonster(deltaTime) {
   if (monster) {
     if (monster.hit) {
@@ -1619,7 +1624,7 @@ function moveMonster(deltaTime) {
   }
 }
 
-// Add this function to draw monster
+// function to draw monster
 function drawMonster() {
   if (monster) {
     const image = monster.hit ? monsterHitImage : monsterImage;
@@ -1629,18 +1634,18 @@ function drawMonster() {
   }
 }
 
-// Add sound for monster hit
+// sound for monster hit
 function createMonsterHitSound() {
   const sound = new Audio('monster_hit.mp3');
   sound.volume = 1.0;
   return sound;
 }
 
-// Add with other monster-related constants at the top
+// other monster-related constants at the top
 const MONSTER_MISSILE_INTERVAL = 500; // Time between monster's missile shots (500ms)
 let lastMonsterMissileTime = 0;
 
-// Add near other state variables at the top
+// other state variables at the top
 let lifeRemovalAnimation = null;
 let vaxGoneImage = new Image();
 vaxGoneImage.src = 'vax_gone.svg';
@@ -1651,7 +1656,7 @@ function handlePlayerHit() {
   showHitMessage = true;
   hitMessageTimer = Date.now();
 
-  // Add life removal animation
+  // life removal animation
   lifeRemovalAnimation = {
     startTime: Date.now(),
     position: player.lives // Position of the removed life
@@ -1670,7 +1675,7 @@ function handlePlayerHit() {
   }
 }
 
-// Add near other state variables
+// near other state variables
 let bonusImage = new Image();
 bonusImage.src = 'bonus.svg';
 let showBonusAnimation = false;
@@ -1697,13 +1702,13 @@ function drawBonusAnimation() {
   }
 }
 
-// Add these constants near the top with other constants
+// these constants near the top with other constants
 const LIFE_GRANT_ANIMATION = {
   DURATION: 3500,  // Changed from 1500 to 3000 (3 seconds)
   ICON_SIZE: 100
 };
 
-// Add this with other state variables
+// this with other state variables
 let animations = {
   lifeGrant: {
     startTime: 0,
@@ -1712,7 +1717,7 @@ let animations = {
   }
 };
 
-// Add near the top with other image loads
+// near the top with other image loads
 let lifeImage = new Image();
 lifeImage.src = 'life.svg';
 
