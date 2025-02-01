@@ -76,7 +76,7 @@
 // 4.6.4 make bullets a bit bigger
 // 4.7 various playability improvements (no bullets while player is hit)     
 
-const VERSION = "v4.7";  // version showing in index.html
+const VERSION = "v4.7.1";  // version showing in index.html
 
 
 document.getElementById('version-info').textContent = VERSION;
@@ -428,6 +428,8 @@ function createEnemies() {
 
 function drawPlayer() {
   if (isPlayerHit) {
+      bullets = bullets.filter(b => !b.isEnemyBullet); // remove enemy bullets
+      bullets = bullets.filter(b => b.isEnemyBullet);  // remove player bullets
       whilePlayerHit = true; // flag player is in hit mode and during this time we don't allow bullets
       if (Date.now() - playerHitTimer > PLAYER_HIT_ANIMATION_DURATION) {
       isPlayerHit = false;
