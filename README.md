@@ -8,7 +8,7 @@ A space invaders game for the mainframe, and any other computers out there. All 
 
 The original code from NAMCO is [here](https://computerarcheology.com/Arcade/SpaceInvaders/Code.html) 
 
-December 25, 2025   
+January 25, 2025   
 
 <img src="screenshot.png">
 
