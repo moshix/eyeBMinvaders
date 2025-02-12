@@ -78,7 +78,7 @@
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
 
-const VERSION = "v4.8.1";  // version showing in index.html
+const VERSION = "v4.8.2";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
@@ -178,6 +178,12 @@ let playerExplosionImage = new Image();
 playerNormalImage.src = "vax.svg";
 playerExplosionImage.src = "player_explosion.svg";
 player.image = playerNormalImage;
+// Add near the top with other constants
+const KAMIKAZE_HITS_TO_DESTROY = 2;  // Number of hits needed to destroy a kamikaze
+
+// Add near the top with other image declarations
+let kamikazeExplosionImage = new Image();
+kamikazeExplosionImage.src = 'explode_kamikaze.svg';
 
 const keys = {
   ArrowLeft: false,
@@ -1260,6 +1266,14 @@ function gameLoop(currentTime) {
           image: enemy.image
         });
         
+        // Play kamikaze launch sound at max volume
+        if (!isMuted) {
+          kamikazeLaunchSound.currentTime = 0;
+          kamikazeLaunchSound.play().catch(error => {
+            console.log("Error playing kamikaze launch sound:", error);
+          });
+        }
+        
         // Set next kamikaze time
         nextKamikazeTime = currentTime +
           Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) +
@@ -1410,6 +1424,10 @@ const MACHINE_GUN_THRESHOLD = 500;          // 0.5 seconds in milliseconds
 
 // Add near other sound declarations at the top
 let kamikazeExplosionSound = new Audio('explode_kamikaze.mp3');
+
+// Add near other sound declarations at the top
+let kamikazeLaunchSound = new Audio('launch_kamikaze.mp3');
+kamikazeLaunchSound.volume = 1.0; // Set to max volume
 
 let currentLevel = 1;
 
@@ -2092,10 +2110,3 @@ function drawKamikazeEnemies() {
         ctx.restore();
     });
 }
-
-// Add near the top with other constants
-const KAMIKAZE_HITS_TO_DESTROY = 2;  // Number of hits needed to destroy a kamikaze
-
-// Add near the top with other image declarations
-let kamikazeExplosionImage = new Image();
-kamikazeExplosionImage.src = 'explode_kamikaze.svg';
