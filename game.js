@@ -77,8 +77,9 @@
 // 4.7   various playability improvements (no bullets while player is hit)     
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
+// 4.9   hot streak message for player
 
-const VERSION = "v4.8.2";  // version showing in index.html
+const VERSION = "v4.9";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
@@ -669,6 +670,7 @@ function detectCollisions() {
             // Remove kamikaze and add score
             kamikazeEnemies.splice(kIndex, 1);
             score += 1000;
+            currentKillCount++; // Add kill count here
             
             // Play kamikaze explosion sound
             if (!isMuted) {
@@ -943,6 +945,7 @@ function detectCollisions() {
             createExplosion(enemy.x, enemy.y);
             enemies.splice(eIndex, 1);
             score += 10;
+            currentKillCount++; // Add kill count here
           }
           bullets.splice(bIndex, 1);
         }
@@ -1048,6 +1051,11 @@ function victory() {
     lastTime = 0;
     requestAnimationFrame(gameLoop);
   }, 1500);
+
+  // Reset nextKamikazeTime for the new level
+  nextKamikazeTime = performance.now() + 
+      Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
+      KAMIKAZE_MIN_TIME;
 }
 
 function restartGame() {
@@ -1090,7 +1098,9 @@ function restartGame() {
   
   // Reset kamikaze-related variables
   kamikazeEnemies = [];
-  nextKamikazeTime = 0;
+  nextKamikazeTime = performance.now() + 
+      Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
+      KAMIKAZE_MIN_TIME;
   
   // Start the game loop
   requestAnimationFrame(gameLoop);
@@ -1246,6 +1256,7 @@ function gameLoop(currentTime) {
   if (!gamePaused && !gameOverFlag) {
     createMonster(currentTime);
     moveMonster(deltaTime);
+    updateKillStreak(currentTime);  // Add this line here
 
     // Add kamikaze enemy creation
     if (currentTime >= nextKamikazeTime) {
@@ -1328,6 +1339,9 @@ function gameLoop(currentTime) {
     ctx.textAlign = "center";
     ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150);
   }
+
+  // Draw hot streak message last so it appears on top of everything
+  drawHotStreakMessage();
 
   requestAnimationFrame(gameLoop);
 }
@@ -2048,7 +2062,9 @@ function drawAIStatus() {
 }
 
 // Add these state variables near the top with other state variables (after missileImage declaration):
-let nextKamikazeTime = 0;
+let nextKamikazeTime = performance.now() + 
+    Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
+    KAMIKAZE_MIN_TIME;
 let kamikazeEnemies = [];
 
 // Add these functions after createEnemies function
@@ -2060,6 +2076,12 @@ function getRandomEnemy() {
 function moveKamikazeEnemies(deltaTime) {
     kamikazeEnemies.forEach((kamikaze, index) => {
         kamikaze.time += deltaTime;
+        
+        // Check if kamikaze is below player's position
+        if (kamikaze.y > player.y + player.height) {
+            kamikazeEnemies.splice(index, 1);
+            return;
+        }
         
         // Calculate target direction
         const dx = player.x + player.width / 2 - kamikaze.x;
@@ -2109,4 +2131,53 @@ function drawKamikazeEnemies() {
         );
         ctx.restore();
     });
+}
+
+// Add these constants near the top with other constants
+const HOT_STREAK_WINDOW = 7000;            // measurement window for sterak msg  
+const HOT_STREAK_MESSAGE_DURATION = 1500;  // 1 second in milliseconds
+
+// Add these variables with other state variables
+let currentKillCount = 0;
+let previousKillCount = 0;
+let lastStreakCheckTime = 0;
+let showHotStreakMessage = false;
+let hotStreakMessageTimer = 0;
+
+// Add this function to check and update kill counts
+function updateKillStreak(currentTime) {
+    if (currentTime - lastStreakCheckTime >= HOT_STREAK_WINDOW) {
+        if (currentKillCount > previousKillCount && previousKillCount > 0) {
+            showHotStreakMessage = true;
+            hotStreakMessageTimer = currentTime;
+        }
+        
+        previousKillCount = currentKillCount;
+        currentKillCount = 0;
+        lastStreakCheckTime = currentTime;
+    }
+}
+
+// Modify drawHotStreakMessage to use game time instead of Date.now()
+function drawHotStreakMessage() {
+    if (showHotStreakMessage) {
+        const currentTime = performance.now();
+        if (currentTime - hotStreakMessageTimer < HOT_STREAK_MESSAGE_DURATION) {
+            ctx.save();
+            
+            // Draw the text with adjusted font size
+            ctx.fillStyle = "#39FF14";
+            ctx.font = "bold 18px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            ctx.fillText("You're on a tear, Commander!", 
+                        canvas.width/2, 
+                        canvas.height - 10);
+            
+            ctx.restore();
+        } else {
+            showHotStreakMessage = false;
+        }
+    }
 }
