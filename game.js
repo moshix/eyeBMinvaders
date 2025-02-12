@@ -79,12 +79,12 @@
 // 4.8.1 better kamikaze artwork 
 // 4.9   hot streak message for player
 
-const VERSION = "v4.9";  // version showing in index.html
+const VERSION = "v4.9.1";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
 const KAMIKAZE_MAX_TIME = 13000; // Max time between kamikaze launches (15 seconds)
-const KAMIKAZE_SPEED = 200;      // Kamikaze movement speed (pixels per second)
+const KAMIKAZE_SPEED = 180;      // Kamikaze movement speed (pixels per second)
 
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 576;
