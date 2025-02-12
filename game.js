@@ -74,10 +74,11 @@
 // 4.6.2 only advance speed of enemies by 9% between levels to make it more playable
 // 4.6.3 limit enemy firing rate in new levels to make game more playable
 // 4.6.4 make bullets a bit bigger
-// 4.7 various playability improvements (no bullets while player is hit)     
-// 4.8 kamikaze enemies! 
+// 4.7   various playability improvements (no bullets while player is hit)     
+// 4.8   kamikaze enemies! 
+// 4.8.1 better kamikaze artwork 
 
-const VERSION = "v4.8";  // version showing in index.html
+const VERSION = "v4.8.1";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
@@ -648,11 +649,20 @@ function detectCollisions() {
           
           // Check if kamikaze is destroyed
           if (kamikaze.hits >= KAMIKAZE_HITS_TO_DESTROY) {
-            // Create explosion
-            createExplosion(kamikaze.x, kamikaze.y);
+            // Create special kamikaze explosion
+            explosions.push({
+              x: kamikaze.x - 20, // Offset to center the explosion
+              y: kamikaze.y - 20,
+              frame: 0,
+              img: kamikazeExplosionImage,
+              width: kamikaze.width * 2,  // Make explosion bigger than the kamikaze
+              height: kamikaze.height * 2,
+              startTime: Date.now()
+            });
+            
             // Remove kamikaze and add score
             kamikazeEnemies.splice(kIndex, 1);
-            score += 1000; // 1000 points for destroying a kamikaze
+            score += 1000;
             
             // Play kamikaze explosion sound
             if (!isMuted) {
@@ -2085,3 +2095,7 @@ function drawKamikazeEnemies() {
 
 // Add near the top with other constants
 const KAMIKAZE_HITS_TO_DESTROY = 2;  // Number of hits needed to destroy a kamikaze
+
+// Add near the top with other image declarations
+let kamikazeExplosionImage = new Image();
+kamikazeExplosionImage.src = 'explode_kamikaze.svg';
