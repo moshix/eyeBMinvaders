@@ -75,11 +75,14 @@
 // 4.6.3 limit enemy firing rate in new levels to make game more playable
 // 4.6.4 make bullets a bit bigger
 // 4.7 various playability improvements (no bullets while player is hit)     
+// 4.8 kamikaze enemies! 
 
-const VERSION = "v4.7.1";  // version showing in index.html
+const VERSION = "v4.8";  // version showing in index.html
 
-
-document.getElementById('version-info').textContent = VERSION;
+// Kamikaze enemy settings
+const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
+const KAMIKAZE_MAX_TIME = 13000; // Max time between kamikaze launches (15 seconds)
+const KAMIKAZE_SPEED = 200;      // Kamikaze movement speed (pixels per second)
 
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 576;
@@ -630,6 +633,41 @@ function moveEnemies(deltaTime) {
 function detectCollisions() {
   // Check bullet collisions with walls
   bullets.forEach((bullet, bulletIndex) => {
+    // Add kamikaze-bullet collision detection
+    if (!bullet.isEnemyBullet) {
+      kamikazeEnemies.forEach((kamikaze, kIndex) => {
+        if (bullet.x < kamikaze.x + kamikaze.width &&
+            bullet.x + 5 > kamikaze.x &&
+            bullet.y < kamikaze.y + kamikaze.height &&
+            bullet.y + 10 > kamikaze.y) {
+          // Remove bullet
+          bullets.splice(bulletIndex, 1);
+          
+          // Increment hit counter
+          kamikaze.hits++;
+          
+          // Check if kamikaze is destroyed
+          if (kamikaze.hits >= KAMIKAZE_HITS_TO_DESTROY) {
+            // Create explosion
+            createExplosion(kamikaze.x, kamikaze.y);
+            // Remove kamikaze and add score
+            kamikazeEnemies.splice(kIndex, 1);
+            score += 1000; // 1000 points for destroying a kamikaze
+            
+            // Play kamikaze explosion sound
+            if (!isMuted) {
+              kamikazeExplosionSound.currentTime = 0;
+              kamikazeExplosionSound.play().catch(error => {
+                console.log("Error playing kamikaze explosion sound:", error);
+              });
+            }
+          }
+          return;
+        }
+      });
+    }
+
+    // Existing wall collision check
     walls.forEach((wall, wallIndex) => {
       if (bullet.x < wall.x + wall.width &&
         bullet.x + 5 > wall.x &&
@@ -659,27 +697,51 @@ function detectCollisions() {
     });
   });
 
-  // missile-player collision detection near the start of the function
-  if (!isPlayerHit) {  // Only check if player isn't already hit
+  // Add kamikaze-player and kamikaze-wall collision detection here
+  if (!isPlayerHit) {
+    kamikazeEnemies.forEach((kamikaze, kIndex) => {
+      // Check wall collisions first
+      let hitWall = false;
+      walls.forEach((wall) => {
+        if (kamikaze.x < wall.x + wall.width &&
+            kamikaze.x + kamikaze.width > wall.x &&
+            kamikaze.y < wall.y + wall.height &&
+            kamikaze.y + kamikaze.height > wall.y) {
+          createExplosion(kamikaze.x, kamikaze.y);
+          kamikazeEnemies.splice(kIndex, 1);
+          hitWall = true;
+          return;
+        }
+      });
+
+      // If didn't hit wall, check player collision
+      if (!hitWall && 
+          kamikaze.x < player.x + player.width &&
+          kamikaze.x + kamikaze.width > player.x &&
+          kamikaze.y < player.y + player.height &&
+          kamikaze.y + kamikaze.height > player.y) {
+        kamikazeEnemies.splice(kIndex, 1);
+        handlePlayerHit();
+        createExplosion(kamikaze.x, kamikaze.y);
+      }
+    });
+  }
+
+  // missile-player collision detection
+  if (!isPlayerHit) {
     homingMissiles.forEach((missile, mIndex) => {
-      // Calculate distance between missile center and player center
       const dx = (missile.x) - (player.x + player.width / 2);
       const dy = (missile.y) - (player.y + player.height / 2);
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // If distance is less than combined radii, we have a collision
       if (distance < (player.width / 2 + missile.width / 4)) {
         homingMissiles.splice(mIndex, 1);
         handlePlayerHit();
-
-        // explosion animation and sound
         isPlayerHit = true;
         playerHitTimer = Date.now();
         player.image = playerExplosionImage;
         playerExplosionSound.currentTime = 0;
         playerExplosionSound.play();
-
-        // Clear all enemy bullets and missiles
         bullets = bullets.filter(b => !b.isEnemyBullet);
         homingMissiles = [];
 
@@ -1010,6 +1072,10 @@ function restartGame() {
   homingMissiles = [];
   monster = null;
   
+  // Reset kamikaze-related variables
+  kamikazeEnemies = [];
+  nextKamikazeTime = 0;
+  
   // Start the game loop
   requestAnimationFrame(gameLoop);
 }
@@ -1143,7 +1209,6 @@ function gameLoop(currentTime) {
     lastTime = currentTime;
   }
   const deltaTime = (currentTime - lastTime) / 1000;
-  //const deltaTime = Math.min((currentTime - lastTime) / 1000 * 0.85, 0.1);  // Multiply by 0.85 to speed up by ~15%
   lastTime = currentTime;
 
   // Clear canvas
@@ -1165,12 +1230,39 @@ function gameLoop(currentTime) {
   if (!gamePaused && !gameOverFlag) {
     createMonster(currentTime);
     moveMonster(deltaTime);
+
+    // Add kamikaze enemy creation
+    if (currentTime >= nextKamikazeTime) {
+      const enemy = getRandomEnemy();
+      if (enemy) {
+        // Remove the chosen enemy from the enemies array
+        enemies = enemies.filter(e => e !== enemy);
+        
+        // Convert it to a kamikaze
+        kamikazeEnemies.push({
+          x: enemy.x,
+          y: enemy.y,
+          width: enemy.width,
+          height: enemy.height,
+          angle: 0,
+          time: 0,
+          hits: 0,  // Add hit counter
+          image: enemy.image
+        });
+        
+        // Set next kamikaze time
+        nextKamikazeTime = currentTime +
+          Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) +
+          KAMIKAZE_MIN_TIME;
+      }
+    }
   }
 
   // Draw everything
   drawPlayer();
   drawEnemies();
-  drawMonster();  // Draw monster after enemies
+  drawKamikazeEnemies();
+  drawMonster();
   drawBullets();
   drawMissiles();
   drawMissileExplosions();
@@ -1193,6 +1285,7 @@ function gameLoop(currentTime) {
     if (player.lives > 0) {
       moveBullets(deltaTime);
       moveEnemies(deltaTime);
+      moveKamikazeEnemies(deltaTime);
       moveMissiles(deltaTime);
       handleEnemyShooting(currentTime);
       handleMissileLaunching(currentTime);
@@ -1209,7 +1302,7 @@ function gameLoop(currentTime) {
     ctx.fillStyle = "cyan";
     ctx.font = "35px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150)
+    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150);
   }
 
   requestAnimationFrame(gameLoop);
@@ -1305,7 +1398,8 @@ let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
 const MACHINE_GUN_THRESHOLD = 500;          // 0.5 seconds in milliseconds
 
-
+// Add near other sound declarations at the top
+let kamikazeExplosionSound = new Audio('explode_kamikaze.mp3');
 
 let currentLevel = 1;
 
@@ -1910,42 +2004,6 @@ function updateAutoPlay() {
           keys.ArrowRight = true;
         }
       }
-    } else {
-      // Attack mode
-      const target = threats.find(t => t.type === 'enemy' || t.type === 'monster');
-      if (target) {
-        const targetX = target.x;
-        const tolerance = 8;
-
-        if (Math.abs(playerCenter - targetX) > tolerance) {
-          const moveLeft = targetX < playerCenter;
-          const newPos = moveLeft ?
-            playerCenter - PLAYER_SPEED / 30 :
-            playerCenter + PLAYER_SPEED / 30;
-
-          // Check movement safety
-          const movementSafe = !isUnderBullet(newPos);
-
-          if (movementSafe) {
-            if (moveLeft && player.x > 0) {
-              keys.ArrowLeft = true;
-            } else if (!moveLeft && player.x < canvas.width - player.width) {
-              keys.ArrowRight = true;
-            }
-          }
-        }
-
-        // Only shoot if no wall in the way
-        const wallBlocking = walls.some(wall =>
-          target.y > wall.y &&
-          targetX >= wall.x &&
-          targetX <= wall.x + wall.width
-        );
-
-        if (!wallBlocking) {
-          keys.Space = Math.abs(playerCenter - targetX) < tolerance * 1.5;
-        }
-      }
     }
   }
 }
@@ -1960,3 +2018,70 @@ function drawAIStatus() {
     ctx.restore();
   }
 }
+
+// Add these state variables near the top with other state variables (after missileImage declaration):
+let nextKamikazeTime = 0;
+let kamikazeEnemies = [];
+
+// Add these functions after createEnemies function
+function getRandomEnemy() {
+    if (enemies.length === 0) return null;
+    return enemies[Math.floor(Math.random() * enemies.length)];
+}
+
+function moveKamikazeEnemies(deltaTime) {
+    kamikazeEnemies.forEach((kamikaze, index) => {
+        kamikaze.time += deltaTime;
+        
+        // Calculate target direction
+        const dx = player.x + player.width / 2 - kamikaze.x;
+        const dy = player.y + player.height / 2 - kamikaze.y;
+        
+        // Calculate angle
+        kamikaze.angle = Math.atan2(dy, dx);
+        
+        // Add curved trajectory like missiles
+        const curve = Math.sin(kamikaze.time * 2) * 100;
+        
+        // Move kamikaze enemy
+        kamikaze.x += Math.cos(kamikaze.angle) * KAMIKAZE_SPEED * deltaTime;
+        kamikaze.y += Math.sin(kamikaze.angle) * KAMIKAZE_SPEED * deltaTime;
+        kamikaze.x += Math.cos(kamikaze.angle + Math.PI / 2) * curve * deltaTime;
+        
+        // Check wall collisions
+        walls.forEach((wall) => {
+            if (kamikaze.x < wall.x + wall.width &&
+                kamikaze.x + kamikaze.width > wall.x &&
+                kamikaze.y < wall.y + wall.height &&
+                kamikaze.y + kamikaze.height > wall.y) {
+                // Create explosion at collision point
+                createExplosion(kamikaze.x, kamikaze.y);
+                kamikazeEnemies.splice(index, 1);
+            }
+        });
+    });
+    
+    // Remove kamikaze enemies that are off screen
+    kamikazeEnemies = kamikazeEnemies.filter(k =>
+        k.y < canvas.height && k.y > 0 && k.x > 0 && k.x < canvas.width
+    );
+}
+
+function drawKamikazeEnemies() {
+    kamikazeEnemies.forEach(kamikaze => {
+        ctx.save();
+        ctx.translate(kamikaze.x + kamikaze.width / 2, kamikaze.y + kamikaze.height / 2);
+        ctx.rotate(kamikaze.angle + Math.PI / 2);
+        ctx.drawImage(
+            kamikaze.image,
+            -kamikaze.width / 2,
+            -kamikaze.height / 2,
+            kamikaze.width,
+            kamikaze.height
+        );
+        ctx.restore();
+    });
+}
+
+// Add near the top with other constants
+const KAMIKAZE_HITS_TO_DESTROY = 2;  // Number of hits needed to destroy a kamikaze
