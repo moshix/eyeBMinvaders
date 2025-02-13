@@ -78,8 +78,9 @@
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
 // 4.9   hot streak message for player
+// 4.9.1-3 fix various kamikaze small bugs
 
-const VERSION = "v4.9.1";  // version showing in index.html
+const VERSION = "v4.9.3";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
@@ -807,25 +808,26 @@ function detectCollisions() {
   // Update missile collision with walls
   homingMissiles.forEach((missile, mIndex) => {
     walls.forEach((wall, wallIndex) => {
-      if (missile.x >= wall.x &&
-        missile.x <= wall.x + wall.width &&
-        missile.y >= wall.y &&
-        missile.y <= wall.y + wall.height) {
+        // Remove the condition since we want to check collision with all existing walls
+        if (missile.x >= wall.x &&
+            missile.x <= wall.x + wall.width &&
+            missile.y >= wall.y &&
+            missile.y <= wall.y + wall.height) {
 
-        wallHits[wallIndex].push({
-          x: missile.x - wall.x,
-          y: missile.y - wall.y
-        });
+            wallHits[wallIndex].push({
+                x: missile.x - wall.x,
+                y: missile.y - wall.y
+            });
 
-        homingMissiles.splice(mIndex, 1);
+            homingMissiles.splice(mIndex, 1);
 
-        // Count missile hits separately
-        wall.missileHits = (wall.missileHits || 0) + 1;
-        if (wall.missileHits >= WALL_MAX_MISSILE_HITS) {
-          walls.splice(wallIndex, 1);
-          wallHits.splice(wallIndex, 1);
+            // Count missile hits separately
+            wall.missileHits = (wall.missileHits || 0) + 1;
+            if (wall.missileHits >= WALL_MAX_MISSILE_HITS) {
+                walls.splice(wallIndex, 1);
+                wallHits.splice(wallIndex, 1);
+            }
         }
-      }
     });
   });
 
@@ -2077,18 +2079,23 @@ function moveKamikazeEnemies(deltaTime) {
     kamikazeEnemies.forEach((kamikaze, index) => {
         kamikaze.time += deltaTime;
         
-        // Check if kamikaze is below player's position
-        if (kamikaze.y > player.y + player.height) {
+        // Check for collision with player first
+        if (kamikaze.x < player.x + player.width &&
+            kamikaze.x + kamikaze.width > player.x &&
+            kamikaze.y < player.y + player.height &&
+            kamikaze.y + kamikaze.height > player.y) {
+            handlePlayerHit();
+            createExplosion(kamikaze.x, kamikaze.y);
             kamikazeEnemies.splice(index, 1);
             return;
         }
         
         // Calculate target direction
-        const dx = player.x + player.width / 2 - kamikaze.x;
-        const dy = player.y + player.height / 2 - kamikaze.y;
+        const targetDx = player.x + player.width/2 - kamikaze.x;
+        const targetDy = player.y + player.height/2 - kamikaze.y;
         
         // Calculate angle
-        kamikaze.angle = Math.atan2(dy, dx);
+        kamikaze.angle = Math.atan2(targetDy, targetDx);
         
         // Add curved trajectory like missiles
         const curve = Math.sin(kamikaze.time * 2) * 100;
@@ -2096,17 +2103,19 @@ function moveKamikazeEnemies(deltaTime) {
         // Move kamikaze enemy
         kamikaze.x += Math.cos(kamikaze.angle) * KAMIKAZE_SPEED * deltaTime;
         kamikaze.y += Math.sin(kamikaze.angle) * KAMIKAZE_SPEED * deltaTime;
-        kamikaze.x += Math.cos(kamikaze.angle + Math.PI / 2) * curve * deltaTime;
+        kamikaze.x += Math.cos(kamikaze.angle + Math.PI/2) * curve * deltaTime;
         
-        // Check wall collisions
+        // Check wall collisions - match missile collision logic exactly
         walls.forEach((wall) => {
-            if (kamikaze.x < wall.x + wall.width &&
-                kamikaze.x + kamikaze.width > wall.x &&
-                kamikaze.y < wall.y + wall.height &&
-                kamikaze.y + kamikaze.height > wall.y) {
-                // Create explosion at collision point
-                createExplosion(kamikaze.x, kamikaze.y);
-                kamikazeEnemies.splice(index, 1);
+            if (wall.hitCount < WALL_MAX_HITS_TOTAL && wall.missileHits < WALL_MAX_MISSILE_HITS) {
+                if (kamikaze.x >= wall.x &&
+                    kamikaze.x <= wall.x + wall.width &&
+                    kamikaze.y >= wall.y &&
+                    kamikaze.y <= wall.y + wall.height) {
+                    createExplosion(kamikaze.x, kamikaze.y);
+                    kamikazeEnemies.splice(index, 1);
+                    wall.missileHits++;
+                }
             }
         });
     });
