@@ -120,6 +120,18 @@ window.addEventListener('resize', () => {
   // No positioning updates needed
 });
 
+// streak related  constants
+const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
+const HOT_STREAK_MESSAGE_DURATION = 1900;  // 1 second in milliseconds
+let currentKillCount = 0;
+let previousKillCount = 0;
+let lastStreakCheckTime = 0;
+let showHotStreakMessage = false;
+let hotStreakMessageTimer = 0;
+// streak related variables above
+
+
+
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
 const KAMIKAZE_MAX_TIME = 12000; // Max time between kamikaze launches
@@ -2178,18 +2190,8 @@ function drawKamikazeEnemies() {
     });
 }
 
-// Add these constants near the top with other constants
-const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
-const HOT_STREAK_MESSAGE_DURATION = 1900;  // 1 second in milliseconds
 
-// Add these variables with other state variables
-let currentKillCount = 0;
-let previousKillCount = 0;
-let lastStreakCheckTime = 0;
-let showHotStreakMessage = false;
-let hotStreakMessageTimer = 0;
-
-// Add this function to check and update kill counts
+// check and update kill counts
 function updateKillStreak(currentTime) {
     if (currentTime - lastStreakCheckTime >= HOT_STREAK_WINDOW) {
         if (currentKillCount > previousKillCount && previousKillCount > 0) {
