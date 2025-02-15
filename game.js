@@ -78,7 +78,7 @@
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
 // 4.9   hot streak message for player
-// 4.9.1-7 fix various kamikaze small bugs
+// 4.9.1-6 fix various kamikaze small bugs
 // 5.0   whole new game play! 
 
 const VERSION = "v5.0g";  // version showing in index.html
