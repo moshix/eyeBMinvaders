@@ -78,17 +78,16 @@
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
 // 4.9   hot streak message for player
-// 4.9.1-3 fix various kamikaze small bugs
+// 4.9.1-6 fix various kamikaze small bugs
+const VERSION = "v4.9.6";  // version showing in index.html
 
-const VERSION = "v4.9.4";  // version showing in index.html
-
-// Kamikaze enemy settings
-const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
-const KAMIKAZE_MAX_TIME = 13000; // Max time between kamikaze launches (15 seconds)
-const KAMIKAZE_SPEED = 180;      // Kamikaze movement speed (pixels per second)
-
+// canvas size! 
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 576;
+ 
+
+
+
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -118,6 +117,12 @@ document.body.style.backgroundRepeat = 'no-repeat';
 window.addEventListener('resize', () => {
   // No positioning updates needed
 });
+
+// Kamikaze enemy settings
+const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
+const KAMIKAZE_MAX_TIME = 12000; // Max time between kamikaze launches
+const KAMIKAZE_SPEED = 160;      // Kamikaze movement speed (pixels per second)
+const KAMIKAZE_FIRE_RATE = 900;  // Fire rate in milliseconds
 
 let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
@@ -489,11 +494,12 @@ function drawEnemies() {
 function drawBullets() {
   bullets.forEach((bullet) => {
     if (bullet.isEnemyBullet) {
-      ctx.fillStyle = "#39ff14";  // Enemy bullets neon green
+      ctx.fillStyle = "#39ff14";  // neeon green
+
     } else {
-      ctx.fillStyle = "white"; // Player bullets remain white
+      ctx.fillStyle = "white";    // P white
     }
-    ctx.fillRect(bullet.x, bullet.y, 2.8, 5.2);
+    ctx.fillRect(bullet.x, bullet.y, 3.4, 5.9);
   });
 }
 
@@ -1276,6 +1282,7 @@ function gameLoop(currentTime) {
           angle: 0,
           time: 0,
           hits: 0,  // Add hit counter
+          lastFireTime: performance.now(),  // Initialize lastFireTime
           image: enemy.image
         });
         
@@ -1681,8 +1688,8 @@ function stopMachineGunSound() {
 let monster = null;
 let monsterDirection = 1;  // 1 for right, -1 for left
 let lastMonsterTime = 0;
-const MONSTER_INTERVAL = 5000;  // 5 seconds between monster appearances
-const MONSTER_SPEED = 200;      // pixels per second
+const MONSTER_INTERVAL = 6000;  // 5 seconds between monster appearances
+const MONSTER_SPEED = 180;      // pixels per second
 const MONSTER_WIDTH = 56;       // Increased from 50
 const MONSTER_HEIGHT = 56;      // Increased from 50
 const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
@@ -2079,6 +2086,17 @@ function moveKamikazeEnemies(deltaTime) {
     kamikazeEnemies.forEach((kamikaze, index) => {
         kamikaze.time += deltaTime;
         
+        // Handle shooting
+        const currentTime = performance.now();
+        if (currentTime - kamikaze.lastFireTime >= KAMIKAZE_FIRE_RATE) {
+            bullets.push({
+                x: kamikaze.x + kamikaze.width / 2,
+                y: kamikaze.y + kamikaze.height,
+                isEnemyBullet: true
+            });
+            kamikaze.lastFireTime = currentTime;
+        }
+        
         // Check for collision with player first
         if (kamikaze.x < player.x + player.width &&
             kamikaze.x + kamikaze.width > player.x &&
@@ -2149,8 +2167,8 @@ function drawKamikazeEnemies() {
 }
 
 // Add these constants near the top with other constants
-const HOT_STREAK_WINDOW = 7000;            // measurement window for sterak msg  
-const HOT_STREAK_MESSAGE_DURATION = 1500;  // 1 second in milliseconds
+const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
+const HOT_STREAK_MESSAGE_DURATION = 1900;  // 1 second in milliseconds
 
 // Add these variables with other state variables
 let currentKillCount = 0;
