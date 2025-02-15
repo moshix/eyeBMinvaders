@@ -78,8 +78,10 @@
 // 4.8   kamikaze enemies! 
 // 4.8.1 better kamikaze artwork 
 // 4.9   hot streak message for player
-// 4.9.1-6 fix various kamikaze small bugs
-const VERSION = "v4.9.6";  // version showing in index.html
+// 4.9.1-7 fix various kamikaze small bugs
+// 5.0   whole new game play! 
+
+const VERSION = "v5.0g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -121,13 +123,17 @@ window.addEventListener('resize', () => {
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
 const KAMIKAZE_MAX_TIME = 12000; // Max time between kamikaze launches
-const KAMIKAZE_SPEED = 160;      // Kamikaze movement speed (pixels per second)
-const KAMIKAZE_FIRE_RATE = 900;  // Fire rate in milliseconds
+const KAMIKAZE_SPEED = 170;      // Kamikaze movement speed (pixels per second)
+const KAMIKAZE_FIRE_RATE = 980;  // Fire rate in milliseconds
+const KAMIKAZE_AGGRESSIVE_TIME = 4000; // Time between kamikazes when < 25 enemies
+const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2000; // Time between kamikazes when < 10 enemies
+const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26; // First threshold (25 enemies)
+const KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD = 11; // Second threshold (10 enemies)
 
 let lifeGrant = false;
 const PLAYER_LIVES = 5;    // starting lives
 let bonusGrants = 0;       // start with no bonus
-const BONUS2LIVES = 5;     // every n bonuses, player gets one life
+const BONUS2LIVES = 6;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 900;            // How long to show "HIT!" message in milliseconds
@@ -1294,10 +1300,16 @@ function gameLoop(currentTime) {
           });
         }
         
-        // Set next kamikaze time
-        nextKamikazeTime = currentTime +
-          Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) +
-          KAMIKAZE_MIN_TIME;
+        // Set next kamikaze time based on number of remaining enemies
+        if (enemies.length < KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD) {
+          nextKamikazeTime = currentTime + KAMIKAZE_VERY_AGGRESSIVE_TIME;
+        } else if (enemies.length < KAMIKAZE_AGGRESSIVE_THRESHOLD) {
+          nextKamikazeTime = currentTime + KAMIKAZE_AGGRESSIVE_TIME;
+        } else {
+          nextKamikazeTime = currentTime +
+              Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) +
+              KAMIKAZE_MIN_TIME;
+        }
       }
     }
   }
