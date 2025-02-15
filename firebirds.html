@@ -20,7 +20,7 @@
             left: 50%;
             transform: translateX(-50%);  /* Center horizontally */
             z-index: 1;
-            max-width: 300px;  /* Adjust this value based on your needs */
+            max-width: 400px;  /* Adjust this value based on your needs */
             height: auto;
         }
 
@@ -53,7 +53,7 @@
 </head>
 <body>
     <canvas id="firebirdsCanvas"></canvas>
-    <img id="invaders-image" src="invaders.png" alt="Invaders">
+    <img id="invaders-image" src="invaders.webp" alt="Invaders">
     <div id="countdown">Prepare for battle!<br>5</div>
     <div id="copyright">copyright by hot dog studios</div>
 
@@ -95,7 +95,7 @@
         
         // Add countdown logic with sound cleanup
         const countdownEl = document.getElementById('countdown');
-        let count = 5;
+        let count = 6;
         
         const countdown = setInterval(() => {
             count--;
