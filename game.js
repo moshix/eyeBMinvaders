@@ -80,10 +80,10 @@
 // 4.9   hot streak message for player
 // 4.9.1-6 fix various kamikaze small bugs
 // 5.0   whole new game play! 
-// 5.1   monster starts to move down at end of a scene
+// 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2   fix monster slalom mode
 
-const VERSION = "v5.2.1g";  // version showing in index.html
+const VERSION = "v5.2.2g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -136,9 +136,9 @@ let hotStreakMessageTimer = 0;
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
-const KAMIKAZE_MAX_TIME = 12000; // Max time between kamikaze launches
-const KAMIKAZE_SPEED = 170;      // Kamikaze movement speed (pixels per second)
-const KAMIKAZE_FIRE_RATE = 1080;  // Fire rate in milliseconds
+const KAMIKAZE_MAX_TIME = 10000; // Max time between kamikaze launches
+const KAMIKAZE_SPEED = 160;      // Kamikaze movement speed (pixels per second)
+const KAMIKAZE_FIRE_RATE = 1000;  // Fire rate in milliseconds
 const KAMIKAZE_AGGRESSIVE_TIME = 4000; // Time between kamikazes when < 25 enemies
 const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2000; // Time between kamikazes when < 10 enemies
 const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26; // First threshold (25 enemies)
@@ -1049,45 +1049,50 @@ function gameOver() {
 let clearLevelSound = new Audio('clear-level-sfx.wav');
 
 function victory() {
-  currentLevel++;
-  enemySpeed *= 1.33;  // Existing speed increase
+    currentLevel++;
+    enemySpeed *= 1.33;  // Existing speed increase
 
-  // Increase enemy fire rate by reducing the time between shots
-  currentEnemyFireRate = BASE_ENEMY_FIRE_RATE /
-    (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
+    // Increase enemy fire rate by reducing the time between shots
+    currentEnemyFireRate = BASE_ENEMY_FIRE_RATE /
+        (1 + (ENEMY_FIRE_RATE_INCREASE * (currentLevel - 1)));
 
-  score += 2500;  //points for completing the level
-  enemies = [];
-  bullets = [];
+    score += 2500;  //points for completing the level
+    
+    // Clear all projectiles and enemies
+    enemies = [];
+    bullets = [];
+    homingMissiles = [];  // Clear all missiles
+    kamikazeEnemies = []; // Clear all kamikazes
+    monster = null;       // Remove the monster
 
-  // Play the level clear sound if not muted
-  if (!isMuted) {
-    clearLevelSound.currentTime = 0;
-    clearLevelSound.play();
-  }
+    // Play the level clear sound if not muted
+    if (!isMuted) {
+        clearLevelSound.currentTime = 0;
+        clearLevelSound.play();
+    }
 
-  // Draw the level message
-  ctx.save();
-  ctx.fillStyle = "white";
-  ctx.font = "48px Arial";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(`Level ${currentLevel}`, canvas.width / 2, canvas.height / 2);
-  ctx.restore();
+    // Draw the level message
+    ctx.save();
+    ctx.fillStyle = "white";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`Level ${currentLevel}`, canvas.width / 2, canvas.height / 2);
+    ctx.restore();
 
-  // Wait 1.5 seconds before starting the new level
-  setTimeout(() => {
-    createEnemies();
-    gamePaused = false;
-    victoryFlag = false;
-    lastTime = 0;
-    requestAnimationFrame(gameLoop);
-  }, 1500);
+    // Wait 1.5 seconds before starting the new level
+    setTimeout(() => {
+        createEnemies();
+        gamePaused = false;
+        victoryFlag = false;
+        lastTime = 0;
+        requestAnimationFrame(gameLoop);
+    }, 1500);
 
-  // Reset nextKamikazeTime for the new level
-  nextKamikazeTime = performance.now() + 
-      Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
-      KAMIKAZE_MIN_TIME;
+    // Reset nextKamikazeTime for the new level
+    nextKamikazeTime = performance.now() + 
+        Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
+        KAMIKAZE_MIN_TIME;
 }
 
 function restartGame() {
@@ -1742,7 +1747,7 @@ function createMonster(currentTime) {
         const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
 
         // Check if we should enable slalom mode based on enemy count
-        const shouldSlalom = enemies.length < KAMIKAZE_AGGRESSIVE_THRESHOLD;
+        const shouldSlalom = enemies.length < ( KAMIKAZE_AGGRESSIVE_THRESHOLD -7) ;
 
         monster = {
             x: startX,
