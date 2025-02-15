@@ -80,8 +80,10 @@
 // 4.9   hot streak message for player
 // 4.9.1-6 fix various kamikaze small bugs
 // 5.0   whole new game play! 
+// 5.1   monster starts to move down at end of a scene
+// 5.2   fix monster slalom mode
 
-const VERSION = "v5.1";  // version showing in index.html
+const VERSION = "v5.2";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -1007,6 +1009,16 @@ function detectCollisions() {
                 monster.hitTime = Date.now();
                 score += 500;
 
+                // Restore walls to original positions
+                walls = INITIAL_WALLS.map(wall => ({
+                    ...wall,
+                    hitCount: 0,
+                    missileHits: 0
+                }));
+                
+                // Reset wall hits array
+                wallHits = walls.map(() => []);
+
                 if (!isMuted) {
                     monsterDeadSound.currentTime = 0;
                     monsterDeadSound.play();
@@ -1770,9 +1782,9 @@ function moveMonster(deltaTime) {
                 // Move downward
                 monster.y += MONSTER_VERTICAL_SPEED * deltaTime;
                 
-                // Fire single missile at KAMIKAZE_FIRE_RATE intervals
+                // Fire single missile at MONSTER_SLALOM_FIRE_RATE intervals
                 const currentTime = performance.now();
-                if (currentTime - monster.lastFireTime >= KAMIKAZE_FIRE_RATE) {
+                if (currentTime - monster.lastFireTime >= MONSTER_SLALOM_FIRE_RATE) {
                     homingMissiles.push({
                         x: monster.x + monster.width / 2,
                         y: monster.y + monster.height,
@@ -2274,3 +2286,4 @@ function drawHotStreakMessage() {
 const MONSTER_SLALOM_SPEED = 160;  // Speed during slalom movement
 const MONSTER_SLALOM_AMPLITUDE = 200;  // Width of slalom pattern
 const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
+const MONSTER_SLALOM_FIRE_RATE = 2000;  // Fire rate during slalom mode (2 seconds)
