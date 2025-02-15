@@ -83,7 +83,7 @@
 // 5.1   monster starts to move down at end of a scene
 // 5.2   fix monster slalom mode
 
-const VERSION = "v5.2";  // version showing in index.html
+const VERSION = "v5.2.1g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
