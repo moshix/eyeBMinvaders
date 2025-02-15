@@ -80,7 +80,7 @@
 // 4.9   hot streak message for player
 // 4.9.1-3 fix various kamikaze small bugs
 
-const VERSION = "v4.9.3";  // version showing in index.html
+const VERSION = "v4.9.4";  // version showing in index.html
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 7000;  // Min time between kamikaze launches (8 seconds)
@@ -2090,6 +2090,12 @@ function moveKamikazeEnemies(deltaTime) {
             return;
         }
         
+        // Check if kamikaze has reached player's height - remove it if so
+        if (kamikaze.y >= player.y) {
+            kamikazeEnemies.splice(index, 1);
+            return;
+        }
+        
         // Calculate target direction
         const targetDx = player.x + player.width/2 - kamikaze.x;
         const targetDy = player.y + player.height/2 - kamikaze.y;
@@ -2105,7 +2111,7 @@ function moveKamikazeEnemies(deltaTime) {
         kamikaze.y += Math.sin(kamikaze.angle) * KAMIKAZE_SPEED * deltaTime;
         kamikaze.x += Math.cos(kamikaze.angle + Math.PI/2) * curve * deltaTime;
         
-        // Check wall collisions - match missile collision logic exactly
+        // Check wall collisions
         walls.forEach((wall) => {
             if (wall.hitCount < WALL_MAX_HITS_TOTAL && wall.missileHits < WALL_MAX_MISSILE_HITS) {
                 if (kamikaze.x >= wall.x &&
@@ -2120,9 +2126,9 @@ function moveKamikazeEnemies(deltaTime) {
         });
     });
     
-    // Remove kamikaze enemies that are off screen
+    // Remove kamikaze enemies that are off screen horizontally
     kamikazeEnemies = kamikazeEnemies.filter(k =>
-        k.y < canvas.height && k.y > 0 && k.x > 0 && k.x < canvas.width
+        k.x > 0 && k.x < canvas.width
     );
 }
 
@@ -2175,14 +2181,14 @@ function drawHotStreakMessage() {
             ctx.save();
             
             // Draw the text with adjusted font size
-            ctx.fillStyle = "#39FF14";
-            ctx.font = "bold 18px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
+            ctx.fillStyle = "orange";
+            ctx.font = "bold 16px Arial";
+            ctx.textAlign = "left";  // Changed from "center" to "left"
+            ctx.textBaseline = "left";
             
-            ctx.fillText("You're on a tear, Commander!", 
-                        canvas.width/2, 
-                        canvas.height - 10);
+            ctx.fillText("oh yeah!", 
+                        12,  // at the left of the canvas
+                        canvas.height - 9);
             
             ctx.restore();
         } else {
