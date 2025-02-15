@@ -81,7 +81,7 @@
 // 4.9.1-6 fix various kamikaze small bugs
 // 5.0   whole new game play! 
 
-const VERSION = "v5.0g";  // version showing in index.html
+const VERSION = "v5.1";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -136,14 +136,14 @@ let hotStreakMessageTimer = 0;
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
 const KAMIKAZE_MAX_TIME = 12000; // Max time between kamikaze launches
 const KAMIKAZE_SPEED = 170;      // Kamikaze movement speed (pixels per second)
-const KAMIKAZE_FIRE_RATE = 980;  // Fire rate in milliseconds
+const KAMIKAZE_FIRE_RATE = 1080;  // Fire rate in milliseconds
 const KAMIKAZE_AGGRESSIVE_TIME = 4000; // Time between kamikazes when < 25 enemies
 const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2000; // Time between kamikazes when < 10 enemies
 const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26; // First threshold (25 enemies)
 const KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD = 11; // Second threshold (10 enemies)
 
 let lifeGrant = false;
-const PLAYER_LIVES = 5;    // starting lives
+const PLAYER_LIVES = 6;    // starting lives
 let bonusGrants = 0;       // start with no bonus
 const BONUS2LIVES = 6;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
@@ -982,45 +982,39 @@ function detectCollisions() {
   // Monster collision detection
   if (monster && !monster.hit) {
     bullets.forEach((bullet, bIndex) => {
-      if (!bullet.isEnemyBullet) {
-        // Check if there are any enemies directly in the bullet's path to the monster
-        const hasEnemyInPath = enemies.some(enemy =>
-          bullet.x >= enemy.x &&
-          bullet.x <= enemy.x + enemy.width &&
-          bullet.y > enemy.y &&
-          bullet.y < monster.y + monster.height
-        );
+        if (!bullet.isEnemyBullet) {
+            // Skip bullet collision if monster is in slalom mode
+            if (monster.isSlaloming) {
+                return;  // Skip collision check entirely
+            }
 
-        // Only check monster collision if no enemies are in the way
-        if (!hasEnemyInPath &&
-          bullet.x < monster.x + monster.width &&
-          bullet.x + 5 > monster.x &&
-          bullet.y < monster.y + monster.height &&
-          bullet.y + 10 > monster.y) {
+            // Rest of the existing monster collision code...
+            const hasEnemyInPath = enemies.some(enemy =>
+                bullet.x >= enemy.x &&
+                bullet.x <= enemy.x + enemy.width &&
+                bullet.y > enemy.y &&
+                bullet.y < monster.y + monster.height
+            );
 
-          bullets.splice(bIndex, 1);
-          monster.hit = true;
-          monster.hitTime = Date.now();
-          score += 500;  // Bonus points for hitting monster
+            if (!hasEnemyInPath &&
+                bullet.x < monster.x + monster.width &&
+                bullet.x + 5 > monster.x &&
+                bullet.y < monster.y + monster.height &&
+                bullet.y + 10 > monster.y) {
 
-          // Restore walls to original positions
-          walls = INITIAL_WALLS.map(wall => ({
-            ...wall,
-            hitCount: 0,
-            missileHits: 0
-          }));
-          
-          // Reset wall hits array
-          wallHits = walls.map(() => []);
+                bullets.splice(bIndex, 1);
+                monster.hit = true;
+                monster.hitTime = Date.now();
+                score += 500;
 
-          if (!isMuted) {
-            monsterDeadSound.currentTime = 0;
-            monsterDeadSound.play();
-          }
+                if (!isMuted) {
+                    monsterDeadSound.currentTime = 0;
+                    monsterDeadSound.play();
+                }
+            }
         }
-      }
     });
-  }
+}
 }
 
 function drawScore() {
@@ -1728,71 +1722,113 @@ monsterHitImage.src = 'monster_shot.svg';
 
 // handle monster creation
 function createMonster(currentTime) {
-  if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
-    monsterDirection = Math.random() < 0.5 ? 1 : -1;
+    if (!monster && currentTime - lastMonsterTime > MONSTER_INTERVAL) {
+        monsterDirection = Math.random() < 0.5 ? 1 : -1;
 
-    // Calculate starting position - start just off screen
-    const startX = monsterDirection === 1 ? -MONSTER_WIDTH : canvas.width + MONSTER_WIDTH;
-    const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
+        // Calculate starting position - start just off screen
+        const startX = monsterDirection === 1 ? -MONSTER_WIDTH : canvas.width + MONSTER_WIDTH;
+        const topEnemyRow = Math.min(...enemies.map(e => e.y)) - 50;
 
-    monster = {
-      x: startX,
-      y: Math.max(topEnemyRow, MONSTER_HEIGHT) -45,
-      width: MONSTER_WIDTH,
-      height: MONSTER_HEIGHT,
-      hit: false,
-      hitTime: 0,
-      hasShot: false  // flag to track if monster has fired its missiles
-    };
+        // Check if we should enable slalom mode based on enemy count
+        const shouldSlalom = enemies.length < KAMIKAZE_AGGRESSIVE_THRESHOLD;
 
-    lastMonsterTime = currentTime;
-  }
+        monster = {
+            x: startX,
+            y: shouldSlalom ? 0 : Math.max(topEnemyRow, MONSTER_HEIGHT) - 45,
+            width: MONSTER_WIDTH,
+            height: MONSTER_HEIGHT,
+            hit: false,
+            hitTime: 0,
+            hasShot: false,
+            slalomTime: 0,
+            startY: 0,
+            isSlaloming: shouldSlalom,
+            lastFireTime: performance.now()  // Add this for tracking missile firing
+        };
+
+        lastMonsterTime = currentTime;
+    }
 }
 
 //  move monster
 function moveMonster(deltaTime) {
-  if (monster) {
-    if (monster.hit) {
-      if (Date.now() - monster.hitTime > MONSTER_HIT_DURATION) {
-        monster = null;
-        lastMonsterTime = performance.now();
-      }
-    } else {
-      // Move the monster
-      monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
-
-      // Check if monster is fully on screen and hasn't shot yet
-      const isFullyOnScreen = monster.x >= 0 &&
-        monster.x + monster.width <= canvas.width;
-
-      if (!monster.hasShot && isFullyOnScreen) {
-        // Fire missiles with proper positioning
-        const missileOffsets = [-monster.width / 4, monster.width / 4]; // Left and right positions
-
-        missileOffsets.forEach(offset => {
-          homingMissiles.push({
-            x: monster.x + (monster.width / 2) + offset,
-            y: monster.y + monster.height,
-            angle: Math.PI / 2, // Point downward
-            width: 44,
-            height: 44,
-            time: 0,
-            fromMonster: true // Flag to identify monster missiles
-          });
-        });
-
-        playSoundWithCleanup(createMissileLaunchSound);
-        monster.hasShot = true;
-      }
-
-      // Remove monster when off screen
-      if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
-        (monsterDirection === -1 && monster.x < -MONSTER_WIDTH)) {
-        monster = null;
-        lastMonsterTime = performance.now();
-      }
+    if (monster) {
+        if (monster.hit) {
+            if (Date.now() - monster.hitTime > MONSTER_HIT_DURATION) {
+                monster = null;
+                lastMonsterTime = performance.now();
+            }
+        } else {
+            if (monster.isSlaloming) {
+                // Slalom movement
+                monster.slalomTime += deltaTime;
+                
+                // Calculate horizontal position using sine wave
+                const centerX = canvas.width / 2;
+                monster.x = centerX + Math.sin(monster.slalomTime * 1.2) * MONSTER_SLALOM_AMPLITUDE;
+                
+                // Move downward
+                monster.y += MONSTER_VERTICAL_SPEED * deltaTime;
+                
+                // Fire single missile at KAMIKAZE_FIRE_RATE intervals
+                const currentTime = performance.now();
+                if (currentTime - monster.lastFireTime >= KAMIKAZE_FIRE_RATE) {
+                    homingMissiles.push({
+                        x: monster.x + monster.width / 2,
+                        y: monster.y + monster.height,
+                        angle: Math.PI / 2,
+                        width: 44,
+                        height: 44,
+                        time: 0,
+                        fromMonster: true
+                    });
+                    
+                    playSoundWithCleanup(createMissileLaunchSound);
+                    monster.lastFireTime = currentTime;
+                }
+                
+                // Reset monster when it reaches just above the walls
+                const wallY = walls.length > 0 ? walls[0].y : canvas.height * 0.85;
+                const targetY = wallY - monster.height - 20;
+                
+                if (monster.y >= targetY) {
+                    monster = null;
+                    lastMonsterTime = performance.now();
+                }
+            } else {
+                // Original horizontal movement
+                monster.x += MONSTER_SPEED * monsterDirection * deltaTime;
+                
+                // Original missile firing logic with double missiles
+                const isFullyOnScreen = monster.x >= 0 && monster.x + monster.width <= canvas.width;
+                if (!monster.hasShot && isFullyOnScreen) {
+                    // Double missiles from left and right positions
+                    const missileOffsets = [-monster.width / 4, monster.width / 4];
+                    missileOffsets.forEach(offset => {
+                        homingMissiles.push({
+                            x: monster.x + (monster.width / 2) + offset,
+                            y: monster.y + monster.height,
+                            angle: Math.PI / 2,
+                            width: 44,
+                            height: 44,
+                            time: 0,
+                            fromMonster: true
+                        });
+                    });
+                    
+                    playSoundWithCleanup(createMissileLaunchSound);
+                    monster.hasShot = true;
+                }
+                
+                // Original removal logic
+                if ((monsterDirection === 1 && monster.x > canvas.width + MONSTER_WIDTH) ||
+                    (monsterDirection === -1 && monster.x < -MONSTER_WIDTH)) {
+                    monster = null;
+                    lastMonsterTime = performance.now();
+                }
+            }
+        }
     }
-  }
 }
 
 // function to draw monster
@@ -1823,27 +1859,32 @@ vaxGoneImage.src = 'vax_gone.svg';
 
 // Modify where player gets hit (in detectCollisions or similar)
 function handlePlayerHit() {
-  player.lives--;
-  showHitMessage = true;
-  hitMessageTimer = Date.now();
+    player.lives--;
+    showHitMessage = true;
+    hitMessageTimer = Date.now();
 
-  // life removal animation
-  lifeRemovalAnimation = {
-    startTime: Date.now(),
-    position: player.lives // Position of the removed life
-  };
+    // life removal animation
+    lifeRemovalAnimation = {
+        startTime: Date.now(),
+        position: player.lives
+    };
 
-  isPlayerHit = true;
-  playerHitTimer = Date.now();
-  player.image = playerExplosionImage;
-  playerExplosionSound.currentTime = 0;
-  playerExplosionSound.play();
+    isPlayerHit = true;
+    playerHitTimer = Date.now();
+    player.image = playerExplosionImage;
+    playerExplosionSound.currentTime = 0;
+    playerExplosionSound.play();
 
-  if (player.lives <= 0) {
-    gameOverFlag = true;
-    gameOverSound.currentTime = 0;
-    gameOverSound.play();
-  }
+    // Clear all enemy bullets, missiles, and kamikazes
+    bullets = bullets.filter(b => !b.isEnemyBullet);
+    homingMissiles = [];  // Clear all missiles in flight
+    kamikazeEnemies = []; // Clear all kamikazes in flight
+
+    if (player.lives <= 0) {
+        gameOverFlag = true;
+        gameOverSound.currentTime = 0;
+        gameOverSound.play();
+    }
 }
 
 // near other state variables
@@ -2228,3 +2269,8 @@ function drawHotStreakMessage() {
         }
     }
 }
+
+// Add these constants with other monster constants
+const MONSTER_SLALOM_SPEED = 160;  // Speed during slalom movement
+const MONSTER_SLALOM_AMPLITUDE = 200;  // Width of slalom pattern
+const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
