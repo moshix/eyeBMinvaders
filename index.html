@@ -350,11 +350,12 @@
                 // Remove the hits counter completely from the DOM before transitioning
                 const hitsCounter = document.querySelector('.hits-counter');
                 if (hitsCounter) {
-                    hitsCounter.remove();  // Actually remove the element, not just hide it
+                    hitsCounter.remove();
                 }
                 
-                // Hide the legend
+                // Hide the legend and start button
                 document.getElementById('legend').style.display = 'none';
+                document.getElementById('touch-start').style.display = 'none';
                 
                 // Create and show firebirds.html in an iframe
                 const iframe = document.createElement('iframe');

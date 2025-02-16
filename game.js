@@ -81,9 +81,9 @@
 // 4.9.1-6 fix various kamikaze small bugs
 // 5.0   whole new game play! 
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
-// 5.2   fix monster slalom mode
+// 5.2.1-5 fix monster slalom mod and ipad game playing issues
 
-const VERSION = "v5.2.4g";  // version showing in index.html
+const VERSION = "v5.2.5g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
