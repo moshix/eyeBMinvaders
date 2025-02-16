@@ -83,7 +83,7 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2   fix monster slalom mode
 
-const VERSION = "v5.2.2g";  // version showing in index.html
+const VERSION = "v5.2.3g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -124,7 +124,7 @@ window.addEventListener('resize', () => {
 
 // streak related  constants
 const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
-const HOT_STREAK_MESSAGE_DURATION = 1900;  // 1 second in milliseconds
+const HOT_STREAK_MESSAGE_DURATION = 2300;  // 1 second in milliseconds
 let currentKillCount = 0;
 let previousKillCount = 0;
 let lastStreakCheckTime = 0;
@@ -137,8 +137,8 @@ let hotStreakMessageTimer = 0;
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
 const KAMIKAZE_MAX_TIME = 10000; // Max time between kamikaze launches
-const KAMIKAZE_SPEED = 160;      // Kamikaze movement speed (pixels per second)
-const KAMIKAZE_FIRE_RATE = 1000;  // Fire rate in milliseconds
+const KAMIKAZE_SPEED = 170;      // Kamikaze movement speed (pixels per second)
+const KAMIKAZE_FIRE_RATE = 900;  // Fire rate in milliseconds
 const KAMIKAZE_AGGRESSIVE_TIME = 4000; // Time between kamikazes when < 25 enemies
 const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2000; // Time between kamikazes when < 10 enemies
 const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26; // First threshold (25 enemies)
@@ -689,14 +689,14 @@ function detectCollisions() {
               y: kamikaze.y - 20,
               frame: 0,
               img: kamikazeExplosionImage,
-              width: kamikaze.width * 2,  // Make explosion bigger than the kamikaze
+              width: kamikaze.width * 2.2,  // Make explosion bigger than the kamikaze
               height: kamikaze.height * 2,
               startTime: Date.now()
             });
             
-            // Remove kamikaze and add score
+            // kamikaze is killed, add points and increase kill count
             kamikazeEnemies.splice(kIndex, 1);
-            score += 1000;
+            score += 300;
             currentKillCount++; // Add kill count here
             
             // Play kamikaze explosion sound
@@ -2271,8 +2271,8 @@ function drawHotStreakMessage() {
             ctx.save();
             
             // Draw the text with adjusted font size
-            ctx.fillStyle = "orange";
-            ctx.font = "bold 16px Arial";
+            ctx.fillStyle = "white";
+            ctx.font = "bold 17px Arial";
             ctx.textAlign = "left";  // Changed from "center" to "left"
             ctx.textBaseline = "left";
             
