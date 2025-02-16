@@ -132,6 +132,11 @@ let showHotStreakMessage = false;
 let hotStreakMessageTimer = 0;
 // streak related variables above
 
+// Add these constants with other monster constants
+const MONSTER_SLALOM_SPEED = 170;  // Speed during slalom movement
+const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
+const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
+const MONSTER_SLALOM_FIRE_RATE = 1800;  // Fire rate during slalom mode (2 seconds)
 
 
 // Kamikaze enemy settings
@@ -2286,9 +2291,3 @@ function drawHotStreakMessage() {
         }
     }
 }
-
-// Add these constants with other monster constants
-const MONSTER_SLALOM_SPEED = 170;  // Speed during slalom movement
-const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
-const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
-const MONSTER_SLALOM_FIRE_RATE = 1800;  // Fire rate during slalom mode (2 seconds)
