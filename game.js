@@ -83,7 +83,7 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2   fix monster slalom mode
 
-const VERSION = "v5.2.3g";  // version showing in index.html
+const VERSION = "v5.2.4g";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -2288,7 +2288,7 @@ function drawHotStreakMessage() {
 }
 
 // Add these constants with other monster constants
-const MONSTER_SLALOM_SPEED = 160;  // Speed during slalom movement
-const MONSTER_SLALOM_AMPLITUDE = 200;  // Width of slalom pattern
+const MONSTER_SLALOM_SPEED = 170;  // Speed during slalom movement
+const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
 const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
-const MONSTER_SLALOM_FIRE_RATE = 2000;  // Fire rate during slalom mode (2 seconds)
+const MONSTER_SLALOM_FIRE_RATE = 1800;  // Fire rate during slalom mode (2 seconds)
