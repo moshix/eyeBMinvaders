@@ -49,9 +49,19 @@
             text-align: center;
             z-index: 1;
         }
+
+        #version-info {
+            position: absolute;
+            right: 10px;
+            top: 30px;
+            color: #888;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+        }
     </style>
 </head>
 <body>
+    <div id="version-info"></div>
     <canvas id="firebirdsCanvas"></canvas>
     <img id="invaders-image" src="invaders.webp" alt="Invaders">
     <div id="countdown">Prepare for battle!<br>5</div>
@@ -181,6 +191,21 @@
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+        });
+
+        // Set version on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const versionInfo = document.getElementById('version-info');
+            if (versionInfo) {
+                fetch('game.js')
+                    .then(response => response.text())
+                    .then(text => {
+                        const versionMatch = text.match(/const VERSION = ["'](.+?)["']/);
+                        if (versionMatch) {
+                            versionInfo.textContent = versionMatch[1];
+                        }
+                    });
+            }
         });
     </script>
 </body>

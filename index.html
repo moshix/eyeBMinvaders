@@ -397,5 +397,21 @@
                 }
             });
         </script>
+        <script>
+            // Set version on page load
+            document.addEventListener('DOMContentLoaded', () => {
+                const versionInfo = document.getElementById('version-info');
+                if (versionInfo) {
+                    fetch('game.js')
+                        .then(response => response.text())
+                        .then(text => {
+                            const versionMatch = text.match(/const VERSION = ["'](.+?)["']/);
+                            if (versionMatch) {
+                                versionInfo.textContent = versionMatch[1];
+                            }
+                        });
+                }
+            });
+        </script>
     </body>
 </html>

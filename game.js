@@ -83,7 +83,12 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 // 5.3   new monster enemy with different behavior patterns 
-const VERSION = "v5.3.5";  // version showing in index.html 
+const VERSION = "v5.3.5g";  // version showing in index.html 
+
+// Add this line right after the VERSION constant
+if (document.getElementById('version-info')) {
+    document.getElementById('version-info').textContent = VERSION;
+}
 
 // canvas size! 
 const GAME_WIDTH = 1024;
