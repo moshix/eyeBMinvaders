@@ -82,8 +82,8 @@
 // 5.0   whole new game play! 
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
-
-const VERSION = "v5.3";  // version showing in index.html
+// 5.3   new monster enemy with different behavior patterns 
+const VERSION = "v5.3.1";  // version showing in index.html 
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -2383,6 +2383,15 @@ const MONSTER2_DISAPPEAR_TIME = 8000; // 8 seconds disappearance time
 const MONSTER2_MIN_RETURN_TIME = 5000; // 5 seconds minimum return time
 const MONSTER2_MAX_RETURN_TIME = 9000; // 9 seconds maximum return time
 
+// Add near other monster2 constants
+const MONSTER2_PATTERNS = {
+    2: 'spiral',      // Level 2: Spiral pattern (current behavior)
+    3: 'zigzag',      // Level 3: Horizontal zigzag while descending
+    4: 'figure8',     // Level 4: Figure 8 pattern
+    5: 'bounce',      // Level 5: Bounce off screen edges
+    6: 'random'       // Level 6+: Random quick movements
+};
+
 // Add this function after createMonster
 function createMonster2(currentTime) {
     // Only create monster2 in level 2 or higher
@@ -2404,7 +2413,7 @@ function createMonster2(currentTime) {
     }
 }
 
-// Modify moveMonster2 function
+// Modify moveMonster2 function to restore bullet shooting
 function moveMonster2(deltaTime) {
     if (!monster2) return;
 
@@ -2445,20 +2454,83 @@ function moveMonster2(deltaTime) {
         }
     }
 
-    // Update spiral motion
-    monster2.spiralAngle += MONSTER2_SPIRAL_SPEED * deltaTime;
+    // Get movement pattern based on level
+    const pattern = currentLevel <= 6 ? MONSTER2_PATTERNS[currentLevel] : 'random';
+    
+    // Base vertical movement
     monster2.y += MONSTER2_VERTICAL_SPEED * deltaTime;
 
-    // Calculate spiral pattern
-    const radius = MONSTER2_SPIRAL_RADIUS * Math.min(1, monster2.y / 200);
-    monster2.x = monster2.centerX + Math.cos(monster2.spiralAngle) * radius;
+    // Apply pattern-specific movement
+    switch (pattern) {
+        case 'spiral':
+            // Current spiral pattern
+            monster2.spiralAngle += MONSTER2_SPIRAL_SPEED * deltaTime;
+            const radius = MONSTER2_SPIRAL_RADIUS * Math.min(1, monster2.y / 200);
+            monster2.x = monster2.centerX + Math.cos(monster2.spiralAngle) * radius;
+            break;
 
-    // Fire bullets in spread pattern (non-tracking)
+        case 'zigzag':
+            // Zigzag pattern
+            if (!monster2.zigzagDir) monster2.zigzagDir = 1;
+            monster2.x += MONSTER2_SPEED * monster2.zigzagDir * deltaTime;
+            if (monster2.x > canvas.width - monster2.width || monster2.x < 0) {
+                monster2.zigzagDir *= -1;
+            }
+            break;
+
+        case 'figure8':
+            // Figure 8 pattern
+            monster2.spiralAngle += MONSTER2_SPIRAL_SPEED * deltaTime;
+            monster2.x = monster2.centerX + Math.cos(monster2.spiralAngle) * MONSTER2_SPIRAL_RADIUS;
+            monster2.y += Math.sin(2 * monster2.spiralAngle) * deltaTime * 30;
+            break;
+
+        case 'bounce':
+            // Bouncing pattern
+            if (!monster2.dx) {
+                monster2.dx = MONSTER2_SPEED;
+                monster2.dy = MONSTER2_SPEED;
+            }
+            monster2.x += monster2.dx * deltaTime;
+            monster2.y += monster2.dy * deltaTime;
+            
+            // Bounce off edges
+            if (monster2.x <= 0 || monster2.x >= canvas.width - monster2.width) {
+                monster2.dx *= -1;
+            }
+            if (monster2.y <= 0) {
+                monster2.dy = Math.abs(monster2.dy);
+            }
+            break;
+
+        case 'random':
+            // Random quick movements
+            if (!monster2.nextMoveTime || Date.now() > monster2.nextMoveTime) {
+                monster2.targetX = Math.random() * (canvas.width - monster2.width);
+                monster2.targetY = Math.min(
+                    Math.random() * canvas.height * 0.5,
+                    monster2.y + 100
+                );
+                monster2.nextMoveTime = Date.now() + 1000;
+            }
+            
+            // Move towards target
+            const dx = monster2.targetX - monster2.x;
+            const dy = monster2.targetY - monster2.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 1) {
+                monster2.x += (dx / dist) * MONSTER2_SPEED * deltaTime;
+                monster2.y += (dy / dist) * MONSTER2_SPEED * deltaTime;
+            }
+            break;
+    }
+
+    // Add back the bullet firing code
     const currentTime = performance.now();
-    if (currentTime - monster2.lastFireTime >= 2800) { // Changed from 2100 to 2800 (about 25% increase)
+    if (currentTime - monster2.lastFireTime >= 2800) {
         // Fire 3 spread bullets in fixed directions
         for (let i = -1; i <= 1; i++) {
-            const spreadAngle = Math.PI/2 + (i * Math.PI/8);
+            const spreadAngle = Math.PI/2 + (i * Math.PI/8); // Spread around downward direction
             bullets.push({
                 x: monster2.x + monster2.width/2,
                 y: monster2.y + monster2.height,
