@@ -83,7 +83,7 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 
-const VERSION = "v5.2.5g";  // version showing in index.html
+const VERSION = "v5.3";  // version showing in index.html
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -519,10 +519,13 @@ function drawEnemies() {
 function drawBullets() {
   bullets.forEach((bullet) => {
     if (bullet.isEnemyBullet) {
-      ctx.fillStyle = "#39ff14";  // neeon green
-
+      if (bullet.isMonster2Bullet) {
+        ctx.fillStyle = "#ff0000";  // Bright red for monster2 bullets
+      } else {
+        ctx.fillStyle = "#39ff14";  // Original neon green for other enemy bullets
+      }
     } else {
-      ctx.fillStyle = "white";    // P white
+      ctx.fillStyle = "white";    // Player bullets
     }
     ctx.fillRect(bullet.x, bullet.y, 3.4, 5.9);
   });
@@ -1032,6 +1035,33 @@ function detectCollisions() {
         }
     });
 }
+
+  // Add monster2 collision detection with player bullets
+  if (monster2 && !monster2.isDisappeared) {
+      bullets.forEach((bullet, bIndex) => {
+          if (!bullet.isEnemyBullet) {
+              // Skip bullet collision if monster2 is already hit
+              if (monster2.hit) return;
+
+              if (bullet.x < monster2.x + monster2.width &&
+                  bullet.x + 5 > monster2.x &&
+                  bullet.y < monster2.y + monster2.height &&
+                  bullet.y + 10 > monster2.y) {
+                  
+                  bullets.splice(bIndex, 1);
+                  monster2.hit = true;
+                  monster2.hitTime = Date.now();
+                  monster2.explosion = true; // Add explosion flag
+                  score += 500;
+
+                  if (!isMuted) {
+                      monsterDeadSound.currentTime = 0;
+                      monsterDeadSound.play();
+                  }
+              }
+          }
+      });
+  }
 }
 
 function drawScore() {
@@ -1056,6 +1086,14 @@ let clearLevelSound = new Audio('clear-level-sfx.wav');
 function victory() {
     currentLevel++;
     enemySpeed *= 1.33;  // Existing speed increase
+
+    // Restore all walls to initial state
+    walls = INITIAL_WALLS.map(wall => ({
+        ...wall,
+        hitCount: 0,
+        missileHits: 0
+    }));
+    wallHits = walls.map(() => []);
 
     // Increase enemy fire rate by reducing the time between shots
     currentEnemyFireRate = BASE_ENEMY_FIRE_RATE /
@@ -1297,7 +1335,9 @@ function gameLoop(currentTime) {
   // Game logic
   if (!gamePaused && !gameOverFlag) {
     createMonster(currentTime);
+    createMonster2(currentTime);  // Add this line
     moveMonster(deltaTime);
+    moveMonster2(deltaTime);      // Add this line
     updateKillStreak(currentTime);  // Add this line here
 
     // Add kamikaze enemy creation
@@ -1347,6 +1387,7 @@ function gameLoop(currentTime) {
   drawEnemies();
   drawKamikazeEnemies();
   drawMonster();
+  drawMonster2();  // Add this line
   drawBullets();
   drawMissiles();
   drawMissileExplosions();
@@ -1456,6 +1497,33 @@ document.addEventListener("keydown", (e) => {
     keys.ArrowLeft = false;
     keys.ArrowRight = false;
     keys.Space = false;
+  }
+
+  if (e.code === "F11") {
+    e.preventDefault(); // Prevent default F11 fullscreen behavior
+    // Force move to next level
+    currentLevel++; // Increment level
+    enemies = []; // Clear enemies
+    bullets = []; // Clear bullets
+    homingMissiles = []; // Clear missiles
+    kamikazeEnemies = []; // Clear kamikazes
+    monster = null; // Remove monster
+    monster2 = null; // Remove monster2
+    
+    // Restore walls
+    walls = INITIAL_WALLS.map(wall => ({
+        ...wall,
+        hitCount: 0,
+        missileHits: 0
+    }));
+    wallHits = walls.map(() => []);
+    
+    // Create new enemies for next level
+    createEnemies();
+    gamePaused = false;
+    victoryFlag = false;
+    lastTime = 0;
+    requestAnimationFrame(gameLoop);
   }
 });
 
@@ -2290,4 +2358,164 @@ function drawHotStreakMessage() {
             showHotStreakMessage = false;
         }
     }
+}
+
+// Add near other monster-related constants
+const MONSTER2_WIDTH = 56;
+const MONSTER2_HEIGHT = 56;
+const MONSTER2_SPEED = 220;  // Slightly faster than monster1
+const MONSTER2_SPIRAL_RADIUS = 100;
+const MONSTER2_SPIRAL_SPEED = 3;
+const MONSTER2_VERTICAL_SPEED = 40;
+
+// Add with other image declarations
+let monster2Image = new Image();
+monster2Image.src = 'monster2.svg';
+
+// Add near monster state variables
+let monster2 = null;
+let lastMonster2Time = 0;
+
+// Add near other monster constants
+const MONSTER2_DISAPPEAR_TIME = 8000; // 8 seconds disappearance time
+
+// Add near other monster constants
+const MONSTER2_MIN_RETURN_TIME = 5000; // 5 seconds minimum return time
+const MONSTER2_MAX_RETURN_TIME = 9000; // 9 seconds maximum return time
+
+// Add this function after createMonster
+function createMonster2(currentTime) {
+    // Only create monster2 in level 2 or higher
+    if (currentLevel < 2) return;
+
+    if (!monster2 && currentTime - lastMonster2Time > MONSTER_INTERVAL * 1.2) {
+        monster2 = {
+            x: canvas.width / 2,
+            y: -MONSTER2_HEIGHT,
+            width: MONSTER2_WIDTH,
+            height: MONSTER2_HEIGHT,
+            spiralAngle: 0,
+            centerX: canvas.width / 2,
+            hit: false,
+            hitTime: 0,
+            lastFireTime: currentTime
+        };
+        lastMonster2Time = currentTime;
+    }
+}
+
+// Modify moveMonster2 function
+function moveMonster2(deltaTime) {
+    if (!monster2) return;
+
+    if (monster2.hit) {
+        if (Date.now() - monster2.hitTime <= MONSTER_HIT_DURATION) {
+            // Show explosion during hit animation
+            if (monster2.explosion) {
+                ctx.drawImage(
+                    explosionAdditionalImg,
+                    monster2.x - monster2.width/2,
+                    monster2.y - monster2.height/2,
+                    monster2.width * 2,
+                    monster2.height * 2
+                );
+            }
+        } else {
+            // After hit animation, make monster disappear
+            monster2.isDisappeared = true;
+            monster2.disappearTime = Date.now();
+            monster2.returnDelay = MONSTER2_MIN_RETURN_TIME + 
+                Math.random() * (MONSTER2_MAX_RETURN_TIME - MONSTER2_MIN_RETURN_TIME);
+            monster2.hit = false;
+        }
+        return;
+    }
+
+    // Check if monster2 is in disappeared state
+    if (monster2.isDisappeared) {
+        if (Date.now() - monster2.disappearTime > monster2.returnDelay) {
+            // Reset monster2 position when returning
+            monster2.isDisappeared = false;
+            monster2.x = canvas.width / 2;
+            monster2.y = -MONSTER2_HEIGHT;
+            monster2.spiralAngle = 0;
+            monster2.centerX = canvas.width / 2;
+        } else {
+            return; // Skip movement and shooting while disappeared
+        }
+    }
+
+    // Update spiral motion
+    monster2.spiralAngle += MONSTER2_SPIRAL_SPEED * deltaTime;
+    monster2.y += MONSTER2_VERTICAL_SPEED * deltaTime;
+
+    // Calculate spiral pattern
+    const radius = MONSTER2_SPIRAL_RADIUS * Math.min(1, monster2.y / 200);
+    monster2.x = monster2.centerX + Math.cos(monster2.spiralAngle) * radius;
+
+    // Fire bullets in spread pattern (non-tracking)
+    const currentTime = performance.now();
+    if (currentTime - monster2.lastFireTime >= 2800) { // Changed from 2100 to 2800 (about 25% increase)
+        // Fire 3 spread bullets in fixed directions
+        for (let i = -1; i <= 1; i++) {
+            const spreadAngle = Math.PI/2 + (i * Math.PI/8);
+            bullets.push({
+                x: monster2.x + monster2.width/2,
+                y: monster2.y + monster2.height,
+                dx: Math.cos(spreadAngle) * ENEMY_BULLET_SPEED * 1.2,
+                dy: Math.sin(spreadAngle) * ENEMY_BULLET_SPEED * 1.2,
+                isEnemyBullet: true,
+                isMonster2Bullet: true
+            });
+        }
+        
+        playSoundWithCleanup(createMissileLaunchSound);
+        monster2.lastFireTime = currentTime;
+    }
+
+    // Remove if off screen
+    if (monster2.y > canvas.height + MONSTER2_HEIGHT) {
+        monster2 = null;
+        lastMonster2Time = performance.now();
+    }
+}
+
+// Modify drawMonster2 function
+function drawMonster2() {
+    if (monster2 && monster2Image.complete && !monster2.isDisappeared) {
+        ctx.save();
+        ctx.translate(monster2.x + monster2.width/2, monster2.y + monster2.height/2);
+        ctx.rotate(monster2.spiralAngle);
+        ctx.drawImage(
+            monster2Image,
+            -monster2.width/2,
+            -monster2.height/2,
+            monster2.width,
+            monster2.height
+        );
+        ctx.restore();
+    }
+}
+
+// Modify moveBullets to remove tracking for monster2 bullets
+function moveBullets(deltaTime) {
+    bullets.forEach((bullet) => {
+        if (bullet.isEnemyBullet) {
+            if (bullet.dx !== undefined && bullet.dy !== undefined) {
+                // For bullets with directional movement (monster2)
+                bullet.x += bullet.dx * deltaTime;
+                bullet.y += bullet.dy * deltaTime;
+            } else {
+                // Regular enemy bullets
+                bullet.y += ENEMY_BULLET_SPEED * deltaTime;
+            }
+        } else {
+            if (!whilePlayerHit) bullet.y -= BULLET_SPEED * deltaTime;
+        }
+    });
+    
+    bullets = bullets.filter((bullet) => 
+        bullet.y > 0 && bullet.y < canvas.height && 
+        bullet.x > 0 && bullet.x < canvas.width
+    );
 }
