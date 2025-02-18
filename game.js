@@ -83,7 +83,7 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 // 5.3   new monster enemy with different behavior patterns 
-const VERSION = "v5.3.3";  // version showing in index.html 
+const VERSION = "v5.3.4";  // version showing in index.html 
 
 // canvas size! 
 const GAME_WIDTH = 1024;
@@ -194,8 +194,8 @@ let victoryFlag = false;
 let lastTime = 0;
 const PLAYER_SPEED = 300;    // pixels per second
 const ENEMY_SPEED = 50;      // pixels per second
-const FIRE_RATE = 0.17;      // Time in seconds between shots (0.1 = 10 shots per second)
-const ENEMY_FIRE_RATE = 0.7; // Time in seconds between enemy shots
+const FIRE_RATE = 0.16;      // Time in seconds between shots (0.1 = 10 shots per second)
+const ENEMY_FIRE_RATE = 0.72; // Time in seconds between enemy shots
 let lastEnemyFireTime = 0;
 
 let hitMessageTimer = 0;
@@ -289,7 +289,7 @@ explosionImg.src = 'explosion.svg';
 let explosionAdditionalImg = new Image();
 explosionAdditionalImg.src = 'explosion_additional.svg';
 
-const BASE_FIRE_RATE = 0.2;           // Base time in seconds between shots
+const BASE_FIRE_RATE = 0.190;           // Base time in seconds between shots
 let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
 // for enemies  
