@@ -1437,9 +1437,9 @@ function gameLoop(currentTime) {
   // Draw game over message if needed
   if (gameOverFlag) {
     ctx.fillStyle = "white";
-    ctx.font = "50px Arial";
+    ctx.font = "60px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("YOU LOST! GAME OVER!", canvas.width / 2, canvas.height / 2);
+    ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
     ctx.fillStyle = "cyan";
     ctx.font = "35px Arial";
     ctx.textAlign = "center";
