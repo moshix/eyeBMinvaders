@@ -83,7 +83,8 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 // 5.3   new monster enemy with different behavior patterns 
-const VERSION = "v5.3.5g";  // version showing in index.html 
+
+const VERSION = "v5.3.6g";  // version showing in index.html 
 
 // Add this line right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1442,7 +1443,7 @@ function gameLoop(currentTime) {
     ctx.fillStyle = "cyan";
     ctx.font = "35px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150);
+    //ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150);
   }
 
   // Draw hot streak message last so it appears on top of everything
