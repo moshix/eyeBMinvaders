@@ -85,7 +85,7 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 
-const VERSION = "v5.4.1g";  // version showing in index.html 
+const VERSION = "v5.4.2g";  // version showing in index.html 
 
 // Add this line right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1544,7 +1544,9 @@ document.addEventListener("keydown", (e) => {
     keys.ArrowRight = false;
     keys.Space = false;
   }
-
+  if (e.code === "F10") {player.lives++}
+  if (e.code === "F9")  {player.lives--}
+                                             
   if (e.code === "F11") {
     e.preventDefault(); // Prevent default F11 fullscreen behavior
     // Force move to next level
@@ -2382,7 +2384,7 @@ function drawHotStreakMessage() {
             ctx.textAlign = "left";  // Changed from "center" to "left"
             ctx.textBaseline = "left";
             
-            ctx.fillText("oh yeah!", 
+            ctx.fillText("Rampage!", 
                         12,  // at the left of the canvas
                         canvas.height - 9);
             
