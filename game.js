@@ -83,8 +83,9 @@
 // 5.1   monster starts to move down at end of a sceneshouldSlalom = enemies.length < KAMIKA
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 // 5.3   new monster enemy with different behavior patterns 
+// 5.4   make a bit more playable and more monster2 patterns
 
-const VERSION = "v5.3.6g";  // version showing in index.html 
+const VERSION = "v5.4";  // version showing in index.html 
 
 // Add this line right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -143,7 +144,22 @@ const MONSTER_SLALOM_SPEED = 170;  // Speed during slalom movement
 const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
 const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
 const MONSTER_SLALOM_FIRE_RATE = 1800;  // Fire rate during slalom mode (2 seconds)
+// state variables
+let   monster = null;
+let   monsterDirection = 1;  // 1 for right, -1 for left
+let   lastMonsterTime = 0;
+const MONSTER_INTERVAL = 6000;    // seconds between monster appearances
+const MONSTER2_INTERVAL = 10000;  //econds between monster appearances
 
+const MONSTER_SPEED = 180;      // pixels per second
+const MONSTER_WIDTH = 56;       // Increased from 50
+const MONSTER_HEIGHT = 56;      // Increased from 50
+const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
+let   monsterHit = false;
+let   monsterImage = new Image();
+let   monsterHitImage = new Image();
+monsterImage.src = 'monster.svg';
+monsterHitImage.src = 'monster_shot.svg';
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
@@ -1000,9 +1016,9 @@ function detectCollisions() {
     bullets.forEach((bullet, bIndex) => {
         if (!bullet.isEnemyBullet) {
             // Skip bullet collision if monster is in slalom mode
-            if (monster.isSlaloming) {
-                return;  // Skip collision check entirely
-            }
+            //if (monster.isSlaloming) {
+            //    return;  // Skip collision check entirely
+            //}
 
             // Rest of the existing monster collision code...
             const hasEnemyInPath = enemies.some(enemy =>
@@ -1808,20 +1824,7 @@ function stopMachineGunSound() {
   }
 }
 
-// state variables
-let monster = null;
-let monsterDirection = 1;  // 1 for right, -1 for left
-let lastMonsterTime = 0;
-const MONSTER_INTERVAL = 6000;  // 5 seconds between monster appearances
-const MONSTER_SPEED = 180;      // pixels per second
-const MONSTER_WIDTH = 56;       // Increased from 50
-const MONSTER_HEIGHT = 56;      // Increased from 50
-const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
-let monsterHit = false;
-let monsterImage = new Image();
-let monsterHitImage = new Image();
-monsterImage.src = 'monster.svg';
-monsterHitImage.src = 'monster_shot.svg';
+
 
 //let bonusImage = new Image();
 //bonusImage.src = 'bonus.svg'; // for every 5th missile shot down 
@@ -2401,19 +2404,43 @@ const MONSTER2_MAX_RETURN_TIME = 9000; // 9 seconds maximum return time
 
 // Add near other monster2 constants
 const MONSTER2_PATTERNS = {
-    2: 'spiral',      // Level 2: Spiral pattern (current behavior)
+    2: 'spiral',      // Level 2: Spiral pattern
     3: 'zigzag',      // Level 3: Horizontal zigzag while descending
     4: 'figure8',     // Level 4: Figure 8 pattern
     5: 'bounce',      // Level 5: Bounce off screen edges
-    6: 'random'       // Level 6+: Random quick movements
+    6: 'wave',        // Level 6: Sinusoidal wave pattern
+    7: 'teleport',    // Level 7: Random teleportation
+    8: 'chase',       // Level 8: Chase player with prediction
+    9: 'random'       // Level 9+: Random quick movements
 };
 
-// Add this function after createMonster
+// Add this function to check if monster is in slalom mode
+function isMonsterInSlalom() {
+    return monster && monster.isSlaloming;
+}
+
+// Modify createMonster2 function to check for monster slalom
 function createMonster2(currentTime) {
     // Only create monster2 in level 2 or higher
     if (currentLevel < 2) return;
 
-    if (!monster2 && currentTime - lastMonster2Time > MONSTER_INTERVAL * 1.2) {
+    // Don't create monster2 if monster is in slalom mode
+    if (isMonsterInSlalom()) {
+        // Reset the timer to delay monster2 appearance
+        lastMonster2Time = currentTime;
+        return;
+    }
+
+    // Additional check to ensure monster has been gone for a while after slalom
+    const monsterJustFinishedSlalom = !monster && 
+        (currentTime - lastMonsterTime < MONSTER2_INTERVAL / 2);
+    
+    if (monsterJustFinishedSlalom) {
+        return; // Wait longer before spawning monster2
+    }
+
+    // Original monster2 creation logic
+    if (!monster2 && currentTime - lastMonster2Time > MONSTER2_INTERVAL) {
         monster2 = {
             x: canvas.width / 2,
             y: -MONSTER2_HEIGHT,
@@ -2486,12 +2513,29 @@ function moveMonster2(deltaTime) {
             break;
 
         case 'zigzag':
-            // Zigzag pattern
-            if (!monster2.zigzagDir) monster2.zigzagDir = 1;
-            monster2.x += MONSTER2_SPEED * monster2.zigzagDir * deltaTime;
-            if (monster2.x > canvas.width - monster2.width || monster2.x < 0) {
-                monster2.zigzagDir *= -1;
+            // Enhanced zigzag pattern with slower vertical movement
+            if (!monster2.zigzagDir) {
+                monster2.zigzagDir = 1;
+                monster2.zigzagAmplitude = canvas.width * 0.4; // 40% of screen width
+                monster2.zigzagBaseY = monster2.y;
+                monster2.zigzagPhase = 0;
             }
+            
+            // Update phase
+            monster2.zigzagPhase += deltaTime * 1.5;
+            
+            // Calculate horizontal position using zigzag pattern
+            monster2.x = canvas.width/2 + Math.sin(monster2.zigzagPhase) * monster2.zigzagAmplitude;
+            
+            // Slow down vertical movement to 1/3 of normal speed
+            monster2.y += MONSTER2_VERTICAL_SPEED * deltaTime * 0.33;
+            
+            // Add slight vertical oscillation for more interesting movement
+            monster2.y += Math.sin(monster2.zigzagPhase * 2) * deltaTime * 15;
+            
+            // Ensure monster stays within horizontal bounds
+            if (monster2.x < 0) monster2.x = 0;
+            if (monster2.x > canvas.width - monster2.width) monster2.x = canvas.width - monster2.width;
             break;
 
         case 'figure8':
@@ -2502,20 +2546,99 @@ function moveMonster2(deltaTime) {
             break;
 
         case 'bounce':
-            // Bouncing pattern
+            // Enhanced bouncing pattern with random direction changes
             if (!monster2.dx) {
-                monster2.dx = MONSTER2_SPEED;
-                monster2.dy = MONSTER2_SPEED;
+                // Initialize with random directions
+                monster2.dx = (Math.random() > 0.5 ? 1 : -1) * MONSTER2_SPEED;
+                monster2.dy = (Math.random() > 0.5 ? 1 : -1) * MONSTER2_SPEED * 0.7;
+                monster2.lastDirectionChange = Date.now();
+                monster2.directionChangeInterval = 1500 + Math.random() * 1500; // 1.5-3 seconds
             }
+            
+            // Move according to current direction
             monster2.x += monster2.dx * deltaTime;
             monster2.y += monster2.dy * deltaTime;
             
             // Bounce off edges
-            if (monster2.x <= 0 || monster2.x >= canvas.width - monster2.width) {
-                monster2.dx *= -1;
+            if (monster2.x <= 0) {
+                monster2.x = 0;
+                monster2.dx = Math.abs(monster2.dx);
+            } else if (monster2.x >= canvas.width - monster2.width) {
+                monster2.x = canvas.width - monster2.width;
+                monster2.dx = -Math.abs(monster2.dx);
             }
+            
             if (monster2.y <= 0) {
+                monster2.y = 0;
                 monster2.dy = Math.abs(monster2.dy);
+            } else if (monster2.y >= canvas.height * 0.7) {
+                // Don't let it go too far down
+                monster2.y = canvas.height * 0.7;
+                monster2.dy = -Math.abs(monster2.dy);
+            }
+            
+            // Randomly change direction occasionally
+            if (Date.now() - monster2.lastDirectionChange > monster2.directionChangeInterval) {
+                // 30% chance to change x direction, 30% chance to change y direction
+                if (Math.random() < 0.3) {
+                    monster2.dx *= -1;
+                }
+                if (Math.random() < 0.3) {
+                    monster2.dy *= -1;
+                }
+                
+                // 20% chance to completely randomize direction
+                if (Math.random() < 0.2) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = MONSTER2_SPEED * (0.8 + Math.random() * 0.4); // 80-120% of base speed
+                    monster2.dx = Math.cos(angle) * speed;
+                    monster2.dy = Math.sin(angle) * speed * 0.7; // Slower vertical movement
+                }
+                
+                // Set next direction change time
+                monster2.lastDirectionChange = Date.now();
+                monster2.directionChangeInterval = 1500 + Math.random() * 1500;
+            }
+            break;
+
+        case 'wave':
+            // Sinusoidal wave pattern
+            if (!monster2.waveStartX) monster2.waveStartX = monster2.x;
+            monster2.x = monster2.waveStartX + 
+                Math.sin(monster2.y / 50) * (canvas.width / 4);
+            break;
+
+        case 'teleport':
+            // Teleportation pattern
+            if (!monster2.nextTeleportTime || Date.now() > monster2.nextTeleportTime) {
+                // Store previous position for fade effect
+                monster2.prevX = monster2.x;
+                monster2.prevY = monster2.y;
+                monster2.fadeStart = Date.now();
+                
+                // New random position in top 2/3 of screen
+                monster2.x = Math.random() * (canvas.width - monster2.width);
+                monster2.y = Math.random() * (canvas.height * 0.66);
+                
+                // Set next teleport time
+                monster2.nextTeleportTime = Date.now() + 2000;
+            }
+            break;
+
+        case 'chase':
+            // Predictive chase pattern
+            const predictedX = player.x + 
+                (keys.ArrowRight ? 100 : keys.ArrowLeft ? -100 : 0);
+            
+            // Calculate direction to predicted position
+            const chaseDx = predictedX - monster2.x;
+            const chaseDy = player.y - monster2.y - 200; // Stay above player
+            
+            // Normalize and apply speed
+            const chaseDistance = Math.sqrt(chaseDx * chaseDx + chaseDy * chaseDy);
+            if (chaseDistance > 1) {
+                monster2.x += (chaseDx / chaseDistance) * MONSTER2_SPEED * 1.2 * deltaTime;
+                monster2.y += (chaseDy / chaseDistance) * MONSTER2_SPEED * 0.7 * deltaTime;
             }
             break;
 
@@ -2531,12 +2654,12 @@ function moveMonster2(deltaTime) {
             }
             
             // Move towards target
-            const dx = monster2.targetX - monster2.x;
-            const dy = monster2.targetY - monster2.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > 1) {
-                monster2.x += (dx / dist) * MONSTER2_SPEED * deltaTime;
-                monster2.y += (dy / dist) * MONSTER2_SPEED * deltaTime;
+            const randomDx = monster2.targetX - monster2.x;
+            const randomDy = monster2.targetY - monster2.y;
+            const randomDistance = Math.sqrt(randomDx * randomDx + randomDy * randomDy);
+            if (randomDistance > 1) {
+                monster2.x += (randomDx / randomDistance) * MONSTER2_SPEED * deltaTime;
+                monster2.y += (randomDy / randomDistance) * MONSTER2_SPEED * deltaTime;
             }
             break;
     }
@@ -2568,9 +2691,25 @@ function moveMonster2(deltaTime) {
     }
 }
 
-// Modify drawMonster2 function
+// Update drawMonster2 function to handle teleport fade effect
 function drawMonster2() {
     if (monster2 && monster2Image.complete && !monster2.isDisappeared) {
+        // Draw fade effect for teleport pattern
+        if (monster2.fadeStart && Date.now() - monster2.fadeStart < 200) {
+            const alpha = 1 - ((Date.now() - monster2.fadeStart) / 200);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.drawImage(
+                monster2Image,
+                monster2.prevX,
+                monster2.prevY,
+                monster2.width,
+                monster2.height
+            );
+            ctx.restore();
+        }
+
+        // Draw current monster position
         ctx.save();
         ctx.translate(monster2.x + monster2.width/2, monster2.y + monster2.height/2);
         ctx.rotate(monster2.spiralAngle);
