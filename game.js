@@ -85,7 +85,7 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 
-const VERSION = "v5.4";  // version showing in index.html 
+const VERSION = "v5.4.1g";  // version showing in index.html 
 
 // Add this line right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -182,6 +182,7 @@ const PLAYER_HIT_ANIMATION_DURATION = 750;   // Duration in milliseconds   (0.5 
 const MIN_MISSILE_INTERVAL = 3200;           // 3 seconds
 const MAX_MISSILE_INTERVAL = 7200;           // 
 const MISSILE_SPEED = 170;                   // pixels per second
+let shotCounter = 0;       // during rapid fire, only sound every 
 
 let nextMissileTime = 0;
 let homingMissiles = [];
@@ -1355,14 +1356,27 @@ function gameLoop(currentTime) {
   // Handle shooting
   if (keys.Space && !isPlayerHit && !whilePlayerHit && !gamePaused &&
     Date.now() - lastFireTime > currentFireRate * 1000) {
+    
+    // Create the bullet
     bullets.push({
-      x: player.x + player.width / 2 - 2.5,
-      y: player.y,
-      isEnemyBullet: false
+        x: player.x + player.width / 2 - 2.5,
+        y: player.y,
+        isEnemyBullet: false
     });
     lastFireTime = Date.now();
-    playSoundWithCleanup(() => playerShotSound);
-  }
+    
+    // Increment shot counter
+    shotCounter++;
+    
+    // Check if we're in rapid fire mode
+    const isRapidFire = Date.now() - spaceKeyPressTime > MACHINE_GUN_THRESHOLD;
+    
+    // Play sound only on every second shot during rapid fire
+    // or on every shot during normal firing
+    if (!isRapidFire || shotCounter % 3 === 0) {
+        playSoundWithCleanup(() => playerShotSound);
+    }
+}
 
   // Game logic
   if (!gamePaused && !gameOverFlag) {
