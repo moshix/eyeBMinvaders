@@ -84,10 +84,10 @@
 // 5.2.1-5 fix monster slalom mod and ipad game playing issues
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
+// 5.5   code cleanup 
+const VERSION = "v5.5g";  // version showing in index.html 
 
-const VERSION = "v5.4.2g";  // version showing in index.html 
-
-// Add this line right after the VERSION constant
+// keep right after the VERSION constant
 if (document.getElementById('version-info')) {
     document.getElementById('version-info').textContent = VERSION;
 }
@@ -130,8 +130,8 @@ window.addEventListener('resize', () => {
 });
 
 // streak related  constants
-const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
-const HOT_STREAK_MESSAGE_DURATION = 2300;  // 1 second in milliseconds
+const HOT_STREAK_WINDOW = 25000;            // measurement window for sterak msg  
+const HOT_STREAK_MESSAGE_DURATION = 3000;  // 1 second in milliseconds
 let currentKillCount = 0;
 let previousKillCount = 0;
 let lastStreakCheckTime = 0;
@@ -139,22 +139,22 @@ let showHotStreakMessage = false;
 let hotStreakMessageTimer = 0;
 // streak related variables above
 
-// Add these constants with other monster constants
-const MONSTER_SLALOM_SPEED = 170;  // Speed during slalom movement
+// ther monster constants
+const MONSTER_SLALOM_SPEED = 170;      // Speed during slalom movement
 const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
-const MONSTER_VERTICAL_SPEED = 60;   // Reduced from 100 to 60 for slower descent
-const MONSTER_SLALOM_FIRE_RATE = 1800;  // Fire rate during slalom mode (2 seconds)
+const MONSTER_VERTICAL_SPEED = 60;     // Reduced from 100 to 60 for slower descent
+const MONSTER_SLALOM_FIRE_RATE = 1800; // Fire rate during slalom mode (2 seconds)
 // state variables
 let   monster = null;
-let   monsterDirection = 1;  // 1 for right, -1 for left
+let   monsterDirection = 1;             // 1 for right, -1 for left
 let   lastMonsterTime = 0;
-const MONSTER_INTERVAL = 6000;    // seconds between monster appearances
-const MONSTER2_INTERVAL = 10000;  //econds between monster appearances
+const MONSTER_INTERVAL = 6000;          // seconds between monster appearances
+const MONSTER2_INTERVAL = 10000;        //econds between monster appearances
 
-const MONSTER_SPEED = 180;      // pixels per second
-const MONSTER_WIDTH = 56;       // Increased from 50
-const MONSTER_HEIGHT = 56;      // Increased from 50
-const MONSTER_HIT_DURATION = 700;  // 0.7 seconds
+const MONSTER_SPEED = 175;           // pixels per second
+const MONSTER_WIDTH = 56;            //  
+const MONSTER_HEIGHT = 56;           //  
+const MONSTER_HIT_DURATION = 700;     // 0.7 seconds
 let   monsterHit = false;
 let   monsterImage = new Image();
 let   monsterHitImage = new Image();
@@ -163,13 +163,13 @@ monsterHitImage.src = 'monster_shot.svg';
 
 // Kamikaze enemy settings
 const KAMIKAZE_MIN_TIME = 6000;  // Min time between kamikaze launches
-const KAMIKAZE_MAX_TIME = 10000; // Max time between kamikaze launches
+const KAMIKAZE_MAX_TIME = 11000; // Max time between kamikaze launches
 const KAMIKAZE_SPEED = 170;      // Kamikaze movement speed (pixels per second)
 const KAMIKAZE_FIRE_RATE = 900;  // Fire rate in milliseconds
-const KAMIKAZE_AGGRESSIVE_TIME = 4000; // Time between kamikazes when < 25 enemies
-const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2000; // Time between kamikazes when < 10 enemies
-const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26; // First threshold (25 enemies)
-const KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD = 11; // Second threshold (10 enemies)
+const KAMIKAZE_AGGRESSIVE_TIME = 4000;         // Time between kamikazes when < 25 enemies
+const KAMIKAZE_VERY_AGGRESSIVE_TIME = 2200;    // Time between kamikazes when < 10 enemies
+const KAMIKAZE_AGGRESSIVE_THRESHOLD = 26;      // First threshold (25 enemies)
+const KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD = 11; // Second threshold in number of enemies
 
 let lifeGrant = false;
 const PLAYER_LIVES = 6;    // starting lives
@@ -189,7 +189,38 @@ let homingMissiles = [];
 let homingMissileHits = 0; // every 5th missile shot down we give bonus
 let missileImage = new Image();
 missileImage.src = 'missile.svg';
+// monster-related constants
+const MONSTER2_WIDTH = 56;
+const MONSTER2_HEIGHT = 56;
+const MONSTER2_SPEED = 220;  // Slightly faster than monster1
+const MONSTER2_SPIRAL_RADIUS = 100;
+const MONSTER2_SPIRAL_SPEED = 3;
+const MONSTER2_VERTICAL_SPEED = 40;
 
+// image declarations
+let monster2Image = new Image();
+monster2Image.src = 'monster2.svg';
+
+// onster state variables
+let monster2 = null;
+let lastMonster2Time = 0;
+
+const MONSTER2_DISAPPEAR_TIME = 8000; // 8 seconds disappearance time
+
+const MONSTER2_MIN_RETURN_TIME = 5000; // 5 seconds minimum return time
+const MONSTER2_MAX_RETURN_TIME = 9000; // 9 seconds maximum return time
+
+// other monster2 constants
+const MONSTER2_PATTERNS = {
+    2: 'spiral',      // Level 2: Spiral pattern
+    3: 'zigzag',      // Level 3: Horizontal zigzag while descending
+    4: 'figure8',     // Level 4: Figure 8 pattern
+    5: 'bounce',      // Level 5: Bounce off screen edges
+    6: 'wave',        // Level 6: Sinusoidal wave pattern
+    7: 'teleport',    // Level 7: Random teleportation
+    8: 'chase',       // Level 8: Chase player with prediction
+    9: 'random'       // Level 9+: Random quick movements
+};
 
 
 let player = {
@@ -233,10 +264,10 @@ let playerExplosionImage = new Image();
 playerNormalImage.src = "vax.svg";
 playerExplosionImage.src = "player_explosion.svg";
 player.image = playerNormalImage;
-// Add near the top with other constants
+
 const KAMIKAZE_HITS_TO_DESTROY = 2;  // Number of hits needed to destroy a kamikaze
 
-// Add near the top with other image declarations
+
 let kamikazeExplosionImage = new Image();
 kamikazeExplosionImage.src = 'explode_kamikaze.svg';
 
@@ -385,7 +416,7 @@ function initTouchControls() {
     e.preventDefault();
     keys.Space = true;
     spaceKeyPressTime = Date.now();
-    // Add direct bullet creation here
+    //  bullet creation here
     if (!gamePausedt && Date.now() - lastFireTime > currentFireRate * 1000) {
       bullets.push({
         x: player.x + player.width / 2 - 2.5,
@@ -699,7 +730,7 @@ function moveEnemies(deltaTime) {
 function detectCollisions() {
   // Check bullet collisions with walls
   bullets.forEach((bullet, bulletIndex) => {
-    // Add kamikaze-bullet collision detection
+    // kamikaze-bullet collision detection
     if (!bullet.isEnemyBullet) {
       kamikazeEnemies.forEach((kamikaze, kIndex) => {
         if (bullet.x < kamikaze.x + kamikaze.width &&
@@ -728,7 +759,7 @@ function detectCollisions() {
             // kamikaze is killed, add points and increase kill count
             kamikazeEnemies.splice(kIndex, 1);
             score += 300;
-            currentKillCount++; // Add kill count here
+            currentKillCount++; // kill count 
             
             // Play kamikaze explosion sound
             if (!isMuted) {
@@ -773,7 +804,7 @@ function detectCollisions() {
     });
   });
 
-  // Add kamikaze-player and kamikaze-wall collision detection here
+  // kamikaze-player and kamikaze-wall collision detection
   if (!isPlayerHit) {
     kamikazeEnemies.forEach((kamikaze, kIndex) => {
       // Check wall collisions first
@@ -1004,7 +1035,7 @@ function detectCollisions() {
             createExplosion(enemy.x, enemy.y);
             enemies.splice(eIndex, 1);
             score += 10;
-            currentKillCount++; // Add kill count here
+            currentKillCount++; // kill count 
           }
           bullets.splice(bIndex, 1);
         }
@@ -1059,7 +1090,7 @@ function detectCollisions() {
     });
 }
 
-  // Add monster2 collision detection with player bullets
+  // monster2 collision detection with player bullets
   if (monster2 && !monster2.isDisappeared) {
       bullets.forEach((bullet, bIndex) => {
           if (!bullet.isEnemyBullet) {
@@ -1074,7 +1105,7 @@ function detectCollisions() {
                   bullets.splice(bIndex, 1);
                   monster2.hit = true;
                   monster2.hitTime = Date.now();
-                  monster2.explosion = true; // Add explosion flag
+                  monster2.explosion = true; // explosion flag
                   score += 1500;  // Increased score for monster2
 
                   // Restore walls to original positions
@@ -1381,12 +1412,12 @@ function gameLoop(currentTime) {
   // Game logic
   if (!gamePaused && !gameOverFlag) {
     createMonster(currentTime);
-    createMonster2(currentTime);  // Add this line
+    createMonster2(currentTime);  
     moveMonster(deltaTime);
-    moveMonster2(deltaTime);      // Add this line
-    updateKillStreak(currentTime);  // Add this line here
+    moveMonster2(deltaTime);        // for monster2
+    updateKillStreak(currentTime);  // for hot streak msg 
 
-    // Add kamikaze enemy creation
+    // kamikaze enemy creation
     if (currentTime >= nextKamikazeTime) {
       const enemy = getRandomEnemy();
       if (enemy) {
@@ -1401,7 +1432,7 @@ function gameLoop(currentTime) {
           height: enemy.height,
           angle: 0,
           time: 0,
-          hits: 0,  // Add hit counter
+          hits: 0,  // hit counter
           lastFireTime: performance.now(),  // Initialize lastFireTime
           image: enemy.image
         });
@@ -1433,7 +1464,7 @@ function gameLoop(currentTime) {
   drawEnemies();
   drawKamikazeEnemies();
   drawMonster();
-  drawMonster2();  // Add this line
+  drawMonster2(); 
   drawBullets();
   drawMissiles();
   drawMissileExplosions();
@@ -1601,10 +1632,10 @@ let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
 const MACHINE_GUN_THRESHOLD = 500;          // 0.5 seconds in milliseconds
 
-// Add near other sound declarations at the top
+
 let kamikazeExplosionSound = new Audio('explode_kamikaze.mp3');
 
-// Add near other sound declarations at the top
+
 let kamikazeLaunchSound = new Audio('launch_kamikaze.mp3');
 kamikazeLaunchSound.volume = 1.0; // Set to max volume
 
@@ -1868,7 +1899,7 @@ function createMonster(currentTime) {
             slalomTime: 0,
             startY: 0,
             isSlaloming: shouldSlalom,
-            lastFireTime: performance.now()  // Add this for tracking missile firing
+            lastFireTime: performance.now()  // for tracking missile firing
         };
 
         lastMonsterTime = currentTime;
@@ -2260,13 +2291,13 @@ function drawAIStatus() {
   }
 }
 
-// Add these state variables near the top with other state variables (after missileImage declaration):
+
 let nextKamikazeTime = performance.now() + 
     Math.random() * (KAMIKAZE_MAX_TIME - KAMIKAZE_MIN_TIME) + 
     KAMIKAZE_MIN_TIME;
 let kamikazeEnemies = [];
 
-// Add these functions after createEnemies function
+// createEnemies function
 function getRandomEnemy() {
     if (enemies.length === 0) return null;
     return enemies[Math.floor(Math.random() * enemies.length)];
@@ -2311,7 +2342,7 @@ function moveKamikazeEnemies(deltaTime) {
         // Calculate angle
         kamikaze.angle = Math.atan2(targetDy, targetDx);
         
-        // Add curved trajectory like missiles
+        // curved trajectory like missiles
         const curve = Math.sin(kamikaze.time * 2) * 100;
         
         // Move kamikaze enemy
@@ -2395,42 +2426,9 @@ function drawHotStreakMessage() {
     }
 }
 
-// Add near other monster-related constants
-const MONSTER2_WIDTH = 56;
-const MONSTER2_HEIGHT = 56;
-const MONSTER2_SPEED = 220;  // Slightly faster than monster1
-const MONSTER2_SPIRAL_RADIUS = 100;
-const MONSTER2_SPIRAL_SPEED = 3;
-const MONSTER2_VERTICAL_SPEED = 40;
 
-// Add with other image declarations
-let monster2Image = new Image();
-monster2Image.src = 'monster2.svg';
 
-// Add near monster state variables
-let monster2 = null;
-let lastMonster2Time = 0;
-
-// Add near other monster constants
-const MONSTER2_DISAPPEAR_TIME = 8000; // 8 seconds disappearance time
-
-// Add near other monster constants
-const MONSTER2_MIN_RETURN_TIME = 5000; // 5 seconds minimum return time
-const MONSTER2_MAX_RETURN_TIME = 9000; // 9 seconds maximum return time
-
-// Add near other monster2 constants
-const MONSTER2_PATTERNS = {
-    2: 'spiral',      // Level 2: Spiral pattern
-    3: 'zigzag',      // Level 3: Horizontal zigzag while descending
-    4: 'figure8',     // Level 4: Figure 8 pattern
-    5: 'bounce',      // Level 5: Bounce off screen edges
-    6: 'wave',        // Level 6: Sinusoidal wave pattern
-    7: 'teleport',    // Level 7: Random teleportation
-    8: 'chase',       // Level 8: Chase player with prediction
-    9: 'random'       // Level 9+: Random quick movements
-};
-
-// Add this function to check if monster is in slalom mode
+// function to check if monster is in slalom mode
 function isMonsterInSlalom() {
     return monster && monster.isSlaloming;
 }
@@ -2546,7 +2544,7 @@ function moveMonster2(deltaTime) {
             // Slow down vertical movement to 1/3 of normal speed
             monster2.y += MONSTER2_VERTICAL_SPEED * deltaTime * 0.33;
             
-            // Add slight vertical oscillation for more interesting movement
+            // slight vertical oscillation for more interesting movement
             monster2.y += Math.sin(monster2.zigzagPhase * 2) * deltaTime * 15;
             
             // Ensure monster stays within horizontal bounds
@@ -2680,7 +2678,7 @@ function moveMonster2(deltaTime) {
             break;
     }
 
-    // Add back the bullet firing code
+    // bullet firing code 
     const currentTime = performance.now();
     if (currentTime - monster2.lastFireTime >= 2800) {
         // Fire 3 spread bullets in fixed directions
@@ -2707,7 +2705,7 @@ function moveMonster2(deltaTime) {
     }
 }
 
-// Update drawMonster2 function to handle teleport fade effect
+// drawMonster2 function to handle teleport fade effect
 function drawMonster2() {
     if (monster2 && monster2Image.complete && !monster2.isDisappeared) {
         // Draw fade effect for teleport pattern
