@@ -85,7 +85,7 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 // 5.5   code cleanup 
-const VERSION = "v5.5g";  // version showing in index.html 
+const VERSION = "v5.5.1g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1575,35 +1575,38 @@ document.addEventListener("keydown", (e) => {
     keys.ArrowRight = false;
     keys.Space = false;
   }
-  if (e.code === "F10") {player.lives++}
-  if (e.code === "F9")  {player.lives--}
+  //if (e.code === "F10") {player.lives++}
+  //if (e.code === "F9")  {player.lives--}
                                              
-  if (e.code === "F11") {
-    e.preventDefault(); // Prevent default F11 fullscreen behavior
+//  if (e.code === "F11") {
+//    e.preventDefault(); // Prevent default F11 fullscreen behavior
     // Force move to next level
-    currentLevel++; // Increment level
-    enemies = []; // Clear enemies
-    bullets = []; // Clear bullets
-    homingMissiles = []; // Clear missiles
-    kamikazeEnemies = []; // Clear kamikazes
-    monster = null; // Remove monster
-    monster2 = null; // Remove monster2
+ //   currentLevel++; // Increment level
+ //   enemies = []; // Clear enemies
+//    bullets = []; // Clear bullets
+ //   homingMissiles = []; // Clear missiles
+ //   kamikazeEnemies = []; // Clear kamikazes
+ //   monster = null; // Remove monster
+ //   monster2 = null; // Remove monster2
     
-    // Restore walls
-    walls = INITIAL_WALLS.map(wall => ({
-        ...wall,
-        hitCount: 0,
-        missileHits: 0
-    }));
-    wallHits = walls.map(() => []);
-    
-    // Create new enemies for next level
-    createEnemies();
-    gamePaused = false;
-    victoryFlag = false;
-    lastTime = 0;
-    requestAnimationFrame(gameLoop);
-  }
+ // Restore walls
+//    walls = INITIAL_WALLS.map(wall => ({
+//        ...wall,
+//        hitCount: 0,
+////        missileHits: 0
+//    }));
+//    wallHits = walls.map(() => []);
+//    
+//    // Create new enemies for next level
+//    createEnemies();
+ //   gamePaused = false;
+ //   victoryFlag = false;
+ //   lastTime = 0;
+ //   requestAnimationFrame(gameLoop);
+ // }
+ //
+ 
+ 
 });
 
 document.addEventListener("keyup", (e) => {
