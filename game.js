@@ -85,7 +85,9 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 // 5.5   code cleanup 
-const VERSION = "v5.5.1g";  // version showing in index.html 
+// 5.6   put enemy explosions back in             
+
+const VERSION = "v5.6g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -769,6 +771,23 @@ function detectCollisions() {
               });
             }
           }
+          else {
+            // Player bullets hitting enemies
+            enemies.forEach((enemy, eIndex) => {
+              if (bullet.x < enemy.x + enemy.width &&
+                bullet.x + 5 > enemy.x &&
+                bullet.y < enemy.y + enemy.height &&
+                bullet.y + 10 > enemy.y) {
+                enemy.hits++;
+                if (enemy.hits >= enemyHitsToDestroy) {
+                  createExplosion(enemy.x, enemy.y);
+                  enemies.splice(eIndex, 1);
+                  score += 10;
+                }
+                bullets.splice(bIndex, 1);
+              }
+            });
+          }
           return;
         }
       });
@@ -933,6 +952,14 @@ function detectCollisions() {
         // homing missile is hit by player bullet ?
         if (distance < (missile.width / 2 + 5)) {
           homingMissileHits++;
+          missileBoomSound.currentTime = 0;
+          if (!isMuted) {
+            missileBoomSound.play();
+            setTimeout(() => {
+              missileBoomSound.pause();
+              missileBoomSound.currentTime = 0;
+            }, 800);
+          }
           if (homingMissileHits % 5 === 0) {
             score += 500; // bonus for every 4th missile shot down
             if (!isMuted) bonusSound.play(); // normal bonus sound
@@ -980,14 +1007,14 @@ function detectCollisions() {
           bullets.splice(bIndex, 1);
           homingMissiles.splice(mIndex, 1);
 
-          missileBoomSound.currentTime = 0;
+/*          missileBoomSound.currentTime = 0;
           if (!isMuted) {
             missileBoomSound.play();
             setTimeout(() => {
               missileBoomSound.pause();
               missileBoomSound.currentTime = 0;
             }, 400);
-          }
+            }*/            
           break;
         }
       }
