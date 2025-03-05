@@ -1,4 +1,3 @@
-// copyright 2025 by moshix and hotdog studios 
 //up to now just create functional game
 // 0.01 humble beginnings
 // 0.01 - 1.00 just create functional game first
@@ -85,9 +84,9 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 // 5.5   code cleanup 
-// 5.6   put enemy explosions back in             
+// 5.6   put enemy explosions back in, change points system a bit           
 
-const VERSION = "v5.6g";  // version showing in index.html 
+const VERSION = "v5.6.1g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -132,13 +131,16 @@ window.addEventListener('resize', () => {
 });
 
 // streak related  constants
-const HOT_STREAK_WINDOW = 25000;            // measurement window for sterak msg  
+const STREAK_MESSAGES = ["Rampage!", "Oh yeah!", "Unstoppable!", "Savage!", "Sweet!", "Legendary!"];
+
+const HOT_STREAK_WINDOW = 15000;            // measurement window for sterak msg  
 const HOT_STREAK_MESSAGE_DURATION = 3000;  // 1 second in milliseconds
 let currentKillCount = 0;
 let previousKillCount = 0;
 let lastStreakCheckTime = 0;
 let showHotStreakMessage = false;
 let hotStreakMessageTimer = 0;
+let currentStreakMessage = "";
 // streak related variables above
 
 // ther monster constants
@@ -995,6 +997,7 @@ function detectCollisions() {
             bonusAnimationStart = Date.now();
           }
 
+          score += 500;
           missileExplosions.push({
             x: missile.x,
             y: missile.y,
@@ -2424,6 +2427,8 @@ function updateKillStreak(currentTime) {
         if (currentKillCount > previousKillCount && previousKillCount > 0) {
             showHotStreakMessage = true;
             hotStreakMessageTimer = currentTime;
+            // Select the random message here, when the streak is triggered
+            currentStreakMessage = STREAK_MESSAGES[Math.floor(Math.random() * STREAK_MESSAGES.length)];
         }
         
         previousKillCount = currentKillCount;
@@ -2432,22 +2437,19 @@ function updateKillStreak(currentTime) {
     }
 }
 
-// Modify drawHotStreakMessage to use game time instead of Date.now()
+
 function drawHotStreakMessage() {
     if (showHotStreakMessage) {
         const currentTime = performance.now();
         if (currentTime - hotStreakMessageTimer < HOT_STREAK_MESSAGE_DURATION) {
             ctx.save();
-            
-            // Draw the text with adjusted font size
             ctx.fillStyle = "white";
             ctx.font = "bold 17px Arial";
-            ctx.textAlign = "left";  // Changed from "center" to "left"
+            ctx.textAlign = "left";
             ctx.textBaseline = "left";
             
-            ctx.fillText("Rampage!", 
-                        12,  // at the left of the canvas
-                        canvas.height - 9);
+            // Use the pre-selected message
+            ctx.fillText(currentStreakMessage, 12, canvas.height - 9);
             
             ctx.restore();
         } else {
