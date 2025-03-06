@@ -84,9 +84,9 @@
 // 5.3   new monster enemy with different behavior patterns 
 // 5.4   make a bit more playable and more monster2 patterns
 // 5.5   code cleanup 
-// 5.6   put enemy explosions back in, change points system a bit           
+// 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.6.1g";  // version showing in index.html 
+const VERSION = "v5.6.2g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -148,6 +148,16 @@ const MONSTER_SLALOM_SPEED = 170;      // Speed during slalom movement
 const MONSTER_SLALOM_AMPLITUDE = 350;  // Increased from 200 to 350 for wider swings
 const MONSTER_VERTICAL_SPEED = 60;     // Reduced from 100 to 60 for slower descent
 const MONSTER_SLALOM_FIRE_RATE = 1800; // Fire rate during slalom mode (2 seconds)
+
+
+const MONSTER_MISSILE_INTERVAL = 500; // Time between monster's missile shots (500ms)
+let lastMonsterMissileTime = 0;
+
+// other state variables at the top
+let lifeRemovalAnimation = null;
+let vaxGoneImage = new Image();
+vaxGoneImage.src = 'vax_gone.svg';
+
 // state variables
 let   monster = null;
 let   monsterDirection = 1;             // 1 for right, -1 for left
@@ -714,7 +724,7 @@ function moveEnemies(deltaTime) {
         const wallY = walls.length > 0 ? walls[0].y - 20 : canvas.height * 0.90;
 
         if (enemy.y + enemy.height >= wallY) {
-          //console.log('Game Over triggered by ACTIVE enemy position:', enemy.y + enemy.height, 'wall position:', wallY);
+           
           gameOverFlag = true;
           gameOver();
         }
@@ -917,7 +927,7 @@ function detectCollisions() {
   // Update missile collision with walls
   homingMissiles.forEach((missile, mIndex) => {
     walls.forEach((wall, wallIndex) => {
-        // Remove the condition since we want to check collision with all existing walls
+       
         if (missile.x >= wall.x &&
             missile.x <= wall.x + wall.width &&
             missile.y >= wall.y &&
@@ -966,7 +976,8 @@ function detectCollisions() {
             score += 500; // bonus for every 4th missile shot down
             if (!isMuted) bonusSound.play(); // normal bonus sound
 
-            // every BONUS2LIVES (7 normally) bonus, lives++ but not over PLAYER_LIVES max defined by programmer 
+            /* every BONUS2LIVES (7 normally) bonus, lives++ but 
+            not over PLAYER_LIVES max defined by programmer */
             bonusGrants++;
             if (bonusGrants >= BONUS2LIVES) { // normally 7
               player.lives++; // every nth  bonus grants player gets one life back!
@@ -987,7 +998,7 @@ function detectCollisions() {
                   startY: canvas.height - 100  // Start a bit higher for better visibility
                 };
               }
-              //console.log('bonusGrants: ',bonusGrants, '   - BONUS2LIVES: ',BONUS2LIVES); 
+             
               bonusGrants = 0; // reset to zero again 
             }
 
@@ -1338,7 +1349,8 @@ function drawMuteStatus() {
 }
 
 function drawPauseMessage() {
-  if (gamePaused && !gameOverFlag && enemies.length > 0 && currentLevel === Math.floor(currentLevel)) {  // Only show PAUSED during regular gameplay
+   // Only show PAUSED during regular gameplay
+  if (gamePaused && !gameOverFlag && enemies.length > 0 && currentLevel === Math.floor(currentLevel)) { 
     ctx.save();
     ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
     ctx.font = "48px Arial";
@@ -1350,7 +1362,7 @@ function drawPauseMessage() {
 }
 
 function drawLevelMessage() {
-  if (gamePaused && !gameOverFlag && enemies.length === 0) {  // Only show during level transition
+  if (gamePaused && !gameOverFlag && enemies.length === 0) {  //Only show during level transition
     ctx.save();
     ctx.fillStyle = "white";
     ctx.font = "48px Arial";
@@ -1659,7 +1671,7 @@ let startGameSound = new Audio('startgame.mp3');
 let gameOverSound = new Audio('overgame.mp3');
 let monsterDeadSound = new Audio('monster_dead.mp3');
 let bonusSound = new Audio('bonus.mp3');   // for every 5th missile shot down 
-let newLifeSound = new Audio('tadaa.mp3'); // new life granted!                 // max volume
+let newLifeSound = new Audio('tadaa.mp3'); // new life granted!
 let playerShotSound = new Audio('playershot3.mp3');
 let machineGunSound = new Audio('mgun.mp3');
 let spaceKeyPressTime = 0;
@@ -2037,14 +2049,7 @@ function createMonsterHitSound() {
   return sound;
 }
 
-// other monster-related constants at the top
-const MONSTER_MISSILE_INTERVAL = 500; // Time between monster's missile shots (500ms)
-let lastMonsterMissileTime = 0;
 
-// other state variables at the top
-let lifeRemovalAnimation = null;
-let vaxGoneImage = new Image();
-vaxGoneImage.src = 'vax_gone.svg';
 
 // Modify where player gets hit (in detectCollisions or similar)
 function handlePlayerHit() {
@@ -2636,7 +2641,7 @@ function moveMonster2(deltaTime) {
                 // 20% chance to completely randomize direction
                 if (Math.random() < 0.2) {
                     const angle = Math.random() * Math.PI * 2;
-                    const speed = MONSTER2_SPEED * (0.8 + Math.random() * 0.4); // 80-120% of base speed
+                    const speed = MONSTER2_SPEED * (0.8 + Math.random() * 0.4); //80-120% of base spd
                     monster2.dx = Math.cos(angle) * speed;
                     monster2.dy = Math.sin(angle) * speed * 0.7; // Slower vertical movement
                 }
