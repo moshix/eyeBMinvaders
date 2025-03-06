@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.6.2g";  // version showing in index.html 
+const VERSION = "v5.6.3g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1328,7 +1328,12 @@ function drawHitMessage() {
     ctx.fillStyle = "red";
     ctx.font = "bold 48px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("HIT!", canvas.width / 2, canvas.height / 2);
+    if (player.lives > 1) {
+      ctx.fillText("HIT!", canvas.width / 2, canvas.height / 2);
+    } else {
+      ctx.fillStyle = "pink";
+      ctx.fillText("Last life!", canvas.width / 2, canvas.height / 2);
+    }
     ctx.restore();
 
     if (Date.now() - hitMessageTimer > HIT_MESSAGE_DURATION) {
@@ -1540,12 +1545,12 @@ function gameLoop(currentTime) {
   // Draw game over message if needed
   if (gameOverFlag) {
     ctx.fillStyle = "white";
-    ctx.font = "60px Arial";
+    ctx.font = "64px Arial";
     ctx.textAlign = "center";
     ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
-    ctx.fillStyle = "cyan";
-    ctx.font = "35px Arial";
-    ctx.textAlign = "center";
+    //ctx.fillStyle = "cyan";
+    //ctx.font = "35px Arial";
+    //ctx.textAlign = "center";
     //ctx.fillText("press R to restart the game", canvas.width / 2, canvas.height / 2 + 150);
   }
 
