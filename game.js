@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.6.3g";  // version showing in index.html 
+const VERSION = "v5.6.4g";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1178,6 +1178,7 @@ function drawScore() {
 }
 
 function gameOver() {
+  gameOverFlag = true;
   ctx.fillStyle = "white";
   ctx.font = "50px Arial";
   ctx.textAlign = "center";
@@ -1330,9 +1331,10 @@ function drawHitMessage() {
     ctx.textAlign = "center";
     if (player.lives > 1) {
       ctx.fillText("HIT!", canvas.width / 2, canvas.height / 2);
-    } else {
+    } else if (player.lives !== 0) {
       ctx.fillStyle = "pink";
       ctx.fillText("Last life!", canvas.width / 2, canvas.height / 2);
+    }
     }
     ctx.restore();
 
@@ -1340,7 +1342,7 @@ function drawHitMessage() {
       showHitMessage = false;
     }
   }
-}
+
 
 function drawMuteStatus() {
   if (isMuted) {
