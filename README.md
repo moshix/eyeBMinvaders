@@ -11,7 +11,7 @@ Game features several innovation over the original Space Invaders. Play to find 
 
 The original code from NAMCO is [here](https://computerarcheology.com/Arcade/SpaceInvaders/Code.html) 
 
-February, 2025   
+March, 2025   
 
 <img src="screenshot.png">
 
