@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.9.1";  // version showing in index.html 
+const VERSION = "v5.9.3";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -2284,7 +2284,7 @@ function updateAutoPlay() {
     homingMissiles.forEach(missile => {
       const pos = forecastMissile(missile, t, assumePlayerX);
       if (Math.abs(pos.y - player.y) < player.height * 3) {
-        positions.push({ x: pos.x, y: pos.y, radius: player.width * 0.7 });
+        positions.push({ x: pos.x, y: pos.y, radius: player.width / 2 + missile.width / 4 });
       }
     });
 
@@ -2328,7 +2328,7 @@ function updateAutoPlay() {
     // Pre-compute missile/kamikaze state for step simulation
     const missileStates = homingMissiles.map(m => ({
       x: m.x, y: m.y, angle: m.angle, time: m.time,
-      width: m.width, radius: player.width * 0.7
+      width: m.width, radius: player.width / 2 + m.width / 4
     }));
     const kamikazeStates = kamikazeEnemies.map(k => ({
       x: k.x, y: k.y, angle: k.angle, time: k.time,
@@ -2452,10 +2452,31 @@ function updateAutoPlay() {
     return !result.safe;
   }
 
-  // Find safe positions by evaluating trajectories to each candidate
+  // Find safe positions by evaluating a sparse set of strategic candidates
+  // instead of brute-force scanning every 12px across the canvas.
+  // Candidates: center, quarter points, eighth points, and near current position.
   function findSafePositions() {
     const safePositions = [];
-    for (let testX = halfPlayer + 10; testX < canvas.width - halfPlayer - 10; testX += 12) {
+    const minX = halfPlayer + 10;
+    const maxX = canvas.width - halfPlayer - 10;
+    const w = maxX - minX;
+    // Strategic candidates: current pos offsets + evenly spaced across field
+    const candidates = [
+      playerCenter - player.width * 2,
+      playerCenter - player.width,
+      playerCenter + player.width,
+      playerCenter + player.width * 2,
+      minX + w * 0.125,
+      minX + w * 0.25,
+      minX + w * 0.375,
+      minX + w * 0.5,
+      minX + w * 0.625,
+      minX + w * 0.75,
+      minX + w * 0.875,
+    ];
+    for (let i = 0; i < candidates.length; i++) {
+      const testX = candidates[i];
+      if (testX < minX || testX > maxX) continue;
       const result = evaluateTrajectory(0, 0.6, testX);
       if (result.safe) {
         safePositions.push(testX);
@@ -2710,6 +2731,9 @@ function updateAutoPlay() {
   keys.ArrowRight = false;
   keys.Space = false;
 
+  // Cache findBestTarget() - called once per frame, reused everywhere
+  const cachedBestTarget = findBestTarget();
+
   // Evaluate the three basic trajectories: stay, move left, move right
   const stepSize = PLAYER_SPEED / 25;
   const SIM_DURATION = 0.8;
@@ -2731,12 +2755,11 @@ function updateAutoPlay() {
   let holdAndShoot = false;
   let holdAndShootTarget = null;
   if (immediatelyDangerous || currentDanger > DANGER_THRESHOLD) {
-    const target = findBestTarget();
-    if (target && target.score >= 800) {
+    if (cachedBestTarget && cachedBestTarget.score >= 800) {
       // High-value target (kamikaze, missile, or monster) - check alignment
-      const alignDist = Math.abs(target.x - playerCenter);
+      const alignDist = Math.abs(cachedBestTarget.x - playerCenter);
       // Wider alignment tolerance for missiles/kamikazes - intercepting is worth it
-      const alignThreshold = target.score >= 1200 ? player.width * 1.0 : player.width * 0.7;
+      const alignThreshold = cachedBestTarget.score >= 1200 ? player.width * 1.0 : player.width * 0.7;
       if (alignDist < alignThreshold) {
         // We're aligned or close! How much time do we have before the nearest threat hits?
         let minTimeToHit = Infinity;
@@ -2753,16 +2776,16 @@ function updateAutoPlay() {
 
         // Hold and shoot if we have time - even 0.1s is enough for a bullet to travel 30px
         // For very high value targets (kamikazes), accept tighter margins
-        const minTimeRequired = target.score >= 1200 ? 0.1 : 0.15;
+        const minTimeRequired = cachedBestTarget.score >= 1200 ? 0.1 : 0.15;
         if (minTimeToHit >= minTimeRequired) {
           holdAndShoot = true;
-          holdAndShootTarget = target;
+          holdAndShootTarget = cachedBestTarget;
 
           // If not perfectly aligned, make a small corrective move toward the intercept
           if (alignDist > player.width * 0.3) {
-            if (target.x < playerCenter && player.x > 0) {
+            if (cachedBestTarget.x < playerCenter && player.x > 0) {
               keys.ArrowLeft = true;
-            } else if (target.x > playerCenter && player.x < canvas.width - player.width) {
+            } else if (cachedBestTarget.x > playerCenter && player.x < canvas.width - player.width) {
               keys.ArrowRight = true;
             }
           }
@@ -2796,7 +2819,7 @@ function updateAutoPlay() {
     if (safePositions.length > 0) {
       let bestTargetPos = null;
       let bestTargetScore = bestScore;
-      for (let i = 0; i < safePositions.length; i += 3) { // sample every 3rd for performance
+      for (let i = 0; i < safePositions.length; i++) {
         const gapX = safePositions[i];
         const result = evaluateTrajectory(0, 0.6, gapX);
         if (result.dangerScore < bestTargetScore) {
@@ -2819,9 +2842,8 @@ function updateAutoPlay() {
 
   } else {
     // OFFENSE MODE: hunt targets using trajectory safety
-    const target = findBestTarget();
-    if (target) {
-      const diff = target.x - playerCenter;
+    if (cachedBestTarget) {
+      const diff = cachedBestTarget.x - playerCenter;
       if (Math.abs(diff) > player.width * 0.35) {
         // Use the pre-computed trajectory to check if moving that direction is safe
         if (diff < 0 && player.x > 0 && leftResult.safe) {
@@ -2854,8 +2876,7 @@ function updateAutoPlay() {
 
   if (!isUnderWall) {
     // Offense-first: always shoot if there's anything worth shooting at
-    const target = findBestTarget();
-    if (target && target.score > 30) {
+    if (cachedBestTarget && cachedBestTarget.score > 30) {
       keys.Space = true;
       spaceKeyPressTime = Date.now();
     } else if (enemies.length > 0) {
