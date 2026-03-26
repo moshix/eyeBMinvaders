@@ -972,7 +972,7 @@ function detectCollisions() {
               missileBoomSound.currentTime = 0;
             }, 800);
           }
-          if (homingMissileHits % 5 === 0) {
+          if (homingMissileHits % 4 === 0) {
             score += 500; // bonus for every 4th missile shot down
             if (!isMuted) bonusSound.play(); // normal bonus sound
 
