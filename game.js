@@ -1,4 +1,4 @@
-://up to now just create functional game
+//up to now just create functional game
 // 0.01 humble beginnings
 // 0.01 - 1.00 just create functional game first
 // 1.1  time based animation 
