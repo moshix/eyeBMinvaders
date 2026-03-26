@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.9.4";  // version showing in index.html 
+const VERSION = "v5.9.5";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -2610,7 +2610,7 @@ function updateAutoPlay() {
       if (dist < player.width) score += 300; // Aligned with intercept point
       if (score > bestScore) {
         bestScore = score;
-        bestTarget = { x: interceptX, score };
+        bestTarget = { x: interceptX, score, altitude, type: 'kamikaze' };
       }
     });
 
@@ -2633,7 +2633,7 @@ function updateAutoPlay() {
       if (dist < player.width) score += 300;
       if (score > bestScore) {
         bestScore = score;
-        bestTarget = { x: interceptX, score };
+        bestTarget = { x: interceptX, score, altitude, type: 'missile' };
       }
     });
 
@@ -2786,7 +2786,11 @@ function updateAutoPlay() {
       // High-value target (kamikaze, missile, or monster) - check alignment
       const alignDist = Math.abs(cachedBestTarget.x - playerCenter);
       // Wider alignment tolerance for missiles/kamikazes - intercepting is worth it
-      const alignThreshold = cachedBestTarget.score >= 1200 ? player.width * 1.0 : player.width * 0.7;
+      // Even wider for high-altitude threats - we have time to course-correct
+      const isHighAlt = cachedBestTarget.altitude && cachedBestTarget.altitude > 0.4;
+      const alignThreshold = cachedBestTarget.score >= 1200
+        ? (isHighAlt ? player.width * 1.5 : player.width * 1.0)
+        : player.width * 0.7;
       if (alignDist < alignThreshold) {
         // We're aligned or close! How much time do we have before the nearest threat hits?
         let minTimeToHit = Infinity;
@@ -2860,6 +2864,21 @@ function updateAutoPlay() {
       }
     }
 
+    // INTERCEPT BIAS: When dodging, prefer dodging TOWARD a high-altitude
+    // kamikaze/missile if the danger is comparable. This way the dodge also
+    // lines us up for an intercept shot, turning defense into offense.
+    if (cachedBestTarget && cachedBestTarget.score >= 1200 &&
+        (cachedBestTarget.type === 'kamikaze' || cachedBestTarget.type === 'missile') &&
+        cachedBestTarget.altitude > 0.4) {
+      const interceptDir = cachedBestTarget.x < playerCenter ? -1 : 1;
+      const interceptResult = interceptDir === -1 ? leftResult : rightResult;
+      // If dodging toward the intercept is not much worse than the best dodge
+      // (within 80 danger score), prefer it for the strategic advantage
+      if (interceptResult.dangerScore < bestScore + 80) {
+        bestDir = interceptDir;
+      }
+    }
+
     if (bestDir === -1 && player.x > 0) {
       keys.ArrowLeft = true;
     } else if (bestDir === 1 && player.x < canvas.width - player.width) {
@@ -2872,11 +2891,24 @@ function updateAutoPlay() {
     if (cachedBestTarget) {
       const diff = cachedBestTarget.x - playerCenter;
       if (Math.abs(diff) > player.width * 0.35) {
-        // Use the pre-computed trajectory to check if moving that direction is safe
-        if (diff < 0 && player.x > 0 && leftResult.safe) {
-          keys.ArrowLeft = true;
-        } else if (diff > 0 && player.x < canvas.width - player.width && rightResult.safe) {
-          keys.ArrowRight = true;
+        // For high-altitude diving threats (kamikazes/missiles), be more aggressive
+        // about moving to intercept - accepting moderate danger to eliminate a threat
+        // that will be much harder to deal with later
+        const isHighAltitudeThreat = cachedBestTarget.score >= 1200 &&
+          (cachedBestTarget.type === 'kamikaze' || cachedBestTarget.type === 'missile') &&
+          cachedBestTarget.altitude > 0.4;
+        // Allow moving through moderate danger (dangerScore < 150) to intercept
+        // high-altitude threats - eliminating them early is a strategic win
+        const dangerThresholdForPursuit = isHighAltitudeThreat ? 150 : 0;
+
+        if (diff < 0 && player.x > 0) {
+          if (leftResult.safe || (isHighAltitudeThreat && leftResult.dangerScore < dangerThresholdForPursuit)) {
+            keys.ArrowLeft = true;
+          }
+        } else if (diff > 0 && player.x < canvas.width - player.width) {
+          if (rightResult.safe || (isHighAltitudeThreat && rightResult.dangerScore < dangerThresholdForPursuit)) {
+            keys.ArrowRight = true;
+          }
         }
         // If the direction toward target isn't safe, stay and shoot from here
       }
