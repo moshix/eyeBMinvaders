@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.9.3";  // version showing in index.html 
+const VERSION = "v5.9.4";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -2679,6 +2679,15 @@ function updateAutoPlay() {
       const bounceImminent = timeToBounce < 2.0;
       const bounceUrgency = bounceImminent ? Math.max(0, 1.0 - timeToBounce / 2.0) : 0;
 
+      // From level 4+, progressively prioritize eliminating the bottom row.
+      // The grid speeds up each level (1.33x) so the bottom row drops toward
+      // the walls faster — eliminating it is critical to survival.
+      const levelPressure = Math.max(0, currentLevel - 3); // 0 at levels 1-3, 1 at level 4, 2 at level 5, etc.
+      const bottomRowMinY = enemies.reduce((maxY, e) => Math.max(maxY, e.y + e.height), 0);
+      const distToWalls = wallY - bottomRowMinY;
+      // 0 = far from walls, 1 = touching walls
+      const wallProximity = Math.max(0, 1.0 - distToWalls / 200);
+
       enemies.forEach(enemy => {
         const enemyCenter = enemy.x + enemy.width / 2;
         const dist = Math.abs(enemyCenter - playerCenter);
@@ -2703,11 +2712,29 @@ function updateAutoPlay() {
         if (isBottomRow) score += 100;
         else if (isSecondRow) score += 50;
 
+        // Level 4+: progressively increase bottom-row priority.
+        // At higher levels the grid is much faster and eliminating the bottom row
+        // before it reaches the walls becomes a survival priority.
+        if (levelPressure > 0 && isBottomRow) {
+          // Scale with level: +150 at level 4, +300 at level 5, +450 at level 6, ...
+          score += 150 * levelPressure;
+          // Additional urgency as bottom row approaches walls
+          score += 300 * levelPressure * wallProximity;
+          // At high levels, widen the chase radius for bottom-row enemies
+          if (dist >= player.width * 1.5 && dist < player.width * 4) {
+            score += 60 * levelPressure * (1.0 - dist / (player.width * 4));
+          }
+        }
+        // Level 4+: second row becomes next priority once bottom row is thin
+        if (levelPressure > 0 && isSecondRow) {
+          score += 50 * levelPressure;
+          score += 100 * levelPressure * wallProximity;
+        }
+
         // Bounce urgency - only a small boost, and only for already-aligned enemies
         // Don't chase across the field just because a bounce is coming
         if (bounceImminent && isBottomRow && dist < player.width * 1.5) {
           score += 100 * bounceUrgency;
-          const distToWalls = wallY - (enemy.y + enemy.height);
           if (distToWalls < 60) {
             score += 100 * (1.0 - distToWalls / 60); // Only urgent when truly close
           }
