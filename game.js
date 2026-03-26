@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.9.0";  // version showing in index.html 
+const VERSION = "v5.9.1";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
