@@ -1,4 +1,4 @@
-//up to now just create functional game
+://up to now just create functional game
 // 0.01 humble beginnings
 // 0.01 - 1.00 just create functional game first
 // 1.1  time based animation 
@@ -188,7 +188,7 @@ const KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD = 11; // Second threshold in number of 
 let lifeGrant = false;
 const PLAYER_LIVES = 6;    // starting lives
 let bonusGrants = 0;       // start with no bonus
-const BONUS2LIVES = 6;     // every n bonuses, player gets one life
+const BONUS2LIVES = 5;     // every n bonuses, player gets one life
 const BULLET_SPEED = 300;  // Player bullet speed (pixels per second)
 const ENEMY_BULLET_SPEED = BULLET_SPEED / 3; // Enemy bullet speed (1/3 of player bullet speed)
 const HIT_MESSAGE_DURATION = 900;            // How long to show "HIT!" message in milliseconds
