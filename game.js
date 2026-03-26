@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.6.4g";  // version showing in index.html 
+const VERSION = "v5.7.0";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1434,7 +1434,7 @@ function gameLoop(currentTime) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Handle shooting
-  if (keys.Space && !isPlayerHit && !whilePlayerHit && !gamePaused &&
+  if (keys.Space && !isPlayerHit && !whilePlayerHit && !gamePaused && !gameOverFlag &&
     Date.now() - lastFireTime > currentFireRate * 1000) {
     
     // Create the bullet
@@ -2186,46 +2186,17 @@ lifeImage.onerror = () => {
 // is AI enabled?
 let autoPlayEnabled = false;
 
-// for AI logic
+// for AI logic - offense-first AI with gap navigation
 function updateAutoPlay() {
   if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
 
-  const threats = [];
   const playerCenter = player.x + player.width / 2;
+  const canvasCenter = canvas.width / 2;
+  const halfPlayer = player.width / 2;
+  const EDGE_MARGIN = 150;
+  const THREAT_LOOKAHEAD = 1.5; // seconds to look ahead for bullets
 
-  // Check for both falling bullets and horizontally nearby bullets for AI mode
-  function isUnderBullet(newX) {
-    return bullets.some(bullet => {
-      if (!bullet.isEnemyBullet) return false;
-
-      // Check falling bullets above
-      if (bullet.y < player.y) {
-        const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
-        if (timeToImpact > 0 && timeToImpact < 0.3) {
-          if (!willBulletHitWall(bullet, timeToImpact)) {
-            return Math.abs(bullet.x - newX) < player.width * 0.8;
-          }
-        }
-      }
-
-      // Check bullets at similar height
-      const heightDiff = Math.abs(bullet.y - player.y);
-      if (heightDiff < player.height * 1.5) {
-        // If moving right, check bullets to the right
-        if (newX > playerCenter) {
-          return bullet.x > playerCenter && bullet.x < newX + player.width;
-        }
-        // If moving left, check bullets to the left
-        else if (newX < playerCenter) {
-          return bullet.x < playerCenter && bullet.x > newX - player.width;
-        }
-      }
-
-      return false;
-    });
-  }
-
-  // Will bullet hit wall?
+  // Will bullet hit a wall before reaching player?
   function willBulletHitWall(bullet, timeToImpact) {
     const futureY = bullet.y + (ENEMY_BULLET_SPEED * timeToImpact);
     return walls.some(wall => {
@@ -2236,90 +2207,549 @@ function updateAutoPlay() {
     });
   }
 
-  // Collect threats
-  bullets.forEach(bullet => {
-    if (bullet.isEnemyBullet) {
-      const timeToImpact = (player.y - bullet.y) / ENEMY_BULLET_SPEED;
-      if (timeToImpact > 0 && timeToImpact < 1.0 && !willBulletHitWall(bullet, timeToImpact)) {
-        threats.push({
-          x: bullet.x,
-          y: bullet.y,
-          type: 'bullet',
-          timeToImpact: timeToImpact,
-          priority: timeToImpact < 0.5 ? 3 : 2
-        });
+  // Step-simulate a missile's position at time t, accounting for:
+  // - Curved sinusoidal trajectory (sin(time * 2) * 100)
+  // - Re-targeting toward player while above wall row
+  // - Locking angle once below wall row
+  function forecastMissile(missile, t, assumePlayerX) {
+    const wallRowY = walls.length > 0 ? walls[0].y - 50 : canvas.height * 0.85;
+    const dt = 0.05; // simulation step
+    let mx = missile.x, my = missile.y;
+    let mAngle = missile.angle;
+    let mTime = missile.time;
+
+    for (let elapsed = 0; elapsed < t; elapsed += dt) {
+      const step = Math.min(dt, t - elapsed);
+      mTime += step;
+
+      // Re-target toward player if above wall row
+      if (my < wallRowY) {
+        const dx = assumePlayerX - mx;
+        const dy = (player.y + player.height / 2) - my;
+        mAngle = Math.atan2(dy, dx);
       }
+
+      const curve = Math.sin(mTime * 2) * 100;
+      mx += Math.cos(mAngle) * MISSILE_SPEED * step;
+      my += Math.sin(mAngle) * MISSILE_SPEED * step;
+      mx += Math.cos(mAngle + Math.PI / 2) * curve * step;
     }
-  });
-
-  // Rest of threat collection remains the same
-  homingMissiles.forEach(missile => {
-    const dx = playerCenter - missile.x;
-    const dy = player.y - missile.y;
-    const distanceToPlayer = Math.sqrt(dx * dx + dy * dy);
-
-    if (distanceToPlayer < 200) {
-      threats.push({
-        x: missile.x,
-        y: missile.y,
-        type: 'missile',
-        priority: 3
-      });
-    }
-  });
-
-  const bottomRowY = Math.max(...enemies.map(e => e.y));
-  enemies.forEach(enemy => {
-    const isBottomRow = Math.abs(enemy.y - bottomRowY) < 20;
-    if (isBottomRow) {
-      threats.push({
-        x: enemy.x + enemy.width / 2,
-        y: enemy.y,
-        type: 'enemy',
-        priority: 1
-      });
-    }
-  });
-
-  if (monster && !monster.hit) {
-    threats.push({
-      x: monster.x + monster.width / 2,
-      y: monster.y + monster.height / 2,
-      type: 'monster',
-      priority: 4
-    });
+    return { x: mx, y: my };
   }
 
-  threats.sort((a, b) => b.priority - a.priority);
+  // Step-simulate a kamikaze's position at time t, accounting for:
+  // - Continuous re-homing toward player
+  // - Curved sinusoidal trajectory
+  function forecastKamikaze(kamikaze, t, assumePlayerX) {
+    const dt = 0.05;
+    let kx = kamikaze.x, ky = kamikaze.y;
+    let kAngle = kamikaze.angle;
+    let kTime = kamikaze.time;
+
+    for (let elapsed = 0; elapsed < t; elapsed += dt) {
+      const step = Math.min(dt, t - elapsed);
+      kTime += step;
+
+      // Kamikazes always re-target the player
+      const dx = assumePlayerX - kx;
+      const dy = (player.y + player.height / 2) - ky;
+      kAngle = Math.atan2(dy, dx);
+
+      const curve = Math.sin(kTime * 2) * 100;
+      kx += Math.cos(kAngle) * KAMIKAZE_SPEED * step;
+      ky += Math.sin(kAngle) * KAMIKAZE_SPEED * step;
+      kx += Math.cos(kAngle + Math.PI / 2) * curve * step;
+    }
+    return { x: kx, y: ky };
+  }
+
+  // Forecast all enemy positions at time t, assuming the player will be at assumePlayerX
+  // This accounts for re-targeting, curved trajectories, and bullet forecasting
+  function forecastEnemyPositions(t, assumePlayerX) {
+    if (assumePlayerX === undefined) assumePlayerX = playerCenter;
+    const positions = [];
+
+    // Forecast enemy bullets - straight down at ENEMY_BULLET_SPEED
+    bullets.forEach(bullet => {
+      if (!bullet.isEnemyBullet) return;
+      const futureY = bullet.y + ENEMY_BULLET_SPEED * t;
+      if (Math.abs(futureY - player.y) < player.height * 1.5) {
+        if (!willBulletHitWall(bullet, t)) {
+          positions.push({ x: bullet.x, y: futureY, radius: player.width * 0.6 });
+        }
+      }
+    });
+
+    // Forecast homing missiles with full simulation
+    homingMissiles.forEach(missile => {
+      const pos = forecastMissile(missile, t, assumePlayerX);
+      if (Math.abs(pos.y - player.y) < player.height * 3) {
+        positions.push({ x: pos.x, y: pos.y, radius: player.width * 0.7 });
+      }
+    });
+
+    // Forecast kamikazes with full simulation
+    kamikazeEnemies.forEach(kamikaze => {
+      const pos = forecastKamikaze(kamikaze, t, assumePlayerX);
+      if (Math.abs(pos.y - player.y) < player.height * 3) {
+        positions.push({ x: pos.x, y: pos.y, radius: player.width * 0.8 });
+      }
+    });
+
+    return positions;
+  }
+
+  // Simulate the player moving toward targetX and check if the PATH is safe
+  // Passes the player's simulated position to the forecast so re-targeting enemies
+  // (kamikazes, missiles above wall row) will aim at where the player WILL be
+  function isPathDangerous(targetX) {
+    const direction = targetX > playerCenter ? 1 : -1;
+    const totalDist = Math.abs(targetX - playerCenter);
+    const timeSteps = 10;
+    const totalTime = totalDist / PLAYER_SPEED;
+
+    for (let step = 1; step <= timeSteps; step++) {
+      const t = (step / timeSteps) * totalTime;
+      const simPlayerX = playerCenter + direction * PLAYER_SPEED * t;
+
+      // Forecast enemies assuming the player is at simPlayerX at time t
+      const enemyPositions = forecastEnemyPositions(t, simPlayerX);
+
+      for (const obj of enemyPositions) {
+        if (Math.abs(obj.x - simPlayerX) < obj.radius &&
+            Math.abs(obj.y - player.y) < player.height * 1.5) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Find safe positions considering the entire path, not just the destination
+  // Passes the candidate position to the forecast so homing enemies are simulated
+  // as if they're chasing the player at that position
+  function findSafePositions() {
+    const safePositions = [];
+    const hitWidth = player.width * 0.7;
+
+    for (let testX = halfPlayer + 10; testX < canvas.width - halfPlayer - 10; testX += 8) {
+      let destSafe = true;
+      const moveTime = Math.abs(testX - playerCenter) / PLAYER_SPEED;
+
+      // Check: will anything be at testX when we arrive and for a window after?
+      // Use testX as the assumed player position so homing enemies re-target correctly
+      for (let tOffset = -0.15; tOffset <= 0.3; tOffset += 0.05) {
+        const checkTime = Math.max(0, moveTime + tOffset);
+        const enemies_at_t = forecastEnemyPositions(checkTime, testX);
+        for (const obj of enemies_at_t) {
+          if (Math.abs(obj.x - testX) < hitWidth) {
+            destSafe = false;
+            break;
+          }
+        }
+        if (!destSafe) break;
+      }
+
+      if (destSafe) {
+        safePositions.push(testX);
+      }
+    }
+    return safePositions;
+  }
+
+  // Calculate danger at a position using the forecast system
+  // Simulates: "if the player were at position x, what would hit them over the next second?"
+  function dangerAtPosition(x) {
+    let danger = 0;
+
+    // Strong center gravity - quadratic pull
+    const distFromCenter = Math.abs(x - canvasCenter) / canvasCenter;
+    danger += distFromCenter * distFromCenter * 60;
+
+    // Hard edge penalty
+    if (x < EDGE_MARGIN) {
+      danger += (EDGE_MARGIN - x) * 6;
+    } else if (x > canvas.width - EDGE_MARGIN) {
+      danger += (x - (canvas.width - EDGE_MARGIN)) * 6;
+    }
+
+    // Enemy column density: count how many enemies are stacked above this position
+    // More enemies above = more bullets raining down = more dangerous
+    let enemiesAbove = 0;
+    enemies.forEach(enemy => {
+      const enemyCenter = enemy.x + enemy.width / 2;
+      // Enemy is "above" if within roughly 1.5 enemy widths horizontally
+      if (Math.abs(enemyCenter - x) < (enemy.width * 1.5)) {
+        enemiesAbove++;
+      }
+    });
+    // Each enemy above adds danger - scales quadratically so dense columns are much worse
+    danger += enemiesAbove * enemiesAbove * 5;
+
+    // How long would it take the player to reach x from current position?
+    const moveTime = Math.abs(x - playerCenter) / PLAYER_SPEED;
+    const moveDir = x > playerCenter ? 1 : -1;
+
+    // Check all enemy objects at multiple future times
+    // Pass x as the assumed player position so homing enemies forecast correctly
+    const wallY = walls.length > 0 ? walls[0].y : canvas.height - 75;
+    for (const t of [0, 0.1, 0.2, 0.35, 0.5, 0.7, 1.0]) {
+      const enemiesAtT = forecastEnemyPositions(t, x);
+      const timeUrgency = Math.max(0, 1.0 - t / 1.2);
+
+      for (const obj of enemiesAtT) {
+        const horizDist = Math.abs(obj.x - x);
+        if (horizDist < obj.radius * 1.5) {
+          const proximity = Math.max(0, 1.0 - horizDist / (obj.radius * 1.5));
+          danger += 200 * proximity * (0.4 + timeUrgency * 0.6);
+        }
+      }
+    }
+
+    // PATH DANGER: check if moving from current position to x crosses any enemy object
+    // Simulate the player sliding from playerCenter to x, passing simulated player
+    // position so homing enemies re-target at where the player would actually be
+    if (moveTime > 0.01) {
+      const pathSteps = Math.max(4, Math.ceil(moveTime * 20));
+      for (let step = 1; step <= pathSteps; step++) {
+        const t = (step / pathSteps) * moveTime;
+        const simX = playerCenter + moveDir * PLAYER_SPEED * t;
+        const enemiesAtT = forecastEnemyPositions(t, simX);
+
+        for (const obj of enemiesAtT) {
+          if (Math.abs(obj.x - simX) < obj.radius) {
+            danger += 300;
+          }
+        }
+      }
+    }
+
+    return danger;
+  }
+
+  // Calculate the intercept x position - where to aim so the bullet meets the target
+  // bulletTime = time for bullet to travel from player to target's y position
+  function getInterceptX(targetX, targetY, forecastFunc, forecastArg) {
+    if (targetY >= player.y) return targetX; // below player, no intercept
+    const bulletTime = (player.y - targetY) / BULLET_SPEED;
+    if (forecastFunc && bulletTime > 0.02) {
+      // Use the forecast simulation to predict where the target will be
+      const futurePos = forecastFunc(forecastArg, bulletTime, playerCenter);
+      return futurePos.x;
+    }
+    return targetX;
+  }
+
+  // For the monster: predict its position at bulletTime
+  function forecastMonsterX(bulletTime) {
+    if (!monster || monster.hit) return 0;
+    if (monster.isSlaloming) {
+      const futureSlalomTime = monster.slalomTime + bulletTime;
+      return canvas.width / 2 + Math.sin(futureSlalomTime * 1.2) * MONSTER_SLALOM_AMPLITUDE;
+    } else {
+      return monster.x + MONSTER_SPEED * monsterDirection * bulletTime + monster.width / 2;
+    }
+  }
+
+  // Find the highest-priority target to shoot - with lead aiming
+  // Targets return the INTERCEPT x position, not the current position
+  function findBestTarget() {
+    let bestTarget = null;
+    let bestScore = -Infinity;
+
+    // HIGHEST PRIORITY: Kamikazes - lead the target!
+    const wallY = walls.length > 0 ? walls[0].y : canvas.height - 75;
+    kamikazeEnemies.forEach(kamikaze => {
+      const kamikazeCenter = kamikaze.x + kamikaze.width / 2;
+      const isLow = kamikaze.y >= wallY - 40;
+
+      // Calculate where kamikaze will be when bullet arrives
+      const bulletTime = Math.max(0, (player.y - kamikaze.y)) / BULLET_SPEED;
+      const futurePos = forecastKamikaze(kamikaze, bulletTime, playerCenter);
+      const interceptX = futurePos.x + kamikaze.width / 2;
+      const dist = Math.abs(interceptX - playerCenter);
+
+      let score = 1500 - dist * 0.8;
+      if (isLow) score += 400;
+      if (dist < player.width) score += 300; // Aligned with intercept point
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = { x: interceptX, score };
+      }
+    });
+
+    // HIGH PRIORITY: Homing missiles - lead the target!
+    homingMissiles.forEach(missile => {
+      if (missile.y >= player.y + player.height) return;
+      const isLow = missile.y >= wallY - 40;
+
+      // Calculate where missile will be when bullet arrives
+      const bulletTime = Math.max(0, (player.y - missile.y)) / BULLET_SPEED;
+      const futurePos = forecastMissile(missile, bulletTime, playerCenter);
+      const interceptX = futurePos.x;
+      const dist = Math.abs(interceptX - playerCenter);
+
+      let score = 1300 - dist * 0.8;
+      if (isLow) score += 400;
+      if (dist < player.width) score += 300;
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = { x: interceptX, score };
+      }
+    });
+
+    // HIGH PRIORITY: Monster - lead based on movement mode
+    if (monster && !monster.hit) {
+      const bulletTime = Math.max(0, (player.y - (monster.y + monster.height / 2))) / BULLET_SPEED;
+      const interceptX = forecastMonsterX(bulletTime);
+      const dist = Math.abs(interceptX - playerCenter);
+
+      let score = 900 - dist * 0.5;
+      if (dist < player.width) score += 200;
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = { x: interceptX, score };
+      }
+    }
+
+    // IMPORTANT: Thinning out enemy rows - fewer enemies = fewer bullets, fewer kamikazes
+    // When no active kamikazes/missiles, this becomes top priority
+    const hasActiveThreats = kamikazeEnemies.length > 0 || homingMissiles.length > 0 || (monster && !monster.hit);
+    if (enemies.length > 0) {
+      // Sort enemies into rows by y position
+      const rowYs = [...new Set(enemies.map(e => Math.round(e.y / 20) * 20))].sort((a, b) => b - a);
+      const bottomRowY = rowYs[0] || 0;
+      const secondRowY = rowYs[1] || 0;
+
+      // Predict grid bounce: how soon will the grid reverse direction and drop 20px?
+      // Find the leading edge of the grid in the direction it's moving
+      let pixelsToWall = Infinity;
+      if (enemyDirection === 1) {
+        // Moving right - find the rightmost enemy
+        const rightmostX = Math.max(...enemies.map(e => e.x + e.width));
+        pixelsToWall = canvas.width - rightmostX;
+      } else {
+        // Moving left - find the leftmost enemy
+        const leftmostX = Math.min(...enemies.map(e => e.x));
+        pixelsToWall = leftmostX;
+      }
+      const gridSpeed = ENEMY_SPEED * enemySpeed; // pixels per second
+      const timeToBounce = gridSpeed > 0 ? pixelsToWall / gridSpeed : Infinity;
+      // Bounce is imminent if less than 2 seconds away
+      // After bounce, bottom row drops 20px closer to player/walls
+      const bounceImminent = timeToBounce < 2.0;
+      const bounceUrgency = bounceImminent ? Math.max(0, 1.0 - timeToBounce / 2.0) : 0;
+
+      enemies.forEach(enemy => {
+        const enemyCenter = enemy.x + enemy.width / 2;
+        const dist = Math.abs(enemyCenter - playerCenter);
+        const enemyRow = Math.round(enemy.y / 20) * 20;
+        const isBottomRow = enemyRow === bottomRowY;
+        const isSecondRow = enemyRow === secondRowY;
+
+        // Base score: when no active threats, aggressively hunt enemies
+        let score = hasActiveThreats ? 50 : 400;
+
+        // Alignment bonus - well-aligned enemies are easy kills
+        if (dist < player.width * 0.7) {
+          score += hasActiveThreats ? 250 : 500; // Much higher when hunting
+        } else if (dist < player.width * 2) {
+          score += 150 - dist * 0.3;
+        } else {
+          score -= dist * 0.05; // Still worth chasing
+        }
+
+        // Row bonuses - bottom rows are the source of all problems
+        if (isBottomRow) score += 200;
+        else if (isSecondRow) score += 100;
+
+        // BOUNCE URGENCY: when grid is about to reverse and drop, bottom row enemies
+        // become critical - each bounce brings them 20px closer to game over
+        // Also the closer the bottom row is to the walls/player, the more urgent
+        if (bounceImminent && isBottomRow) {
+          score += 300 * bounceUrgency; // Up to +300 right before bounce
+          // Extra urgency if bottom row is already dangerously low
+          const distToWalls = wallY - (enemy.y + enemy.height);
+          if (distToWalls < 80) {
+            score += 200 * (1.0 - distToWalls / 80); // Approaching game-over zone
+          }
+        }
+        if (bounceImminent && isSecondRow) {
+          score += 150 * bounceUrgency; // Second row also gets a boost
+        }
+
+        // More enemies = more urgency to thin them out
+        score += enemies.length * 2;
+
+        // Prefer enemies closer to player (higher y = closer = more dangerous)
+        score += enemy.y * 0.2;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestTarget = { x: enemyCenter, score };
+        }
+      });
+    }
+
+    return bestTarget;
+  }
 
   // Reset controls
   keys.ArrowLeft = false;
   keys.ArrowRight = false;
   keys.Space = false;
 
-  if (threats.length > 0) {
-    const dangerousThreats = threats.filter(t =>
-      (t.type === 'bullet' && t.timeToImpact < 0.5 && Math.abs(t.x - playerCenter) < 50) ||
-      (t.type === 'missile' && Math.abs(t.x - playerCenter) < 60)
-    );
+  // Gather threats using the forecast system
+  const safePositions = findSafePositions();
+  const currentDanger = dangerAtPosition(playerCenter);
+  const stepSize = PLAYER_SPEED / 25;
 
-    if (dangerousThreats.length > 0) {
-      // Dodge mode
-      const threat = dangerousThreats[0];
-      const moveLeft = threat.x > playerCenter;
-      const newPos = moveLeft ?
-        playerCenter - PLAYER_SPEED / 30 :
-        playerCenter + PLAYER_SPEED / 30;
+  // Check immediate danger: anything hitting us at t=0, 0.1, or 0.2?
+  const DANGER_THRESHOLD = 35;
+  let immediatelyDangerous = false;
+  for (const t of [0, 0.1, 0.2]) {
+    const objectsNow = forecastEnemyPositions(t, playerCenter);
+    for (const obj of objectsNow) {
+      if (Math.abs(obj.x - playerCenter) < obj.radius && Math.abs(obj.y - player.y) < player.height * 1.5) {
+        immediatelyDangerous = true;
+        break;
+      }
+    }
+    if (immediatelyDangerous) break;
+  }
 
-      // Check movement safety
-      const movementSafe = !isUnderBullet(newPos);
+  // --- HOLD-AND-SHOOT DECISION ---
+  // Before dodging, check: are we about to kill a high-value target?
+  // If nearly aligned with a kamikaze/missile and the threat gives us enough time,
+  // it's better to hold position and fire than to dodge away and let it live.
+  let holdAndShoot = false;
+  if (immediatelyDangerous || currentDanger > DANGER_THRESHOLD) {
+    const target = findBestTarget();
+    if (target && target.score >= 1000) {
+      // High-value target (kamikaze or missile) - check alignment
+      const alignDist = Math.abs(target.x - playerCenter);
+      if (alignDist < player.width * 0.6) {
+        // We're aligned! How much time do we have before the nearest threat hits?
+        let minTimeToHit = Infinity;
+        for (const t of [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]) {
+          const objectsAtT = forecastEnemyPositions(t, playerCenter);
+          for (const obj of objectsAtT) {
+            if (Math.abs(obj.x - playerCenter) < obj.radius &&
+                Math.abs(obj.y - player.y) < player.height * 1.5) {
+              minTimeToHit = Math.min(minTimeToHit, t);
+            }
+          }
+          if (minTimeToHit < Infinity) break;
+        }
 
-      if (movementSafe) {
-        if (moveLeft && player.x > 0) {
+        // If we have at least 0.15s before impact, hold and shoot
+        // Our bullets travel at 300px/s, so even 0.15s covers 45px upward
+        if (minTimeToHit >= 0.15) {
+          holdAndShoot = true;
+        }
+      }
+    }
+  }
+
+  // --- MOVEMENT DECISION ---
+  if ((immediatelyDangerous || currentDanger > DANGER_THRESHOLD) && !holdAndShoot) {
+    // DODGE MODE: find safest reachable position with a safe PATH to get there
+    let bestPos = playerCenter;
+    let bestCost = Infinity;
+
+    if (safePositions.length > 0) {
+      for (const gapX of safePositions) {
+        const moveDist = Math.abs(gapX - playerCenter);
+        const centerDist = Math.abs(gapX - canvasCenter);
+        // Check if the PATH to this position is safe, not just the destination
+        const pathSafe = !isPathDangerous(gapX);
+        const pathPenalty = pathSafe ? 0 : 800;
+        const posDanger = dangerAtPosition(gapX);
+        const cost = posDanger * 2 + centerDist * 0.3 + moveDist * 0.15 + pathPenalty;
+        if (cost < bestCost) {
+          bestCost = cost;
+          bestPos = gapX;
+        }
+      }
+    } else {
+      // No fully safe positions - find least dangerous with safe path
+      for (let testX = halfPlayer + 20; testX < canvas.width - halfPlayer - 20; testX += 12) {
+        const d = dangerAtPosition(testX);
+        const centerDist = Math.abs(testX - canvasCenter);
+        const pathSafe = !isPathDangerous(testX);
+        const pathPenalty = pathSafe ? 0 : 600;
+        const cost = d * 2 + centerDist * 0.3 + pathPenalty;
+        if (cost < bestCost) {
+          bestCost = cost;
+          bestPos = testX;
+        }
+      }
+    }
+
+    // Move toward best position
+    const diff = bestPos - playerCenter;
+    if (Math.abs(diff) > 5) {
+      if (diff < 0 && player.x > 0) {
+        keys.ArrowLeft = true;
+      } else if (diff > 0 && player.x < canvas.width - player.width) {
+        keys.ArrowRight = true;
+      }
+    }
+  } else {
+    // OFFENSE MODE: hunt targets, but always check path safety before moving
+    const target = findBestTarget();
+    if (target) {
+      const diff = target.x - playerCenter;
+      if (Math.abs(diff) > player.width * 0.35) {
+        const leftDanger = dangerAtPosition(playerCenter - stepSize);
+        const rightDanger = dangerAtPosition(playerCenter + stepSize);
+        // Only move if the immediate next step is safe
+        if (diff < 0 && player.x > 0 && leftDanger < DANGER_THRESHOLD) {
           keys.ArrowLeft = true;
-        } else if (!moveLeft && player.x < canvas.width - player.width) {
+        } else if (diff > 0 && player.x < canvas.width - player.width && rightDanger < DANGER_THRESHOLD) {
           keys.ArrowRight = true;
         }
+      }
+    }
+
+    // Drift toward center when idle, but check path safety
+    if (!keys.ArrowLeft && !keys.ArrowRight) {
+      const centerDiff = canvasCenter - playerCenter;
+      if (Math.abs(centerDiff) > canvas.width * 0.15) {
+        const driftTarget = playerCenter + (centerDiff > 0 ? stepSize : -stepSize);
+        const driftDanger = dangerAtPosition(driftTarget);
+        if (driftDanger < DANGER_THRESHOLD) {
+          if (centerDiff > 0) {
+            keys.ArrowRight = true;
+          } else {
+            keys.ArrowLeft = true;
+          }
+        }
+      }
+    }
+  }
+
+  // --- SHOOTING DECISION ---
+  // Don't shoot if a wall is directly above us
+  const isUnderWall = walls.some(wall =>
+    playerCenter >= wall.x - 5 && playerCenter <= wall.x + wall.width + 5
+  );
+
+  if (!isUnderWall) {
+    // Offense-first: always shoot if there's anything worth shooting at
+    const target = findBestTarget();
+    if (target && target.score > 30) {
+      keys.Space = true;
+      spaceKeyPressTime = Date.now();
+    } else if (enemies.length > 0) {
+      // Even without a great target, shoot if any enemy is vaguely above
+      const hasAnythingAbove = enemies.some(e => {
+        const enemyCenter = e.x + e.width / 2;
+        return Math.abs(enemyCenter - playerCenter) < player.width * 2;
+      });
+      if (hasAnythingAbove) {
+        keys.Space = true;
+        spaceKeyPressTime = Date.now();
       }
     }
   }
