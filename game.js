@@ -86,7 +86,7 @@
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
 
-const VERSION = "v5.8.0";  // version showing in index.html 
+const VERSION = "v5.9.0";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -2436,12 +2436,12 @@ function updateAutoPlay() {
     if (simPlayerX < EDGE_MARGIN) dangerScore += (EDGE_MARGIN - simPlayerX) * 5;
     if (simPlayerX > canvas.width - EDGE_MARGIN) dangerScore += (simPlayerX - (canvas.width - EDGE_MARGIN)) * 5;
 
-    // Enemy column density at final position
+    // Light enemy column density penalty at final position
     let enemiesAbove = 0;
     enemies.forEach(enemy => {
       if (Math.abs((enemy.x + enemy.width / 2) - simPlayerX) < enemy.width * 1.5) enemiesAbove++;
     });
-    dangerScore += enemiesAbove * enemiesAbove * 3;
+    dangerScore += enemiesAbove * 2;
 
     return { safe, dangerScore, firstCollisionTime, finalX: simPlayerX };
   }
@@ -2487,18 +2487,16 @@ function updateAutoPlay() {
       danger += (x - (canvas.width - EDGE_MARGIN)) * 8;
     }
 
-    // Enemy column density: count how many enemies are stacked above this position
-    // More enemies above = more bullets raining down = more dangerous
+    // Enemy column density: light penalty for being under dense columns
+    // Keep this small - staying center is more important than avoiding columns
     let enemiesAbove = 0;
     enemies.forEach(enemy => {
       const enemyCenter = enemy.x + enemy.width / 2;
-      // Enemy is "above" if within roughly 1.5 enemy widths horizontally
       if (Math.abs(enemyCenter - x) < (enemy.width * 1.5)) {
         enemiesAbove++;
       }
     });
-    // Each enemy above adds danger - scales quadratically so dense columns are much worse
-    danger += enemiesAbove * enemiesAbove * 5;
+    danger += enemiesAbove * 2;
 
     // How long would it take the player to reach x from current position?
     const moveTime = Math.abs(x - playerCenter) / PLAYER_SPEED;
@@ -2667,42 +2665,35 @@ function updateAutoPlay() {
         const isBottomRow = enemyRow === bottomRowY;
         const isSecondRow = enemyRow === secondRowY;
 
-        // Base score: when no active threats, aggressively hunt enemies
-        let score = hasActiveThreats ? 50 : 400;
+        // Base score: shoot enemies that are already aligned, don't chase the grid
+        // The grid moves to us - we don't need to chase it across the field
+        let score = hasActiveThreats ? 30 : 200;
 
-        // Alignment bonus - well-aligned enemies are easy kills
+        // Strong alignment bonus - shoot what's in front of us NOW
+        // But don't give high scores to far-away enemies (that causes chasing)
         if (dist < player.width * 0.7) {
-          score += hasActiveThreats ? 250 : 500; // Much higher when hunting
-        } else if (dist < player.width * 2) {
-          score += 150 - dist * 0.3;
-        } else {
-          score -= dist * 0.05; // Still worth chasing
+          score += hasActiveThreats ? 200 : 400; // Well aligned - easy kill
+        } else if (dist < player.width * 1.5) {
+          score += 80 - dist * 0.2; // Close enough to adjust slightly
         }
+        // Don't chase far-away enemies - let the grid come to us
 
-        // Row bonuses - bottom rows are the source of all problems
-        if (isBottomRow) score += 200;
-        else if (isSecondRow) score += 100;
+        // Row bonuses - moderate, don't override staying center
+        if (isBottomRow) score += 100;
+        else if (isSecondRow) score += 50;
 
-        // BOUNCE URGENCY: when grid is about to reverse and drop, bottom row enemies
-        // become critical - each bounce brings them 20px closer to game over
-        // Also the closer the bottom row is to the walls/player, the more urgent
-        if (bounceImminent && isBottomRow) {
-          score += 300 * bounceUrgency; // Up to +300 right before bounce
-          // Extra urgency if bottom row is already dangerously low
+        // Bounce urgency - only a small boost, and only for already-aligned enemies
+        // Don't chase across the field just because a bounce is coming
+        if (bounceImminent && isBottomRow && dist < player.width * 1.5) {
+          score += 100 * bounceUrgency;
           const distToWalls = wallY - (enemy.y + enemy.height);
-          if (distToWalls < 80) {
-            score += 200 * (1.0 - distToWalls / 80); // Approaching game-over zone
+          if (distToWalls < 60) {
+            score += 100 * (1.0 - distToWalls / 60); // Only urgent when truly close
           }
         }
-        if (bounceImminent && isSecondRow) {
-          score += 150 * bounceUrgency; // Second row also gets a boost
-        }
 
-        // More enemies = more urgency to thin them out
-        score += enemies.length * 2;
-
-        // Prefer enemies closer to player (higher y = closer = more dangerous)
-        score += enemy.y * 0.2;
+        // Prefer enemies closer to player (higher y = closer)
+        score += enemy.y * 0.1;
 
         if (score > bestScore) {
           bestScore = score;
