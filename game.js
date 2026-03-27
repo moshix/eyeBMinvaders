@@ -85,8 +85,10 @@
 // 5.4   make a bit more playable and more monster2 patterns
 // 5.5   code cleanup 
 // 5.6   put enemy explosions back in, change points system a bit, code cleanup         
+// 5.6 - 5.94 herustic AI mode
+// 6.0   neural network inference engine AI mode
 
-const VERSION = "v5.9.5";  // version showing in index.html 
+const VERSION = "v6.0.1";  // version showing in index.html 
 
 // keep right after the VERSION constant
 if (document.getElementById('version-info')) {
@@ -1623,6 +1625,8 @@ document.addEventListener("keydown", (e) => {
     keys.ArrowLeft = false;
     keys.ArrowRight = false;
     keys.Space = false;
+    // Load DQN model when AI is enabled
+    if (autoPlayEnabled) loadDQNModel();
   }
   //if (e.code === "F10") {player.lives++}
   //if (e.code === "F9")  {player.lives--}
@@ -2186,9 +2190,231 @@ lifeImage.onerror = () => {
 // is AI enabled?
 let autoPlayEnabled = false;
 
+// =============================================================================
+// DQN Neural Network AI (loaded from trained model)
+// =============================================================================
+let dqnModel = null;       // loaded model weights
+let dqnModelLoading = false;
+let dqnModelTimestamp = 0;  // last modified time of the JSON file
+
+// Attempt to load/reload model weights from models/model_weights.json
+async function loadDQNModel() {
+  if (dqnModelLoading) return;
+  dqnModelLoading = true;
+  try {
+    const resp = await fetch('models/model_weights.json?t=' + Date.now());
+    if (!resp.ok) { dqnModelLoading = false; return; }
+    const data = await resp.json();
+    dqnModel = data;
+    console.log('DQN model loaded, architecture:', data.architecture);
+  } catch (e) {
+    // Model file not available yet — that's fine, will retry later
+  }
+  dqnModelLoading = false;
+}
+
+// Periodically try to reload the model (every 30s) so we pick up new checkpoints
+setInterval(() => {
+  if (autoPlayEnabled) loadDQNModel();
+}, 30000);
+
+// Forward pass through the DQN network: [23] -> 256 -> 256 -> 128 -> [6]
+function dqnForward(state) {
+  if (!dqnModel) return null;
+  const w = dqnModel.weights;
+  let x = state;
+
+  // Layer names from PyTorch Sequential: net.0, net.2, net.4, net.6
+  const layers = [
+    { w: 'net.0.weight', b: 'net.0.bias', relu: true },
+    { w: 'net.2.weight', b: 'net.2.bias', relu: true },
+    { w: 'net.4.weight', b: 'net.4.bias', relu: true },
+    { w: 'net.6.weight', b: 'net.6.bias', relu: false },
+  ];
+
+  for (const layer of layers) {
+    const weight = w[layer.w]; // shape [out, in]
+    const bias = w[layer.b];   // shape [out]
+    const out = new Array(weight.length);
+    for (let i = 0; i < weight.length; i++) {
+      let sum = bias[i];
+      const row = weight[i];
+      for (let j = 0; j < row.length; j++) {
+        sum += row[j] * x[j];
+      }
+      out[i] = layer.relu ? Math.max(0, sum) : sum;
+    }
+    x = out;
+  }
+  return x; // Q-values for 6 actions
+}
+
+// Build the 23-feature state vector matching train.py's _get_state()
+function buildDQNState() {
+  const playerCx = player.x + player.width / 2;
+  const playerCy = player.y + player.height / 2;
+  const nx = v => v / GAME_WIDTH;
+  const ny = v => v / GAME_HEIGHT;
+
+  const features = [];
+
+  // 1. Player position
+  features.push(nx(playerCx));
+
+  // 2. Player lives
+  features.push(player.lives / PLAYER_LIVES);
+
+  // 3. Level
+  features.push(Math.min(currentLevel, 10) / 10.0);
+
+  // 4. Number of enemies
+  features.push(Math.min(enemies.length, 60) / 60.0);
+
+  // 5-6. Nearest enemy relative position
+  if (enemies.length > 0) {
+    let nearest = enemies[0], nearestDist = Infinity;
+    for (const e of enemies) {
+      const d = Math.abs(e.x + e.width / 2 - playerCx);
+      if (d < nearestDist) { nearestDist = d; nearest = e; }
+    }
+    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
+    features.push(ny(nearest.y + nearest.height / 2 - playerCy));
+  } else {
+    features.push(0.0, -1.0);
+  }
+
+  // 7-8. Lowest enemy position
+  if (enemies.length > 0) {
+    let lowest = enemies[0];
+    for (const e of enemies) { if (e.y > lowest.y) lowest = e; }
+    features.push(nx(lowest.x + lowest.width / 2 - playerCx));
+    features.push(ny(lowest.y));
+  } else {
+    features.push(0.0, 0.0);
+  }
+
+  // 9-11. Nearest enemy bullet
+  const enemyBullets = bullets.filter(b => b.isEnemyBullet);
+  if (enemyBullets.length > 0) {
+    let nearest = enemyBullets[0], nearestDist = Infinity;
+    for (const b of enemyBullets) {
+      const d = (b.x - playerCx) ** 2 + (b.y - playerCy) ** 2;
+      if (d < nearestDist) { nearestDist = d; nearest = b; }
+    }
+    features.push(nx(nearest.x - playerCx));
+    features.push(ny(nearest.y - playerCy));
+    features.push(enemyBullets.length / 10.0);
+  } else {
+    features.push(0.0, -1.0, 0.0);
+  }
+
+  // 12-14. Nearest homing missile
+  if (homingMissiles.length > 0) {
+    let nearest = homingMissiles[0], nearestDist = Infinity;
+    for (const m of homingMissiles) {
+      const d = (m.x - playerCx) ** 2 + (m.y - playerCy) ** 2;
+      if (d < nearestDist) { nearestDist = d; nearest = m; }
+    }
+    features.push(nx(nearest.x - playerCx));
+    features.push(ny(nearest.y - playerCy));
+    features.push(homingMissiles.length / 5.0);
+  } else {
+    features.push(0.0, -1.0, 0.0);
+  }
+
+  // 15-17. Nearest kamikaze
+  if (kamikazeEnemies.length > 0) {
+    let nearest = kamikazeEnemies[0], nearestDist = Infinity;
+    for (const k of kamikazeEnemies) {
+      const d = (k.x + k.width / 2 - playerCx) ** 2 + (k.y + k.height / 2 - playerCy) ** 2;
+      if (d < nearestDist) { nearestDist = d; nearest = k; }
+    }
+    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
+    features.push(ny(nearest.y + nearest.height / 2 - playerCy));
+    features.push(kamikazeEnemies.length / 5.0);
+  } else {
+    features.push(0.0, -1.0, 0.0);
+  }
+
+  // 18-19. Monster info
+  if (monster && !monster.hit) {
+    features.push(nx(monster.x + MONSTER_WIDTH / 2 - playerCx));
+    features.push(ny(monster.y));
+  } else {
+    features.push(0.0, -1.0);
+  }
+
+  // 20. Is player invulnerable
+  features.push(isPlayerHit ? 1.0 : 0.0);
+
+  // 21. Number of walls remaining
+  features.push(walls.length / 4.0);
+
+  // 22-23. Nearest wall relative position
+  // 24. Nearest wall health (only for 24-feature models)
+  if (walls.length > 0) {
+    let nearest = walls[0], nearestDist = Infinity;
+    for (const w of walls) {
+      const d = Math.abs(w.x + w.width / 2 - playerCx);
+      if (d < nearestDist) { nearestDist = d; nearest = w; }
+    }
+    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
+    features.push(ny(nearest.y - playerCy));
+    if (dqnModel && dqnModel.architecture[0] >= 24) {
+      features.push(1.0 - (nearest.hitCount || 0) / WALL_MAX_HITS_TOTAL);
+    }
+  } else {
+    features.push(0.0, 0.0);
+    if (dqnModel && dqnModel.architecture[0] >= 24) {
+      features.push(0.0);
+    }
+  }
+
+  return features;
+}
+
+// Apply DQN action: 0=stay, 1=left, 2=right, 3=shoot, 4=left+shoot, 5=right+shoot
+function applyDQNAction(action) {
+  keys.ArrowLeft = false;
+  keys.ArrowRight = false;
+  keys.Space = false;
+
+  const moveLeft = action === 1 || action === 4;
+  const moveRight = action === 2 || action === 5;
+  const shoot = action === 3 || action === 4 || action === 5;
+
+  if (moveLeft) keys.ArrowLeft = true;
+  if (moveRight) keys.ArrowRight = true;
+  if (shoot) {
+    keys.Space = true;
+    spaceKeyPressTime = Date.now();
+  }
+}
+
+// Main DQN update — returns true if DQN handled it, false to fall back to heuristic
+function updateDQN() {
+  if (!dqnModel) return false;
+
+  const state = buildDQNState();
+  const qValues = dqnForward(state);
+  if (!qValues) return false;
+
+  // Pick action with highest Q-value (greedy)
+  let bestAction = 0, bestQ = -Infinity;
+  for (let i = 0; i < qValues.length; i++) {
+    if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
+  }
+
+  applyDQNAction(bestAction);
+  return true;
+}
+
 // for AI logic - offense-first AI with gap navigation
 function updateAutoPlay() {
   if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
+
+  // Try DQN neural network first; fall back to heuristic AI if model not loaded
+  if (updateDQN()) return;
 
   const playerCenter = player.x + player.width / 2;
   const canvasCenter = canvas.width / 2;
@@ -2955,10 +3181,15 @@ function updateAutoPlay() {
 function drawAIStatus() {
   if (autoPlayEnabled) {
     ctx.save();
-    ctx.fillStyle = '#39FF14'; // Bright green color
     ctx.font = '19px Arial';
     ctx.textAlign = 'right';
-    ctx.fillText('AI ACTIVE', canvas.width - 10, 20);
+    if (dqnModel) {
+      ctx.fillStyle = '#00BFFF'; // Cyan for neural network
+      ctx.fillText('DQN AI', canvas.width - 10, 20);
+    } else {
+      ctx.fillStyle = '#39FF14'; // Green for heuristic
+      ctx.fillText('AI ACTIVE', canvas.width - 10, 20);
+    }
     ctx.restore();
   }
 }
