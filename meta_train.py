@@ -145,7 +145,8 @@ def log_meta_event(save_dir: str, event: dict):
 # =============================================================================
 def meta_train(total_episodes=500_000, save_dir="models", device=None,
                num_envs=NUM_ENVS, resume_path=None, resume_meta=False,
-               max_cycles=50):
+               max_cycles=50, batch_size_override=None, hidden_sizes_override=None,
+               auto_scale=True):
     os.makedirs(save_dir, exist_ok=True)
 
     # Load or create meta state
@@ -167,6 +168,10 @@ def meta_train(total_episodes=500_000, save_dir="models", device=None,
         }
 
     base_config = TrainingConfig.from_dict(meta["base_config"])
+    if batch_size_override:
+        base_config.batch_size = batch_size_override
+    if hidden_sizes_override:
+        base_config.hidden_sizes = hidden_sizes_override
     cycle_num = meta["current_cycle"]
 
     print("=" * 70)
@@ -244,6 +249,7 @@ def meta_train(total_episodes=500_000, save_dir="models", device=None,
             plateau_detector=detector,
             cycle=cycle_num,
             flush_buffer=flush_buffer,
+            auto_scale=auto_scale,
         )
 
         # Evaluate cycle
@@ -351,6 +357,12 @@ if __name__ == "__main__":
                         help=f"Number of parallel environments (default: {NUM_ENVS})")
     parser.add_argument("--max-cycles", type=int, default=50,
                         help="Maximum number of cycles (default: 50)")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Batch size for training (default: auto-scaled by GPU)")
+    parser.add_argument("--hidden-sizes", type=str, default=None,
+                        help="Network hidden layer sizes, comma-separated (default: 256,256,128)")
+    parser.add_argument("--no-auto-scale", action="store_true",
+                        help="Disable GPU auto-scaling of batch size and num_envs")
     args = parser.parse_args()
 
     meta_train(
@@ -361,4 +373,7 @@ if __name__ == "__main__":
         resume_path=args.resume,
         resume_meta=args.resume_meta,
         max_cycles=args.max_cycles,
+        batch_size_override=args.batch_size,
+        hidden_sizes_override=[int(x) for x in args.hidden_sizes.split(",")] if args.hidden_sizes else None,
+        auto_scale=not args.no_auto_scale,
     )

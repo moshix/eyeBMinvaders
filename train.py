@@ -1241,17 +1241,18 @@ class HeadlessGame:
 # =============================================================================
 if HAS_TORCH:
     class DQN(nn.Module):
-        def __init__(self, state_size, action_size):
+        def __init__(self, state_size, action_size, hidden_sizes=None):
             super().__init__()
-            self.net = nn.Sequential(
-                nn.Linear(state_size, 256),
-                nn.ReLU(),
-                nn.Linear(256, 256),
-                nn.ReLU(),
-                nn.Linear(256, 128),
-                nn.ReLU(),
-                nn.Linear(128, action_size),
-            )
+            sizes = hidden_sizes or [256, 256, 128]
+            layers = []
+            prev = state_size
+            for h in sizes:
+                layers.append(nn.Linear(prev, h))
+                layers.append(nn.ReLU())
+                prev = h
+            layers.append(nn.Linear(prev, action_size))
+            self.net = nn.Sequential(*layers)
+            self.hidden_sizes = sizes
 
         def forward(self, x):
             return self.net(x)
@@ -1301,6 +1302,68 @@ class FastReplayBuffer:
         return self.size
 
 
+class NStepBuffer:
+    """Accumulates N-step transitions before pushing to the main replay buffer.
+    Computes discounted N-step return: R = r_0 + gamma*r_1 + gamma^2*r_2 + ...
+    Then stores (s_0, a_0, R, s_n, done_n) — the reward signal propagates faster."""
+
+    def __init__(self, n_step, gamma, num_envs, state_size):
+        self.n = n_step
+        self.gamma = gamma
+        self.num_envs = num_envs
+        # Per-env circular buffers
+        self.states = np.zeros((num_envs, n_step, state_size), dtype=np.float32)
+        self.actions = np.zeros((num_envs, n_step), dtype=np.int64)
+        self.rewards = np.zeros((num_envs, n_step), dtype=np.float32)
+        self.next_states = np.zeros((num_envs, state_size), dtype=np.float32)
+        self.count = np.zeros(num_envs, dtype=np.int32)  # how many steps buffered
+        # Precompute gamma powers
+        self.gamma_powers = np.array([gamma ** i for i in range(n_step)], dtype=np.float32)
+
+    def add(self, env_idx, state, action, reward, next_state, done, replay_buffer):
+        """Add a transition. When N steps accumulated (or done), push to replay buffer."""
+        i = env_idx
+        pos = self.count[i]
+
+        if pos < self.n:
+            self.states[i, pos] = state
+            self.actions[i, pos] = action
+            self.rewards[i, pos] = reward
+            self.next_states[i] = next_state
+            self.count[i] = pos + 1
+
+        if done:
+            # Flush all accumulated steps as N-step transitions
+            c = self.count[i]
+            for start in range(c):
+                remaining = c - start
+                n_step_reward = np.dot(self.rewards[i, start:c], self.gamma_powers[:remaining])
+                replay_buffer.push(
+                    self.states[i, start], self.actions[i, start],
+                    n_step_reward, next_state, True)
+            self.count[i] = 0
+        elif self.count[i] >= self.n:
+            # Full N-step transition ready
+            n_step_reward = np.dot(self.rewards[i], self.gamma_powers)
+            replay_buffer.push(
+                self.states[i, 0], self.actions[i, 0],
+                n_step_reward, next_state, False)
+            # Shift buffer left by 1
+            self.states[i, :-1] = self.states[i, 1:]
+            self.actions[i, :-1] = self.actions[i, 1:]
+            self.rewards[i, :-1] = self.rewards[i, 1:]
+            self.count[i] = self.n - 1
+
+    def add_batch(self, states, actions, rewards, next_states, dones, replay_buffer):
+        """Add transitions for all envs. Vectorized where possible."""
+        for i in range(self.num_envs):
+            self.add(i, states[i], actions[i], rewards[i], next_states[i], dones[i], replay_buffer)
+
+    def reset_env(self, env_idx):
+        """Reset buffer for a specific env (called on episode end)."""
+        self.count[env_idx] = 0
+
+
 # =============================================================================
 # Training Configuration
 # =============================================================================
@@ -1316,6 +1379,9 @@ class TrainingConfig:
     epsilon_decay: float = 0.9999
     buffer_capacity: int = 500_000
     train_every: int = 4
+    hidden_sizes: list = field(default_factory=lambda: [256, 256, 128])
+    train_steps_per_tick: int = 4  # gradient steps per training tick
+    n_step: int = 3  # N-step returns (1 = standard TD, 3-5 = faster learning)
 
     def to_dict(self):
         return {f.name: getattr(self, f.name) for f in self.__dataclass_fields__.values()}
@@ -1419,8 +1485,8 @@ class DQNAgent:
         self.device = torch.device(device)
         self.config = cfg
 
-        self.policy_net = DQN(state_size, action_size).to(self.device)
-        self.target_net = DQN(state_size, action_size).to(self.device)
+        self.policy_net = DQN(state_size, action_size, cfg.hidden_sizes).to(self.device)
+        self.target_net = DQN(state_size, action_size, cfg.hidden_sizes).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         # torch.compile() for PyTorch 2.x+ speedup
@@ -1435,11 +1501,14 @@ class DQNAgent:
 
         self.batch_size = cfg.batch_size
         self.gamma = cfg.gamma
+        self.n_step = cfg.n_step
+        self.gamma_n = cfg.gamma ** cfg.n_step  # discount for N-step target
         self.epsilon = cfg.epsilon_start
         self.epsilon_min = cfg.epsilon_min
         self.epsilon_decay = cfg.epsilon_decay
         self.tau = cfg.tau
         self.train_every = cfg.train_every
+        self.train_steps_per_tick = cfg.train_steps_per_tick
         self.steps = 0
         self.env_steps = 0
 
@@ -1479,11 +1548,11 @@ class DQNAgent:
         # Current Q values
         q_values = self.policy_net(states_t).gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
-        # Target Q values (Double DQN)
+        # Target Q values (Double DQN with N-step returns)
         with torch.no_grad():
             next_actions = self.policy_net(next_states_t).argmax(dim=1)
             next_q = self.target_net(next_states_t).gather(1, next_actions.unsqueeze(1)).squeeze(1)
-            target_q = rewards_t + self.gamma * next_q * (1 - dones_t)
+            target_q = rewards_t + self.gamma_n * next_q * (1 - dones_t)
 
         loss = F.smooth_l1_loss(q_values, target_q)
 
@@ -1502,10 +1571,13 @@ class DQNAgent:
         return loss.item()
 
     def maybe_train(self):
-        """Step-based training: train once every N environment steps."""
+        """Step-based training: multiple gradient steps every N environment steps."""
         self.env_steps += 1
         if self.env_steps % self.train_every == 0:
-            return self.train_step()
+            total_loss = 0.0
+            for _ in range(self.train_steps_per_tick):
+                total_loss += self.train_step()
+            return total_loss / self.train_steps_per_tick if self.train_steps_per_tick > 0 else 0.0
         return 0.0
 
     def decay_epsilon(self):
@@ -1524,12 +1596,118 @@ class DQNAgent:
 
     def load(self, path):
         checkpoint = torch.load(path, map_location=self.device)
-        self.policy_net.load_state_dict(checkpoint['policy_net'])
-        self.target_net.load_state_dict(checkpoint['target_net'])
-        self.optimizer.load_state_dict(checkpoint['optimizer'])
+
+        # Get the actual module (unwrap torch.compile if needed)
+        policy_mod = self.policy_net._orig_mod if hasattr(self.policy_net, '_orig_mod') else self.policy_net
+        target_mod = self.target_net._orig_mod if hasattr(self.target_net, '_orig_mod') else self.target_net
+
+        # Normalize checkpoint keys (strip _orig_mod. prefix if present)
+        def normalize_keys(state_dict):
+            new_sd = {}
+            for k, v in state_dict.items():
+                new_key = k.replace('_orig_mod.', '')
+                new_sd[new_key] = v
+            return new_sd
+
+        saved_policy = normalize_keys(checkpoint['policy_net'])
+        saved_target = normalize_keys(checkpoint['target_net'])
+
+        # Check if architectures match
+        current_shapes = {k: v.shape for k, v in policy_mod.state_dict().items()}
+        saved_shapes = {k: v.shape for k, v in saved_policy.items()}
+
+        if current_shapes == saved_shapes:
+            # Exact match — direct load
+            policy_mod.load_state_dict(saved_policy)
+            target_mod.load_state_dict(saved_target)
+            try:
+                self.optimizer.load_state_dict(checkpoint['optimizer'])
+            except (ValueError, KeyError, RuntimeError):
+                pass
+            print(f"  Loaded weights (exact match)")
+        else:
+            # Architecture mismatch — transfer what fits, init the rest
+            self._transfer_weights(policy_mod, saved_policy)
+            self._transfer_weights(target_mod, saved_target)
+            # Fresh optimizer for new architecture
+            print(f"  Transferred weights (architecture changed: {list(saved_shapes.values())} -> {list(current_shapes.values())})")
+
         self.epsilon = checkpoint['epsilon']
         self.steps = checkpoint['steps']
         self.env_steps = checkpoint.get('env_steps', 0)
+
+    def _transfer_weights(self, module, saved_state_dict):
+        """Transfer weights from a differently-sized checkpoint.
+        Copies the overlapping region and initializes new neurons with small random values."""
+        current_sd = module.state_dict()
+        for name, param in current_sd.items():
+            if name not in saved_state_dict:
+                continue
+            saved = saved_state_dict[name]
+            if param.shape == saved.shape:
+                param.copy_(saved)
+            elif len(param.shape) == 2:
+                # Linear weight: [out_features, in_features]
+                min_out = min(param.shape[0], saved.shape[0])
+                min_in = min(param.shape[1], saved.shape[1])
+                # Initialize new neurons with small random values
+                nn.init.kaiming_uniform_(param, a=math.sqrt(5))
+                param[:min_out, :min_in] = saved[:min_out, :min_in]
+            elif len(param.shape) == 1:
+                # Bias: [features]
+                min_f = min(param.shape[0], saved.shape[0])
+                param.zero_()
+                param[:min_f] = saved[:min_f]
+        module.load_state_dict(current_sd)
+
+
+# =============================================================================
+# GPU Auto-Scaling
+# =============================================================================
+def auto_scale_for_gpu(config: 'TrainingConfig', device: str, num_envs: int) -> tuple:
+    """Auto-scale batch size and num_envs based on available GPU memory."""
+    if not HAS_TORCH or device == 'cpu':
+        return config, num_envs
+
+    try:
+        if device == 'cuda' and torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            gpu_mem_gb = getattr(props, 'total_memory', getattr(props, 'total_mem', 0)) / (1024**3)
+            gpu_name = props.name
+        elif device == 'mps':
+            # MPS doesn't expose memory easily, assume conservative
+            gpu_mem_gb = 8
+            gpu_name = "Apple MPS"
+        else:
+            return config, num_envs
+
+        print(f"GPU: {gpu_name} ({gpu_mem_gb:.1f} GB)")
+
+        # Scale based on GPU memory
+        # Network is tiny (~105K-408K params), so we can push batch size very high
+        if gpu_mem_gb >= 24:
+            config.batch_size = max(config.batch_size, 4096)
+            config.train_steps_per_tick = max(config.train_steps_per_tick, 2)
+            num_envs = max(num_envs, 1024)
+            config.buffer_capacity = max(config.buffer_capacity, 2_000_000)
+        elif gpu_mem_gb >= 16:
+            config.batch_size = max(config.batch_size, 2048)
+            config.train_steps_per_tick = max(config.train_steps_per_tick, 2)
+            num_envs = max(num_envs, 512)
+            config.buffer_capacity = max(config.buffer_capacity, 1_000_000)
+        elif gpu_mem_gb >= 8:
+            config.batch_size = max(config.batch_size, 1024)
+            num_envs = max(num_envs, 256)
+        elif gpu_mem_gb >= 4:
+            config.batch_size = max(config.batch_size, 512)
+            num_envs = max(num_envs, 128)
+
+        print(f"Auto-scaled: batch_size={config.batch_size}, num_envs={num_envs}, buffer={config.buffer_capacity:,}")
+
+    except Exception as e:
+        print(f"Auto-scale skipped: {e}")
+
+    return config, num_envs
 
 
 # =============================================================================
@@ -1540,8 +1718,23 @@ NUM_ENVS = 128  # Number of parallel game instances
 
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
           num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
-          flush_buffer=False):
+          flush_buffer=False, auto_scale=True):
     os.makedirs(save_dir, exist_ok=True)
+
+    if device_override:
+        device = device_override
+    else:
+        device = 'cpu'
+        if HAS_TORCH and torch.cuda.is_available():
+            device = 'cuda'
+        elif HAS_TORCH and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            device = 'mps'
+
+    cfg = config or TrainingConfig()
+
+    # Auto-scale batch size and num_envs based on GPU memory
+    if auto_scale:
+        cfg, num_envs = auto_scale_for_gpu(cfg, device, num_envs)
 
     use_rust = HAS_RUST_SIM
     if use_rust:
@@ -1555,17 +1748,6 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
         action_size = games[0].action_size
         print("Using Python game simulation (slow mode)")
 
-    if device_override:
-        device = device_override
-    else:
-        device = 'cpu'
-        if HAS_TORCH and torch.cuda.is_available():
-            device = 'cuda'
-        elif HAS_TORCH and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            device = 'mps'
-
-    cfg = config or TrainingConfig()
-
     if HAS_TORCH:
         agent = DQNAgent(state_size, action_size, device=device, config=cfg)
         if resume_path:
@@ -1576,7 +1758,10 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             agent.gamma = cfg.gamma
             agent.tau = cfg.tau
             agent.train_every = cfg.train_every
-            agent.epsilon = max(cfg.epsilon_start, agent.epsilon)  # allow epsilon bump
+            # Only bump epsilon if config explicitly set it below 1.0 (mutation)
+            # Default 1.0 means "keep checkpoint epsilon"
+            if cfg.epsilon_start < 1.0:
+                agent.epsilon = cfg.epsilon_start
             agent.epsilon_min = cfg.epsilon_min
             agent.epsilon_decay = cfg.epsilon_decay
             if flush_buffer:
@@ -1592,7 +1777,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     print(f"Episodes: {episodes:,}")
     if cycle > 0:
         print(f"Meta-learning cycle: {cycle}")
-    print(f"Training: 32 gradient steps per completed episode")
+    print(f"Training: {cfg.train_steps_per_tick} gradient steps every {cfg.train_every} ticks, "
+          f"{cfg.n_step}-step returns, batch_size={cfg.batch_size}")
     print("-" * 70)
 
     # Stats tracking
@@ -1606,6 +1792,11 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     # Event log file
     log_path = os.path.join(save_dir, "training_events.jsonl")
     log_file = open(log_path, "a")
+
+    # N-step buffer for accumulating multi-step returns
+    n_step_buffer = None
+    if agent and cfg.n_step > 1:
+        n_step_buffer = NStepBuffer(cfg.n_step, cfg.gamma, num_envs, state_size)
 
     # Initialize all environments
     if use_rust:
@@ -1629,16 +1820,18 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             next_states, rewards, dones = envs.step_all_fast(actions)
             tick_count += 1
 
-            # Batch push ALL experiences at once
+            # Push experiences (N-step or direct)
+            rewards_np = np.asarray(rewards, dtype=np.float32)
+            dones_np = np.asarray(dones, dtype=np.float32)
             if agent:
-                rewards_np = np.asarray(rewards, dtype=np.float32)
-                dones_np = np.asarray(dones, dtype=np.float32)
-                agent.memory.push_batch(
-                    states, np.array(actions, dtype=np.int64),
-                    rewards_np, next_states, dones_np)
-            else:
-                rewards_np = np.asarray(rewards, dtype=np.float32)
-                dones_np = np.asarray(dones, dtype=np.float32)
+                if n_step_buffer:
+                    n_step_buffer.add_batch(
+                        states, np.array(actions, dtype=np.int64),
+                        rewards_np, next_states, dones_np, agent.memory)
+                else:
+                    agent.memory.push_batch(
+                        states, np.array(actions, dtype=np.int64),
+                        rewards_np, next_states, dones_np)
 
             episode_rewards += rewards_np
 
@@ -1727,9 +1920,10 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             not_done = ~done_mask
             states[not_done] = next_states[not_done]
 
-            # Train every 2 ticks
-            if agent and tick_count % 2 == 0 and len(agent.memory) >= agent.batch_size:
-                agent.train_step()
+            # Train multiple gradient steps periodically
+            if agent and tick_count % agent.train_every == 0 and len(agent.memory) >= agent.batch_size:
+                for _ in range(agent.train_steps_per_tick):
+                    agent.train_step()
         else:
             # Python fallback path
             for i, game in enumerate(games):
@@ -1873,12 +2067,18 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
 
 def export_model_to_json(agent, path):
     """Export model weights to JSON for loading in JavaScript."""
+    # Get the underlying module if torch.compile() wrapped it
+    net = agent.policy_net
+    if hasattr(net, '_orig_mod'):
+        net = net._orig_mod
     weights = {}
-    for name, param in agent.policy_net.named_parameters():
+    for name, param in net.named_parameters():
         weights[name] = param.detach().cpu().numpy().tolist()
+    # Build architecture list from actual layer sizes
+    arch = [net.net[0].in_features] + net.hidden_sizes + [agent.action_size]
     with open(path, 'w') as f:
         json.dump({
-            "architecture": [agent.policy_net.net[0].in_features, 256, 256, 128, 6],
+            "architecture": arch,
             "activation": "relu",
             "weights": weights,
         }, f)
@@ -1899,8 +2099,29 @@ if __name__ == "__main__":
                         help="Force device (cpu, cuda, mps)")
     parser.add_argument("--num-envs", type=int, default=None,
                         help=f"Number of parallel environments (default: {NUM_ENVS})")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Batch size for training (default: auto-scaled by GPU)")
+    parser.add_argument("--hidden-sizes", type=str, default=None,
+                        help="Network hidden layer sizes, comma-separated (default: 256,256,128)")
+    parser.add_argument("--n-step", type=int, default=None,
+                        help="N-step returns (default: 3, use 1 for standard TD)")
+    parser.add_argument("--train-steps", type=int, default=None,
+                        help="Gradient steps per training tick (default: 4, auto-scaled by GPU)")
+    parser.add_argument("--no-auto-scale", action="store_true",
+                        help="Disable GPU auto-scaling of batch size and num_envs")
     args = parser.parse_args()
+
+    cfg = TrainingConfig()
+    if args.batch_size:
+        cfg.batch_size = args.batch_size
+    if args.hidden_sizes:
+        cfg.hidden_sizes = [int(x) for x in args.hidden_sizes.split(",")]
+    if args.n_step:
+        cfg.n_step = args.n_step
+    if args.train_steps:
+        cfg.train_steps_per_tick = args.train_steps
 
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
           device_override=args.device,
-          num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS)
+          num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS,
+          config=cfg, auto_scale=not args.no_auto_scale)

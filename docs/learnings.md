@@ -43,10 +43,19 @@
 - Bulk state update: `states[not_done] = next_states[not_done]`
 - **Result: 88 ep/s peak, 20-24 ep/s sustained (longer episodes)**
 
+### Step 6: CUDA + GPU auto-scaling
+- Moved training from Mac MPS to NVIDIA CUDA GPU
+- Auto-scaling detects GPU memory and scales batch_size and num_envs accordingly
+- 16+ GB VRAM: batch_size=2048, num_envs=512
+- 8+ GB VRAM: batch_size=1024, num_envs=256
+- **Result: 91 ep/s peak on CUDA** (vs 24 ep/s on MPS) with 76% GPU utilization
+- VRAM usage still only ~4% with default 256→256→128 network — room for much larger models
+- PyTorch `total_memory` vs `total_mem` attribute varies by version — need `getattr` fallback
+
 ### Final state
-- **20-24 ep/s at 78-80% GPU utilization**
-- 200K episodes in ~2.5 hours (down from 14+ hours)
-- **22x total speedup**
+- **91 ep/s peak on CUDA, 20-24 ep/s on MPS**
+- 200K episodes in ~2.5 hours on MPS, ~37 minutes on CUDA
+- **22x speedup over original Python sim (MPS), ~90x on CUDA**
 
 ## Training Observations
 
@@ -59,6 +68,7 @@
 - Fixed learning rate (1e-4) causes oscillation at plateau
 - Reducing LR to 3e-5 and resuming from checkpoint helps fine-tune
 - Without PER, the agent learns rare high-level events slower
+- **Critical bug**: resuming from checkpoint with default `epsilon_start=1.0` resets epsilon to 1.0, erasing all learned exploitation — agent plays randomly again. Fix: only override epsilon when config explicitly sets it below 1.0 (i.e., a mutation bumps it to 0.1-0.3, not back to 1.0)
 
 ### Score progression milestones
 | Episodes | Avg Score | Avg Level | Best Level | Notes |
@@ -86,9 +96,10 @@
 - Borrow checker required index-based iteration in collision detection and monster movement
 
 ### DQN Configuration
-- Network: 24 → 256 → 256 → 128 → 6
+- Network: configurable via `--hidden-sizes` (default: 256,256,128 = 105K params; larger: 512,512,256 = 408K params)
 - Double DQN with Polyak soft target updates (tau=0.005)
-- Batch size 256, train every 2 ticks
+- Batch size configurable via `--batch-size` (default: 256, auto-scaled by GPU memory)
+- Train every 2 ticks (Rust path) or 32 gradient steps per episode (Python path)
 - Uniform replay buffer, 500K capacity
 - 6 actions: idle, left, right, fire, fire+left, fire+right
 
@@ -107,16 +118,44 @@
 21. Wall count
 22-24. Nearest wall (dx, dy, health)
 
+### Weight transfer across architectures
+- When upgrading network size (e.g., 256→256→128 to 512→512→256), weights can be transferred
+- Overlapping region is copied exactly, new neurons initialized with Kaiming uniform
+- Gives the larger network a head start — plays at small-model level immediately, then improves
+- `torch.compile()` adds `_orig_mod.` prefix to state dict keys — must normalize before transfer
+
 ### Known limitations
 - State only tracks "nearest" of each entity type — can't see multiple simultaneous threats
 - No temporal information (velocity, acceleration of threats)
 - Monster2's 8 movement patterns not directly observable from state
-- Network may be too small for higher-level strategies
+- Network may be too small for higher-level strategies (configurable via `--hidden-sizes`)
 
 ## Bug Found
 Python `train.py` line ~442 had: `self.events.count(EventType.WALL_DESTROYED)` — comparing a list of dicts against a string, always returns 0. Wall destruction penalty never fired. Fixed in Rust port.
+
+## Meta-Learning System
+
+### Plateau detection (`PlateauDetector`)
+- Compares three consecutive 5K-episode windows (old, mid, recent)
+- Triggers when score change < 3% across windows, with secondary confirmation (level stagnant or hits stagnant)
+- Anti-false-positive: won't trigger if recent best score exceeds all-time best by >10%
+- Cooldown: minimum 10K episodes between triggers
+- Warmup: minimum 15K episodes before first trigger
+
+### Mutation bandit (`meta_train.py`)
+- Multi-armed bandit selects hyperparameter mutations per cycle
+- Always applies: `lr_reduce` + `epsilon_bump` (proven effective)
+- Additional mutations sampled by weight: buffer_flush, batch_size_up, gamma_increase, tau_reduce
+- Weights updated after each cycle: +50% for >5% improvement, -40% for regression
+- State persisted in `models/meta_learning.json`
+
+### Lessons learned
+- Epsilon must NOT reset to 1.0 on resume — only bump to 0.1-0.3 via explicit mutation
+- Fresh Adam optimizer on cycle restart is beneficial (stale momentum from plateau hurts)
+- GPU auto-scaling attribute name varies by PyTorch version (`total_memory` vs `total_mem`)
 
 ## Tools Built
 - `visualize.py` — Live TUI training dashboard (rich), reads JSONL log, shows sparklines, system metrics, trend analysis
 - `replay.py` — Side-by-side ASCII model comparison TUI, loads two checkpoints, runs games with same seed
 - `export_model.py` — Converts .pt checkpoint to JSON weights for browser inference
+- `meta_train.py` — Meta-learning outer loop with plateau detection, mutation bandit, and cycle management
