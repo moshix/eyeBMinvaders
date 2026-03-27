@@ -266,9 +266,12 @@ impl HeadlessGame {
         let missiles_shot_this_step = self.events.iter()
             .filter(|e| matches!(e.event_type, EventType::MissileShotDown))
             .count() as i32;
+        let level_completed = self.events.iter()
+            .any(|e| matches!(e.event_type, EventType::LevelComplete));
         let reward = state::calculate_reward(
             self, old_score, old_lives, wall_destroyed_count,
-            kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses);
+            kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses,
+            level_completed);
 
         let st = state::get_state(self);
         StepResult {

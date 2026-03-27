@@ -456,6 +456,9 @@ class HeadlessGame:
         missiles_shot = sum(1 for e in self.events if e.get("type") == EventType.MISSILE_SHOT_DOWN)
         reward += kamikazes_killed * 1.5
         reward += missiles_shot * 2.0
+        # Level completion bonus
+        if len(self.enemies) == 0 and not self.game_over:
+            reward += 5.0
 
         state = self._get_state()
         info = {
@@ -1462,13 +1465,13 @@ class NStepBuffer:
 @dataclass
 class TrainingConfig:
     """All tunable hyperparameters for DQN training."""
-    lr: float = 3e-5
+    lr: float = 1e-4
     batch_size: int = 256
     gamma: float = 0.99
     tau: float = 0.005
     epsilon_start: float = 1.0
-    epsilon_min: float = 0.02
-    epsilon_decay: float = 0.9999
+    epsilon_min: float = 0.05
+    epsilon_decay: float = 0.99995
     buffer_capacity: int = 500_000
     train_every: int = 4
     hidden_sizes: list = field(default_factory=lambda: [512, 256, 128])
@@ -1477,10 +1480,10 @@ class TrainingConfig:
     use_layer_norm: bool = False
     use_dual_buffer: bool = True  # dual-buffer PER
     important_buffer_capacity: int = 50_000
-    important_ratio: float = 0.25
-    important_reward_threshold: float = 2.0
+    important_ratio: float = 0.30
+    important_reward_threshold: float = 0.5
     use_cosine_lr: bool = True  # cosine annealing LR schedule
-    cosine_cycle_episodes: int = 20_000  # episodes per LR cycle
+    cosine_cycle_episodes: int = 50_000  # episodes per LR cycle
     lr_min: float = 1e-5
 
     def to_dict(self):
@@ -2255,6 +2258,12 @@ if __name__ == "__main__":
                         help="Disable dual-buffer PER (use uniform sampling)")
     parser.add_argument("--no-cosine-lr", action="store_true",
                         help="Disable cosine annealing LR schedule")
+    parser.add_argument("--lr", type=float, default=None,
+                        help="Learning rate (default: 1e-4)")
+    parser.add_argument("--epsilon-min", type=float, default=None,
+                        help="Minimum epsilon for exploration (default: 0.05)")
+    parser.add_argument("--epsilon-decay", type=float, default=None,
+                        help="Epsilon decay per episode (default: 0.99995)")
     args = parser.parse_args()
 
     cfg = TrainingConfig()
@@ -2272,6 +2281,12 @@ if __name__ == "__main__":
         cfg.use_dual_buffer = False
     if args.no_cosine_lr:
         cfg.use_cosine_lr = False
+    if args.lr is not None:
+        cfg.lr = args.lr
+    if args.epsilon_min is not None:
+        cfg.epsilon_min = args.epsilon_min
+    if args.epsilon_decay is not None:
+        cfg.epsilon_decay = args.epsilon_decay
 
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
           device_override=args.device,

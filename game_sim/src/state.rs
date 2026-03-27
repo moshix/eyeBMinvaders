@@ -236,6 +236,7 @@ pub fn calculate_reward(
     kamikazes_killed_this_step: i32,
     missiles_shot_this_step: i32,
     near_misses: i32,
+    level_completed: bool,
 ) -> f32 {
     let mut reward: f32 = 0.0;
 
@@ -262,6 +263,11 @@ pub fn calculate_reward(
 
     // Dodging reward: threats passed close but missed
     reward += near_misses as f32 * 0.1;
+
+    // Level completion bonus: clear signal that clearing levels is the objective
+    if level_completed {
+        reward += 5.0;
+    }
 
     reward
 }
