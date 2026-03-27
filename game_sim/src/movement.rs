@@ -20,6 +20,19 @@ pub fn move_bullets(game: &mut HeadlessGame, dt: f64) {
             b.y -= BULLET_SPEED * dt;
         }
     }
+    // Near-miss detection: count enemy bullets about to leave bounds that are close to player
+    let player_cx = game.player_x + PLAYER_WIDTH / 2.0;
+    let player_cy = game.player_y + PLAYER_HEIGHT / 2.0;
+    let near_miss_r2: f64 = 80.0 * 80.0;
+    for b in game.bullets.iter() {
+        let in_bounds = b.y > 0.0 && b.y < GAME_HEIGHT && b.x > 0.0 && b.x < GAME_WIDTH;
+        if !in_bounds && b.is_enemy {
+            let dist_sq = (b.x - player_cx).powi(2) + (b.y - player_cy).powi(2);
+            if dist_sq < near_miss_r2 {
+                game.near_misses += 1;
+            }
+        }
+    }
     game.bullets.retain(|b| {
         b.y > 0.0 && b.y < GAME_HEIGHT && b.x > 0.0 && b.x < GAME_WIDTH
     });
@@ -135,6 +148,18 @@ pub fn move_kamikazes(game: &mut HeadlessGame, dt: f64) {
     }
 
     game.bullets.extend(new_bullets);
+    // Near-miss detection for kamikazes being removed
+    let near_miss_r2: f64 = 80.0 * 80.0;
+    for k in game.kamikazes.iter() {
+        if k.removed {
+            let kx = k.x + k.width / 2.0;
+            let ky = k.y + k.height / 2.0;
+            let dist_sq = (kx - player_cx).powi(2) + (ky - player_cy).powi(2);
+            if dist_sq < near_miss_r2 {
+                game.near_misses += 1;
+            }
+        }
+    }
     game.kamikazes.retain(|k| !k.removed);
 }
 
@@ -160,6 +185,17 @@ pub fn move_missiles(game: &mut HeadlessGame, dt: f64) {
         m.x += (m.angle + std::f64::consts::FRAC_PI_2).cos() * curve * dt;
     }
 
+    // Near-miss detection for missiles leaving bounds
+    let near_miss_r2: f64 = 80.0 * 80.0;
+    for m in game.missiles.iter() {
+        let in_bounds = m.y > 0.0 && m.y < GAME_HEIGHT && m.x > 0.0 && m.x < GAME_WIDTH;
+        if !in_bounds {
+            let dist_sq = (m.x - player_cx).powi(2) + (m.y - player_cy).powi(2);
+            if dist_sq < near_miss_r2 {
+                game.near_misses += 1;
+            }
+        }
+    }
     game.missiles.retain(|m| {
         m.y > 0.0 && m.y < GAME_HEIGHT && m.x > 0.0 && m.x < GAME_WIDTH
     });

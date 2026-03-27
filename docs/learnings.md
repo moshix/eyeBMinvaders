@@ -96,42 +96,59 @@
 - Borrow checker required index-based iteration in collision detection and monster movement
 
 ### DQN Configuration
-- Network: configurable via `--hidden-sizes` (default: 256,256,128 = 105K params; larger: 512,512,256 = 408K params)
+- Network: configurable via `--hidden-sizes` (default: 512,256,128; optional `--layer-norm`)
 - Double DQN with Polyak soft target updates (tau=0.005)
 - Batch size configurable via `--batch-size` (default: 256, auto-scaled by GPU memory)
-- Train every 2 ticks (Rust path) or 32 gradient steps per episode (Python path)
-- Uniform replay buffer, 500K capacity
+- Train every 4 ticks, 4 gradient steps per tick (Rust path)
+- Dual-buffer PER: main uniform buffer + secondary buffer for important transitions (high |reward| or done)
+- Cosine annealing LR schedule (cycles between lr_min=1e-5 and lr=3e-5 every 20K episodes)
+- 5-step returns (default, configurable via `--n-step`)
 - 6 actions: idle, left, right, fire, fire+left, fire+right
 
-### State representation (24 features)
-1. Player X position
-2. Player lives
-3. Level
-4. Enemy count
-5-6. Nearest enemy (relative dx, dy)
-7-8. Lowest enemy (relative dx, y)
-9-11. Nearest enemy bullet (dx, dy, count)
-12-14. Nearest missile (dx, dy, count)
-15-17. Nearest kamikaze (dx, dy, count)
-18-19. Monster position (dx, y)
-20. Player invulnerability flag
-21. Wall count
-22-24. Nearest wall (dx, dy, health)
+### State representation (45 features)
+0. Player X position
+1. Player lives
+2. Level
+3. Enemy count
+4-5. Nearest enemy (relative dx, dy)
+6-7. Lowest enemy (relative dx, y)
+8-12. Nearest enemy bullet (dx, dy, count, velocity_dx, velocity_dy)
+13-17. Nearest missile (dx, dy, count, cos(angle), sin(angle))
+18-22. Nearest kamikaze (dx, dy, count, cos(angle), sin(angle))
+23-24. Monster position (dx, y)
+25-28. Monster2 position + velocity (dx, y, vel_dx, vel_dy)
+29. Player invulnerability flag
+30. Wall count
+31-33. Nearest wall (dx, dy, health)
+34-36. 2nd nearest bullet (dx, dy, velocity_dy)
+37-39. 2nd nearest missile (dx, dy, sin(angle))
+40-44. Danger heatmap: 5 columns (weighted threat density, bullets=1, missiles=2, kamikazes=3)
+
+### Reward shaping
+- Score-based: (score_delta) * 0.01
+- Life penalty: -5.0 per life lost
+- Game over penalty: -20.0
+- Wall destruction penalty: -2.0 per wall destroyed
+- Progressive survival bonus: +0.01 * current_level (scales with difficulty)
+- Kamikaze kill bonus: +1.5 (extra on top of score reward)
+- Missile shoot-down bonus: +2.0 (hardest threat to deal with)
+- Dodging reward: +0.1 per near-miss (threat passes within 80px without hitting)
 
 ### Weight transfer across architectures
-- When upgrading network size (e.g., 256→256→128 to 512→512→256), weights can be transferred
+- When upgrading network size (e.g., 256→256→128 to 512→256→128), weights can be transferred
 - Overlapping region is copied exactly, new neurons initialized with Kaiming uniform
 - Gives the larger network a head start — plays at small-model level immediately, then improves
 - `torch.compile()` adds `_orig_mod.` prefix to state dict keys — must normalize before transfer
 
-### Known limitations
-- State only tracks "nearest" of each entity type — can't see multiple simultaneous threats
-- No temporal information (velocity, acceleration of threats)
-- Monster2's 8 movement patterns not directly observable from state
-- Network may be too small for higher-level strategies (configurable via `--hidden-sizes`)
+### Previous known limitations (now addressed)
+- ~~State only tracks "nearest" of each entity type~~ → now tracks top 2 bullets/missiles + danger heatmap
+- ~~No temporal information (velocity, acceleration of threats)~~ → velocity features for bullets, missiles, kamikazes
+- ~~Monster2's 8 movement patterns not directly observable~~ → Monster2 position + velocity now in state
+- ~~Network may be too small~~ → default upgraded to 512,256,128 with optional LayerNorm
 
-## Bug Found
-Python `train.py` line ~442 had: `self.events.count(EventType.WALL_DESTROYED)` — comparing a list of dicts against a string, always returns 0. Wall destruction penalty never fired. Fixed in Rust port.
+## Bugs Found
+- Python `train.py` had: `self.events.count(EventType.WALL_DESTROYED)` — comparing a list of dicts against a string, always returns 0. Wall destruction penalty never fired. Fixed in Rust port and Python (now uses `e.get("type") ==` comparison).
+- Resuming from checkpoint with default `epsilon_start=1.0` reset epsilon to 1.0, erasing learned exploitation. Fix: only override epsilon when config explicitly sets it below 1.0.
 
 ## Meta-Learning System
 

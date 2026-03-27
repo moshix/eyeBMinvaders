@@ -63,10 +63,11 @@ pub struct HeadlessGame {
     pub kamikazes_killed: u32,
     pub missiles_shot: u32,
     pub times_hit: u32,
+    pub near_misses: i32,
 }
 
 pub struct StepResult {
-    pub state: [f32; 24],
+    pub state: [f32; 45],
     pub reward: f32,
     pub done: bool,
     pub score: i32,
@@ -119,6 +120,7 @@ impl HeadlessGame {
             kamikazes_killed: 0,
             missiles_shot: 0,
             times_hit: 0,
+            near_misses: 0,
         };
         game.next_kamikaze_time = game.random_kamikaze_time();
         game.restore_walls();
@@ -126,7 +128,7 @@ impl HeadlessGame {
         game
     }
 
-    pub fn reset(&mut self) -> [f32; 24] {
+    pub fn reset(&mut self) -> [f32; 45] {
         self.game_time = 0.0;
         self.score = 0;
         self.current_level = 1;
@@ -161,12 +163,14 @@ impl HeadlessGame {
         self.kamikazes_killed = 0;
         self.missiles_shot = 0;
         self.times_hit = 0;
+        self.near_misses = 0;
         self.create_enemies();
         state::get_state(self)
     }
 
     pub fn step(&mut self, action: u8) -> StepResult {
         self.events.clear();
+        self.near_misses = 0;
         let dt_ms: f64 = 33.333;
         let dt = dt_ms / 1000.0;
         self.game_time += dt_ms;
@@ -252,11 +256,19 @@ impl HeadlessGame {
             self.victory();
         }
 
-        // Reward calculation
+        // Reward calculation — count events for shaping
         let wall_destroyed_count = self.events.iter()
             .filter(|e| matches!(e.event_type, EventType::WallDestroyed))
             .count() as i32;
-        let reward = state::calculate_reward(self, old_score, old_lives, wall_destroyed_count);
+        let kamikazes_killed_this_step = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::KamikazeKilled))
+            .count() as i32;
+        let missiles_shot_this_step = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::MissileShotDown))
+            .count() as i32;
+        let reward = state::calculate_reward(
+            self, old_score, old_lives, wall_destroyed_count,
+            kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses);
 
         let st = state::get_state(self);
         StepResult {

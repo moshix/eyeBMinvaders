@@ -55,8 +55,8 @@ ACTION_NAMES = ['idle', 'left', 'right', 'fire', 'fire+left', 'fire+right']
 SPRITES = {
     'player': ('A', 'bold white on green'),
     'player_hit': ('X', 'bold white on red'),
-    'enemy_full': ('V', 'bold white on red'),
-    'enemy_hit': ('v', 'bold black on yellow'),
+    'enemy_full': ('W', 'bold red'),
+    'enemy_hit': ('w', 'bold yellow'),
     'bullet_player': ('|', 'bold cyan'),
     'bullet_enemy': ('.', 'bold red'),
     'kamikaze': ('K', 'bold white on magenta'),
@@ -74,7 +74,7 @@ SPRITES = {
 # =============================================================================
 if HAS_TORCH:
     class DQN(nn.Module):
-        def __init__(self, state_size=24, action_size=6, hidden_sizes=None):
+        def __init__(self, state_size=45, action_size=6, hidden_sizes=None):
             super().__init__()
             sizes = hidden_sizes or [256, 256, 128]
             layers = []
@@ -95,33 +95,51 @@ if HAS_TORCH:
             state_dict = checkpoint['policy_net']
         else:
             state_dict = checkpoint
-        # Detect architecture from weights
-        # Find the first linear layer to get input size, and count layers
-        layer_sizes = []
-        i = 0
-        while f'net.{i}.weight' in state_dict:
-            w = state_dict[f'net.{i}.weight']
-            layer_sizes.append(w.shape)
-            i += 2  # skip ReLU layers (no params but increment index)
-        if not layer_sizes:
-            # Try _orig_mod prefix
-            i = 0
-            while f'_orig_mod.net.{i}.weight' in state_dict:
-                w = state_dict[f'_orig_mod.net.{i}.weight']
-                layer_sizes.append(w.shape)
-                i += 2
-            # Strip prefix
+        # Normalize keys (strip _orig_mod prefix)
+        if any(k.startswith('_orig_mod.') for k in state_dict):
             state_dict = {k.replace('_orig_mod.', ''): v for k, v in state_dict.items()}
+
+        # Detect architecture from weights — find all Linear weight layers
+        layer_sizes = []
+        for key in sorted(state_dict.keys()):
+            if key.startswith('net.') and key.endswith('.weight') and len(state_dict[key].shape) == 2:
+                layer_sizes.append(state_dict[key].shape)
 
         if layer_sizes:
             input_size = layer_sizes[0][1]
             hidden = [s[0] for s in layer_sizes[:-1]]
             output_size = layer_sizes[-1][0]
         else:
-            input_size, hidden, output_size = 24, [256, 256, 128], 6
+            input_size, hidden, output_size = 45, [512, 256, 128], 6
 
+        # Detect LayerNorm
+        has_ln = any('LayerNorm' in k or 'layernorm' in k.lower() for k in state_dict)
         model = DQN(input_size, output_size, hidden).to(device)
-        model.load_state_dict(state_dict)
+        # If checkpoint has LayerNorm but our DQN doesn't, rebuild with it
+        try:
+            model.load_state_dict(state_dict)
+        except RuntimeError:
+            # Try with LayerNorm
+            sizes = hidden or [512, 256, 128]
+            layers = []
+            prev = input_size
+            for h in sizes:
+                layers.append(nn.Linear(prev, h))
+                layers.append(nn.ReLU())
+                if has_ln:
+                    layers.append(nn.LayerNorm(h))
+                prev = h
+            layers.append(nn.Linear(prev, output_size))
+            model = nn.Sequential(*layers).to(device)
+            # Wrap in a namespace-compatible object
+            class Wrapper(nn.Module):
+                def __init__(self, net):
+                    super().__init__()
+                    self.net = net
+                def forward(self, x):
+                    return self.net(x)
+            model = Wrapper(model).to(device)
+            model.load_state_dict(state_dict)
         model.eval()
         return model
 
@@ -426,6 +444,9 @@ def main():
                 footer.append(f"Step: {step:,}  Speed: {speed} tps  High: ")
                 footer.append(f"{high_score:,}", style="yellow")
                 footer.append(f"  Games: {games_played}")
+                n_enemies = len(entities.get('enemies', []))
+                n_bullets = len([b for b in entities.get('bullets', []) if b[2]])  # enemy bullets
+                footer.append(f"  Enemies: {n_enemies}  EBullets: {n_bullets}")
 
                 # Combine into panel content
                 content = Text()

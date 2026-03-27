@@ -143,7 +143,7 @@ impl BatchedGames {
     }
 
     /// Step all environments.
-    /// Returns (states [num_envs, 24], rewards [num_envs], dones [num_envs], infos list[dict])
+    /// Returns (states [num_envs, 45], rewards [num_envs], dones [num_envs], infos list[dict])
     fn step_all<'py>(
         &mut self,
         py: Python<'py>,

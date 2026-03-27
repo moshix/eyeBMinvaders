@@ -445,12 +445,17 @@ class HeadlessGame:
         # Big penalty for game over
         if self.game_over:
             reward -= 20.0
-        # Penalty for destroying a wall (shooting through your own cover)
-        wall_destroyed_count = self.events.count(EventType.WALL_DESTROYED)
+        # Penalty for destroying a wall
+        wall_destroyed_count = sum(1 for e in self.events if e.get("type") == EventType.WALL_DESTROYED)
         if wall_destroyed_count > 0:
             reward -= 2.0 * wall_destroyed_count
-        # Small survival reward
-        reward += 0.01
+        # Progressive survival bonus: scales with level
+        reward += 0.01 * self.current_level
+        # Extra reward for killing kamikazes and shooting down missiles
+        kamikazes_killed = sum(1 for e in self.events if e.get("type") == EventType.KAMIKAZE_KILLED)
+        missiles_shot = sum(1 for e in self.events if e.get("type") == EventType.MISSILE_SHOT_DOWN)
+        reward += kamikazes_killed * 1.5
+        reward += missiles_shot * 2.0
 
         state = self._get_state()
         info = {
@@ -469,107 +474,154 @@ class HeadlessGame:
     # =========================================================================
     def _get_state(self):
         """
-        Returns a fixed-size feature vector representing game state.
-        23 features total.
+        Returns a 45-element feature vector representing game state.
         """
         player_cx = self.player_x + PLAYER_WIDTH / 2
         player_cy = self.player_y + PLAYER_HEIGHT / 2
 
-        # Normalize helper
         def nx(v): return v / GAME_WIDTH
         def ny(v): return v / GAME_HEIGHT
 
-        features = []
+        f = [0.0] * 45
 
-        # 1. Player position (normalized)
-        features.append(nx(player_cx))
+        # [0] Player position
+        f[0] = nx(player_cx)
+        # [1] Player lives
+        f[1] = self.player_lives / PLAYER_LIVES
+        # [2] Level
+        f[2] = min(self.current_level, 10) / 10.0
+        # [3] Enemy count
+        f[3] = min(len(self.enemies), 60) / 60.0
 
-        # 2. Player lives (normalized)
-        features.append(self.player_lives / PLAYER_LIVES)
-
-        # 3. Level (normalized, cap at 10)
-        features.append(min(self.current_level, 10) / 10.0)
-
-        # 4. Number of enemies (normalized)
-        features.append(min(len(self.enemies), 60) / 60.0)
-
-        # 5-6. Nearest enemy relative position
+        # [4-5] Nearest enemy
         if self.enemies:
-            nearest = min(self.enemies,
-                          key=lambda e: abs(e.x + e.width / 2 - player_cx))
-            features.append(nx(nearest.x + nearest.width / 2 - player_cx))
-            features.append(ny(nearest.y + nearest.height / 2 - player_cy))
+            nearest = min(self.enemies, key=lambda e: abs(e.x + e.width / 2 - player_cx))
+            f[4] = nx(nearest.x + nearest.width / 2 - player_cx)
+            f[5] = ny(nearest.y + nearest.height / 2 - player_cy)
         else:
-            features.extend([0.0, -1.0])
+            f[5] = -1.0
 
-        # 7-8. Lowest enemy position (danger indicator)
+        # [6-7] Lowest enemy
         if self.enemies:
             lowest = max(self.enemies, key=lambda e: e.y)
-            features.append(nx(lowest.x + lowest.width / 2 - player_cx))
-            features.append(ny(lowest.y))
-        else:
-            features.extend([0.0, 0.0])
+            f[6] = nx(lowest.x + lowest.width / 2 - player_cx)
+            f[7] = ny(lowest.y)
 
-        # 9-11. Nearest enemy bullet
+        # Enemy bullets — sort by distance
         enemy_bullets = [b for b in self.bullets if b.is_enemy]
-        if enemy_bullets:
-            nearest_b = min(enemy_bullets,
-                            key=lambda b: (b.x - player_cx) ** 2 + (b.y - player_cy) ** 2)
-            features.append(nx(nearest_b.x - player_cx))
-            features.append(ny(nearest_b.y - player_cy))
-            features.append(len(enemy_bullets) / 10.0)
-        else:
-            features.extend([0.0, -1.0, 0.0])
+        sorted_bullets = sorted(enemy_bullets,
+            key=lambda b: (b.x - player_cx) ** 2 + (b.y - player_cy) ** 2)
 
-        # 12-14. Nearest missile
-        if self.missiles:
-            nearest_m = min(self.missiles,
-                            key=lambda m: (m.x - player_cx) ** 2 + (m.y - player_cy) ** 2)
-            features.append(nx(nearest_m.x - player_cx))
-            features.append(ny(nearest_m.y - player_cy))
-            features.append(len(self.missiles) / 5.0)
+        # [8-12] Nearest bullet + velocity
+        if sorted_bullets:
+            b = sorted_bullets[0]
+            f[8] = nx(b.x - player_cx)
+            f[9] = ny(b.y - player_cy)
+            f[10] = len(enemy_bullets) / 10.0
+            if hasattr(b, 'has_direction') and b.has_direction:
+                f[11] = b.dx / ENEMY_BULLET_SPEED
+                f[12] = b.dy / ENEMY_BULLET_SPEED
+            else:
+                f[11] = 0.0
+                f[12] = 1.0
         else:
-            features.extend([0.0, -1.0, 0.0])
+            f[9] = -1.0
 
-        # 15-17. Nearest kamikaze
-        if self.kamikazes:
-            nearest_k = min(self.kamikazes,
-                            key=lambda k: (k.x - player_cx) ** 2 + (k.y - player_cy) ** 2)
-            features.append(nx(nearest_k.x + nearest_k.width / 2 - player_cx))
-            features.append(ny(nearest_k.y + nearest_k.height / 2 - player_cy))
-            features.append(len(self.kamikazes) / 5.0)
+        # Missiles — sort by distance
+        sorted_missiles = sorted(self.missiles,
+            key=lambda m: (m.x - player_cx) ** 2 + (m.y - player_cy) ** 2)
+
+        # [13-17] Nearest missile + velocity
+        if sorted_missiles:
+            m = sorted_missiles[0]
+            f[13] = nx(m.x - player_cx)
+            f[14] = ny(m.y - player_cy)
+            f[15] = len(self.missiles) / 5.0
+            f[16] = math.cos(m.angle)
+            f[17] = math.sin(m.angle)
         else:
-            features.extend([0.0, -1.0, 0.0])
+            f[14] = -1.0
 
-        # 18-19. Monster info
+        # Kamikazes — sort by distance
+        sorted_kamikazes = sorted(self.kamikazes,
+            key=lambda k: (k.x + k.width / 2 - player_cx) ** 2 + (k.y + k.height / 2 - player_cy) ** 2)
+
+        # [18-22] Nearest kamikaze + velocity
+        if sorted_kamikazes:
+            k = sorted_kamikazes[0]
+            f[18] = nx(k.x + k.width / 2 - player_cx)
+            f[19] = ny(k.y + k.height / 2 - player_cy)
+            f[20] = len(self.kamikazes) / 5.0
+            f[21] = math.cos(k.angle)
+            f[22] = math.sin(k.angle)
+        else:
+            f[19] = -1.0
+
+        # [23-24] Monster info
         if self.monster and not self.monster.hit:
-            features.append(nx(self.monster.x + self.monster.width / 2 - player_cx))
-            features.append(ny(self.monster.y))
+            f[23] = nx(self.monster.x + self.monster.width / 2 - player_cx)
+            f[24] = ny(self.monster.y)
         else:
-            features.extend([0.0, -1.0])
+            f[24] = -1.0
 
-        # 20. Is player currently invulnerable (hit animation)
-        features.append(1.0 if self.is_player_hit else 0.0)
+        # [25-28] Monster2 info
+        if hasattr(self, 'monster2') and self.monster2 and not self.monster2.hit and not getattr(self.monster2, 'is_disappeared', False):
+            f[25] = nx(self.monster2.x + self.monster2.width / 2 - player_cx)
+            f[26] = ny(self.monster2.y)
+            f[27] = getattr(self.monster2, 'dx_val', 0.0) / MONSTER2_SPEED if hasattr(self.monster2, 'dx_val') else 0.0
+            f[28] = getattr(self.monster2, 'dy_val', 0.0) / MONSTER2_SPEED if hasattr(self.monster2, 'dy_val') else 0.0
+        else:
+            f[26] = -1.0
 
-        # 21. Number of walls remaining
-        features.append(len(self.walls) / 4.0)
+        # [29] Invulnerability
+        f[29] = 1.0 if self.is_player_hit else 0.0
+        # [30] Walls remaining
+        f[30] = len(self.walls) / 4.0
 
-        # 22-23. Nearest wall relative position (for cover)
-        # 24. Nearest wall health (1.0 = full, 0.0 = destroyed/none)
+        # [31-33] Nearest wall
         if self.walls:
-            nearest_w = min(self.walls,
-                            key=lambda w: abs(w.x + w.width / 2 - player_cx))
-            features.append(nx(nearest_w.x + nearest_w.width / 2 - player_cx))
-            features.append(ny(nearest_w.y - player_cy))
-            features.append(1.0 - nearest_w.hit_count / WALL_MAX_HITS_TOTAL)
-        else:
-            features.extend([0.0, 0.0, 0.0])
+            nearest_w = min(self.walls, key=lambda w: abs(w.x + w.width / 2 - player_cx))
+            f[31] = nx(nearest_w.x + nearest_w.width / 2 - player_cx)
+            f[32] = ny(nearest_w.y - player_cy)
+            f[33] = 1.0 - nearest_w.hit_count / WALL_MAX_HITS_TOTAL
 
-        return np.array(features, dtype=np.float32)
+        # [34-36] 2nd nearest bullet
+        if len(sorted_bullets) >= 2:
+            b2 = sorted_bullets[1]
+            f[34] = nx(b2.x - player_cx)
+            f[35] = ny(b2.y - player_cy)
+            f[36] = (b2.dy / ENEMY_BULLET_SPEED) if hasattr(b2, 'has_direction') and b2.has_direction else 1.0
+        else:
+            f[35] = -1.0
+
+        # [37-39] 2nd nearest missile
+        if len(sorted_missiles) >= 2:
+            m2 = sorted_missiles[1]
+            f[37] = nx(m2.x - player_cx)
+            f[38] = ny(m2.y - player_cy)
+            f[39] = math.sin(m2.angle)
+        else:
+            f[38] = -1.0
+
+        # [40-44] Danger heatmap: 5 columns
+        col_width = GAME_WIDTH / 5.0
+        for b in enemy_bullets:
+            col = min(int(b.x / col_width), 4)
+            f[40 + col] += 1.0
+        for m in self.missiles:
+            col = min(int(m.x / col_width), 4)
+            f[40 + col] += 2.0
+        for k in self.kamikazes:
+            col = min(int((k.x + k.width / 2) / col_width), 4)
+            f[40 + col] += 3.0
+        for j in range(40, 45):
+            f[j] = min(f[j] / 10.0, 1.0)
+
+        return np.array(f, dtype=np.float32)
 
     @property
     def state_size(self):
-        return 24
+        return 45
 
     @property
     def action_size(self):
@@ -1241,7 +1293,7 @@ class HeadlessGame:
 # =============================================================================
 if HAS_TORCH:
     class DQN(nn.Module):
-        def __init__(self, state_size, action_size, hidden_sizes=None):
+        def __init__(self, state_size, action_size, hidden_sizes=None, use_layer_norm=False):
             super().__init__()
             sizes = hidden_sizes or [256, 256, 128]
             layers = []
@@ -1249,6 +1301,8 @@ if HAS_TORCH:
             for h in sizes:
                 layers.append(nn.Linear(prev, h))
                 layers.append(nn.ReLU())
+                if use_layer_norm:
+                    layers.append(nn.LayerNorm(h))
                 prev = h
             layers.append(nn.Linear(prev, action_size))
             self.net = nn.Sequential(*layers)
@@ -1300,6 +1354,44 @@ class FastReplayBuffer:
 
     def __len__(self):
         return self.size
+
+
+class DualReplayBuffer:
+    """Dual-buffer replay: main uniform buffer + secondary buffer for important transitions.
+    Mixes a fraction of each batch from the important buffer (high |reward| or done=True)."""
+
+    def __init__(self, capacity, state_size, important_capacity=50_000,
+                 important_ratio=0.25, reward_threshold=2.0):
+        self.main = FastReplayBuffer(capacity, state_size)
+        self.important = FastReplayBuffer(important_capacity, state_size)
+        self.important_ratio = important_ratio
+        self.reward_threshold = reward_threshold
+
+    def push(self, state, action, reward, next_state, done):
+        self.main.push(state, action, reward, next_state, done)
+        if abs(reward) > self.reward_threshold or done:
+            self.important.push(state, action, reward, next_state, done)
+
+    def push_batch(self, states, actions, rewards, next_states, dones):
+        self.main.push_batch(states, actions, rewards, next_states, dones)
+        mask = (np.abs(rewards) > self.reward_threshold) | (dones > 0.5)
+        if mask.any():
+            idx = np.where(mask)[0]
+            self.important.push_batch(
+                states[idx], actions[idx], rewards[idx],
+                next_states[idx], dones[idx])
+
+    def sample(self, batch_size):
+        if len(self.important) < 32:
+            return self.main.sample(batch_size)
+        n_important = int(batch_size * self.important_ratio)
+        n_main = batch_size - n_important
+        main_batch = self.main.sample(n_main)
+        imp_batch = self.important.sample(n_important)
+        return tuple(np.concatenate([m, i], axis=0) for m, i in zip(main_batch, imp_batch))
+
+    def __len__(self):
+        return len(self.main)
 
 
 class NStepBuffer:
@@ -1379,9 +1471,17 @@ class TrainingConfig:
     epsilon_decay: float = 0.9999
     buffer_capacity: int = 500_000
     train_every: int = 4
-    hidden_sizes: list = field(default_factory=lambda: [256, 256, 128])
+    hidden_sizes: list = field(default_factory=lambda: [512, 256, 128])
     train_steps_per_tick: int = 4  # gradient steps per training tick
-    n_step: int = 3  # N-step returns (1 = standard TD, 3-5 = faster learning)
+    n_step: int = 5  # N-step returns (1 = standard TD, 3-5 = faster learning)
+    use_layer_norm: bool = False
+    use_dual_buffer: bool = True  # dual-buffer PER
+    important_buffer_capacity: int = 50_000
+    important_ratio: float = 0.25
+    important_reward_threshold: float = 2.0
+    use_cosine_lr: bool = True  # cosine annealing LR schedule
+    cosine_cycle_episodes: int = 20_000  # episodes per LR cycle
+    lr_min: float = 1e-5
 
     def to_dict(self):
         return {f.name: getattr(self, f.name) for f in self.__dataclass_fields__.values()}
@@ -1485,8 +1585,8 @@ class DQNAgent:
         self.device = torch.device(device)
         self.config = cfg
 
-        self.policy_net = DQN(state_size, action_size, cfg.hidden_sizes).to(self.device)
-        self.target_net = DQN(state_size, action_size, cfg.hidden_sizes).to(self.device)
+        self.policy_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
+        self.target_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         # torch.compile() for PyTorch 2.x+ speedup
@@ -1497,7 +1597,22 @@ class DQNAgent:
             pass  # Not available on older PyTorch versions
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.lr)
-        self.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
+
+        if cfg.use_dual_buffer:
+            self.memory = DualReplayBuffer(
+                cfg.buffer_capacity, state_size,
+                important_capacity=cfg.important_buffer_capacity,
+                important_ratio=cfg.important_ratio,
+                reward_threshold=cfg.important_reward_threshold)
+        else:
+            self.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
+
+        # Cosine annealing LR scheduler
+        self.scheduler = None
+        if cfg.use_cosine_lr:
+            from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+            self.scheduler = CosineAnnealingWarmRestarts(
+                self.optimizer, T_0=cfg.cosine_cycle_episodes, T_mult=1, eta_min=cfg.lr_min)
 
         self.batch_size = cfg.batch_size
         self.gamma = cfg.gamma
@@ -1583,16 +1698,25 @@ class DQNAgent:
     def decay_epsilon(self):
         """Call once per episode."""
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        if self.scheduler:
+            self.scheduler.step()
+
+    def reset_epsilon(self, value=0.15):
+        """Reset epsilon for re-exploration (e.g., after plateau detection)."""
+        self.epsilon = value
 
     def save(self, path):
-        torch.save({
+        data = {
             'policy_net': self.policy_net.state_dict(),
             'target_net': self.target_net.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
             'steps': self.steps,
             'env_steps': self.env_steps,
-        }, path)
+        }
+        if self.scheduler:
+            data['scheduler'] = self.scheduler.state_dict()
+        torch.save(data, path)
 
     def load(self, path):
         checkpoint = torch.load(path, map_location=self.device)
@@ -1635,6 +1759,11 @@ class DQNAgent:
         self.epsilon = checkpoint['epsilon']
         self.steps = checkpoint['steps']
         self.env_steps = checkpoint.get('env_steps', 0)
+        if self.scheduler and 'scheduler' in checkpoint:
+            try:
+                self.scheduler.load_state_dict(checkpoint['scheduler'])
+            except (ValueError, KeyError, RuntimeError):
+                pass
 
     def _transfer_weights(self, module, saved_state_dict):
         """Transfer weights from a differently-sized checkpoint.
@@ -1765,7 +1894,14 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             agent.epsilon_min = cfg.epsilon_min
             agent.epsilon_decay = cfg.epsilon_decay
             if flush_buffer:
-                agent.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
+                if cfg.use_dual_buffer:
+                    agent.memory = DualReplayBuffer(
+                        cfg.buffer_capacity, state_size,
+                        important_capacity=cfg.important_buffer_capacity,
+                        important_ratio=cfg.important_ratio,
+                        reward_threshold=cfg.important_reward_threshold)
+                else:
+                    agent.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
                 print("  Replay buffer flushed (fresh start)")
             print(f"Resumed from {resume_path} (epsilon={agent.epsilon:.4f}, lr={cfg.lr}, steps={agent.steps})")
     else:
@@ -1777,8 +1913,12 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     print(f"Episodes: {episodes:,}")
     if cycle > 0:
         print(f"Meta-learning cycle: {cycle}")
+    buffer_type = "dual-buffer PER" if cfg.use_dual_buffer else "uniform"
+    lr_type = f"cosine({cfg.lr_min:.0e}-{cfg.lr:.0e})" if cfg.use_cosine_lr else f"fixed({cfg.lr})"
     print(f"Training: {cfg.train_steps_per_tick} gradient steps every {cfg.train_every} ticks, "
           f"{cfg.n_step}-step returns, batch_size={cfg.batch_size}")
+    print(f"Buffer: {buffer_type} | LR: {lr_type} | Network: {cfg.hidden_sizes}"
+          f"{' +LayerNorm' if cfg.use_layer_norm else ''}")
     print("-" * 70)
 
     # Stats tracking
@@ -2109,6 +2249,12 @@ if __name__ == "__main__":
                         help="Gradient steps per training tick (default: 4, auto-scaled by GPU)")
     parser.add_argument("--no-auto-scale", action="store_true",
                         help="Disable GPU auto-scaling of batch size and num_envs")
+    parser.add_argument("--layer-norm", action="store_true",
+                        help="Enable LayerNorm in network")
+    parser.add_argument("--no-dual-buffer", action="store_true",
+                        help="Disable dual-buffer PER (use uniform sampling)")
+    parser.add_argument("--no-cosine-lr", action="store_true",
+                        help="Disable cosine annealing LR schedule")
     args = parser.parse_args()
 
     cfg = TrainingConfig()
@@ -2120,6 +2266,12 @@ if __name__ == "__main__":
         cfg.n_step = args.n_step
     if args.train_steps:
         cfg.train_steps_per_tick = args.train_steps
+    if args.layer_norm:
+        cfg.use_layer_norm = True
+    if args.no_dual_buffer:
+        cfg.use_dual_buffer = False
+    if args.no_cosine_lr:
+        cfg.use_cosine_lr = False
 
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
           device_override=args.device,
