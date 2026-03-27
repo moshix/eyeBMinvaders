@@ -175,12 +175,14 @@ def render_game(entities, width=60, height=24):
                 place(x, wy, 'wall_crit')
 
     def place_rect(x_game, y_game, w_game, h_game, sprite_key):
-        """Render an entity's full width/height on the grid."""
-        x1, x2 = sx(x_game), sx(x_game + w_game)
-        y1, y2 = sy(y_game), sy(y_game + h_game)
-        for gy in range(y1, y2 + 1):
-            for gx in range(x1, x2 + 1):
-                place(gx, gy, sprite_key)
+        """Place entity using full width but only 1 row height."""
+        x1 = sx(x_game)
+        x2 = sx(x_game + w_game)
+        # Use vertical CENTER for y — single row only
+        gy = sy(y_game + h_game / 2)
+        for gx in range(x1, x2 + 1):
+            if 0 <= gy < height and 0 <= gx < width:
+                grid[gy][gx] = sprite_key
 
     # Enemies (43x43)
     for ex, ey, hits in entities.get('enemies', []):
@@ -357,7 +359,7 @@ def main():
     console = Console()
     # Auto-fit terminal size (leave room for panel border + header/footer)
     term_w, term_h = os.get_terminal_size()
-    field_w = args.width if args.width > 0 else max(40, term_w - 8)
+    field_w = args.width if args.width > 0 else max(40, term_w - 4)
     field_h = args.height if args.height > 0 else max(16, term_h - 14)
     keys = KeyReader()
     keys.start()
@@ -464,8 +466,8 @@ def main():
                     title="[bold white]eyeBMinvaders[/]",
                     subtitle="[dim]Arrow/AD:move  Space:fire  F1:AI  P:pause  +/-:speed  R:restart  Q:quit[/]",
                     border_style="cyan" if not game_over else "red",
-                    width=field_w + 6,
-                    height=term_h - 2,
+                    width=field_w + 4,
+                    height=term_h,
                 )
 
                 if paused:
