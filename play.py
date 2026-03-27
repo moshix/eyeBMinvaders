@@ -378,7 +378,8 @@ def main():
     # Auto-fit terminal size (leave room for panel border + header/footer)
     term_w, term_h = os.get_terminal_size()
     field_w = args.width if args.width > 0 else max(40, term_w - 4)
-    field_h = args.height if args.height > 0 else max(16, term_h - 14)
+    # Panel overhead: 2 (border) + 1 (title) + 1 (subtitle) + 1 (header) + 1 (footer) + 2 (separators) = 8
+    field_h = args.height if args.height > 0 else max(16, term_h - 8)
     keys = KeyReader()
     keys.start()
 
@@ -504,9 +505,9 @@ def main():
                 # Combine into panel content
                 content = Text()
                 content.append_text(header)
-                content.append("\n\n")
+                content.append("\n")
                 content.append_text(field)
-                content.append("\n\n")
+                content.append("\n")
                 content.append_text(footer)
 
                 panel = Panel(
