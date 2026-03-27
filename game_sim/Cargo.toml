@@ -1,0 +1,18 @@
+[package]
+name = "game_sim"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "game_sim"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true

@@ -28,12 +28,20 @@ from typing import List, Optional
 
 import numpy as np
 
+# Try to import Rust game simulation
+try:
+    from game_sim import BatchedGames as RustBatchedGames
+    HAS_RUST_SIM = True
+except ImportError:
+    HAS_RUST_SIM = False
+
 try:
     import torch
     import torch.nn as nn
     import torch.optim as optim
     import torch.nn.functional as F
     HAS_TORCH = True
+    torch.set_float32_matmul_precision('high')
 except ImportError:
     HAS_TORCH = False
     print("WARNING: PyTorch not found. Install with: pip install torch")
@@ -152,6 +160,7 @@ class Bullet:
     dx: float = 0.0  # for monster2 spread bullets
     dy: float = 0.0
     has_direction: bool = False  # True for monster2 bullets with dx/dy
+    removed: bool = False
 
 
 @dataclass
@@ -173,6 +182,7 @@ class Kamikaze:
     time: float = 0.0
     hits: int = 0
     last_fire_time: float = 0.0
+    removed: bool = False
 
 
 @dataclass
@@ -184,6 +194,7 @@ class Missile:
     height: float = MISSILE_HEIGHT
     time: float = 0.0
     from_monster: bool = False
+    removed: bool = False
 
 
 @dataclass
@@ -616,11 +627,12 @@ class HeadlessGame:
         self.enemies = [e for e in self.enemies if e.hits < ENEMY_HITS_TO_DESTROY]
 
     def _move_kamikazes(self, dt):
-        to_remove = set()
         player_cx = self.player_x + PLAYER_WIDTH / 2
         player_cy = self.player_y + PLAYER_HEIGHT / 2
 
-        for i, k in enumerate(self.kamikazes):
+        for k in self.kamikazes:
+            if k.removed:
+                continue
             k.time += dt
 
             # Shooting
@@ -634,7 +646,7 @@ class HeadlessGame:
 
             # Check if past player
             if k.y >= self.player_y:
-                to_remove.add(i)
+                k.removed = True
                 continue
 
             # Homing movement
@@ -655,13 +667,14 @@ class HeadlessGame:
                             k.y + k.height > w.y and k.y < w.y + w.height):
                         w.missile_hits += 1
                         self.score += 30
-                        to_remove.add(i)
+                        k.removed = True
                         break
 
-        self.kamikazes = [k for i, k in enumerate(self.kamikazes) if i not in to_remove]
-        # Remove off-screen
-        self.kamikazes = [k for k in self.kamikazes
-                          if 0 < k.x < GAME_WIDTH]
+            # Off-screen check
+            if not k.removed and (k.x <= 0 or k.x >= GAME_WIDTH):
+                k.removed = True
+
+        self.kamikazes = [k for k in self.kamikazes if not k.removed]
 
     def _move_missiles(self, dt):
         player_cx = self.player_x + PLAYER_WIDTH / 2
@@ -947,6 +960,7 @@ class HeadlessGame:
     # Collision detection
     # =========================================================================
     def _detect_collisions(self):
+        # Use removed flags to avoid rebuilding lists multiple times
         self._check_bullet_kamikaze()
         self._check_bullet_wall()
         self._check_bullet_enemy()
@@ -959,83 +973,77 @@ class HeadlessGame:
         self._check_missile_wall()
         self._check_enemy_bullet_wall()
         self._remove_destroyed_walls()
+        # Single compaction pass for all entity lists
+        self._compact_entities()
+
+    def _compact_entities(self):
+        """Single-pass removal of all flagged entities."""
+        self.bullets = [b for b in self.bullets if not b.removed]
+        self.kamikazes = [k for k in self.kamikazes if not k.removed]
+        self.missiles = [m for m in self.missiles if not m.removed]
+        self.enemies = [e for e in self.enemies if e.hits < ENEMY_HITS_TO_DESTROY]
 
     def _check_bullet_kamikaze(self):
-        bullets_to_remove = set()
-        kamikazes_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if b.is_enemy:
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
                 continue
-            for ki, k in enumerate(self.kamikazes):
-                if ki in kamikazes_to_remove:
+            for k in self.kamikazes:
+                if k.removed:
                     continue
                 if (b.x < k.x + k.width and b.x + BULLET_W > k.x and
                         b.y < k.y + k.height and b.y + BULLET_H > k.y):
-                    bullets_to_remove.add(bi)
+                    b.removed = True
                     k.hits += 1
                     if k.hits >= KAMIKAZE_HITS_TO_DESTROY:
-                        kamikazes_to_remove.add(ki)
+                        k.removed = True
                         self.score += 300
                         self.kamikazes_killed += 1
                         self._emit(EventType.KAMIKAZE_KILLED)
                     break
 
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
-        self.kamikazes = [k for i, k in enumerate(self.kamikazes) if i not in kamikazes_to_remove]
-
     def _check_bullet_wall(self):
-        bullets_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if b.is_enemy:
+        wall_y_top = WALL_Y - BULLET_H  # Y-prefilter threshold
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
+                continue
+            if b.y < wall_y_top:  # bullet is far above walls, skip
                 continue
             for w in self.walls:
                 if (b.x < w.x + w.width and b.x + BULLET_W > w.x and
                         b.y < w.y + w.height and b.y + BULLET_H > w.y):
-                    bullets_to_remove.add(bi)
+                    b.removed = True
                     w.hit_count += 1
                     break
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
 
     def _check_bullet_enemy(self):
-        bullets_to_remove = set()
-        enemies_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if b.is_enemy or bi in bullets_to_remove:
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
                 continue
-            for ei, e in enumerate(self.enemies):
-                if ei in enemies_to_remove:
+            for e in self.enemies:
+                if e.hits >= ENEMY_HITS_TO_DESTROY:
                     continue
                 if (b.x < e.x + e.width and b.x + BULLET_W > e.x and
                         b.y < e.y + e.height and b.y + BULLET_H > e.y):
                     e.hits += 1
-                    bullets_to_remove.add(bi)
+                    b.removed = True
                     if e.hits >= ENEMY_HITS_TO_DESTROY:
-                        enemies_to_remove.add(ei)
                         self.score += 10 + 30  # kill + explosion
                         self.enemies_killed += 1
                         self._emit(EventType.ENEMY_KILLED)
                     break
 
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
-        self.enemies = [e for i, e in enumerate(self.enemies) if i not in enemies_to_remove]
-
     def _check_bullet_missile(self):
-        bullets_to_remove = set()
-        missiles_to_remove = set()
-        for bi in range(len(self.bullets) - 1, -1, -1):
-            b = self.bullets[bi]
-            if b.is_enemy:
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
                 continue
-            for mi in range(len(self.missiles) - 1, -1, -1):
-                if mi in missiles_to_remove:
+            for m in self.missiles:
+                if m.removed:
                     continue
-                m = self.missiles[mi]
                 dx = b.x - m.x
                 dy = b.y - m.y
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist < (m.width / 2 + 5):
-                    bullets_to_remove.add(bi)
-                    missiles_to_remove.add(mi)
+                if dx * dx + dy * dy < (m.width / 2 + 5) ** 2:  # squared distance
+                    b.removed = True
+                    m.removed = True
                     self.homing_missile_hits += 1
                     self.score += 500
                     self.missiles_shot += 1
@@ -1051,18 +1059,13 @@ class HeadlessGame:
                             self._emit(EventType.LIFE_GRANTED)
                     break
 
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
-        self.missiles = [m for i, m in enumerate(self.missiles) if i not in missiles_to_remove]
-
     def _check_bullet_monster(self):
         if not self.monster or self.monster.hit:
             return
-        bullets_to_remove = set()
         m = self.monster
-        for bi, b in enumerate(self.bullets):
-            if b.is_enemy:
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
                 continue
-            # Check if enemy is in the bullet's path
             has_enemy_in_path = any(
                 b.x >= e.x and b.x <= e.x + e.width and
                 b.y > e.y and b.y < m.y + m.height
@@ -1072,7 +1075,7 @@ class HeadlessGame:
                 continue
             if (b.x < m.x + m.width and b.x + BULLET_W > m.x and
                     b.y < m.y + m.height and b.y + BULLET_H > m.y):
-                bullets_to_remove.add(bi)
+                b.removed = True
                 m.hit = True
                 m.hit_time = self.game_time
                 self.score += 500
@@ -1080,55 +1083,51 @@ class HeadlessGame:
                 self._emit(EventType.MONSTER_KILLED)
                 break
 
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
-
     def _check_bullet_monster2(self):
         m2 = self.monster2
         if not m2 or m2.is_disappeared or m2.hit:
             return
-        bullets_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if b.is_enemy:
+        for b in self.bullets:
+            if b.is_enemy or b.removed:
                 continue
             if (b.x < m2.x + m2.width and b.x + BULLET_W > m2.x and
                     b.y < m2.y + m2.height and b.y + BULLET_H > m2.y):
-                bullets_to_remove.add(bi)
+                b.removed = True
                 m2.hit = True
                 m2.hit_time = self.game_time
                 self.score += 1500
                 self._restore_walls()
                 self._emit(EventType.MONSTER2_KILLED)
                 break
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
 
     def _check_enemy_bullet_player(self):
         if self.is_player_hit:
             return
-        bullets_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if not b.is_enemy:
+        for b in self.bullets:
+            if not b.is_enemy or b.removed:
                 continue
             if (b.x < self.player_x + PLAYER_WIDTH and b.x + BULLET_W > self.player_x and
                     b.y < self.player_y + PLAYER_HEIGHT and b.y + BULLET_H > self.player_y):
-                bullets_to_remove.add(bi)
                 self._handle_player_hit()
                 # Clear all enemy bullets
-                self.bullets = [bb for bb in self.bullets if not bb.is_enemy]
+                for bb in self.bullets:
+                    if bb.is_enemy:
+                        bb.removed = True
                 return
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
 
     def _check_kamikaze_player(self):
         if self.is_player_hit:
             return
-        to_remove = set()
-        for ki, k in enumerate(self.kamikazes):
+        for k in self.kamikazes:
+            if k.removed:
+                continue
             # Wall collision first
             hit_wall = False
             for w in self.walls:
                 if (k.x < w.x + w.width and k.x + k.width > w.x and
                         k.y < w.y + w.height and k.y + k.height > w.y):
                     self.score += 30
-                    to_remove.add(ki)
+                    k.removed = True
                     hit_wall = True
                     break
             if hit_wall:
@@ -1138,48 +1137,51 @@ class HeadlessGame:
                     k.x + k.width > self.player_x and
                     k.y < self.player_y + PLAYER_HEIGHT and
                     k.y + k.height > self.player_y):
-                to_remove.add(ki)
+                k.removed = True
                 self._handle_player_hit()
-
-        self.kamikazes = [k for i, k in enumerate(self.kamikazes) if i not in to_remove]
 
     def _check_missile_player(self):
         if self.is_player_hit:
             return
         player_cx = self.player_x + PLAYER_WIDTH / 2
         player_cy = self.player_y + PLAYER_HEIGHT / 2
-        for mi, m in enumerate(self.missiles):
+        hit_radius_sq = (PLAYER_WIDTH / 2 + MISSILE_WIDTH / 4) ** 2
+        for m in self.missiles:
+            if m.removed:
+                continue
             dx = m.x - player_cx
             dy = m.y - player_cy
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist < (PLAYER_WIDTH / 2 + m.width / 4):
+            if dx * dx + dy * dy < hit_radius_sq:
                 self._handle_player_hit()
-                self.missiles = []  # Clear all missiles on hit
+                # Clear all missiles on hit
+                for mm in self.missiles:
+                    mm.removed = True
                 return
 
     def _check_missile_wall(self):
-        missiles_to_remove = set()
-        for mi, m in enumerate(self.missiles):
+        for m in self.missiles:
+            if m.removed:
+                continue
             for w in self.walls:
                 if (m.x >= w.x and m.x <= w.x + w.width and
                         m.y >= w.y and m.y <= w.y + w.height):
-                    missiles_to_remove.add(mi)
+                    m.removed = True
                     w.missile_hits += 1
                     break
-        self.missiles = [m for i, m in enumerate(self.missiles) if i not in missiles_to_remove]
 
     def _check_enemy_bullet_wall(self):
-        bullets_to_remove = set()
-        for bi, b in enumerate(self.bullets):
-            if not b.is_enemy:
+        wall_y_top = WALL_Y  # Y-prefilter: only check bullets near wall row
+        for b in self.bullets:
+            if not b.is_enemy or b.removed:
+                continue
+            if b.y < wall_y_top:  # bullet hasn't reached wall row yet
                 continue
             for w in self.walls:
                 if (b.x >= w.x and b.x <= w.x + w.width and
                         b.y >= w.y and b.y <= w.y + w.height):
-                    bullets_to_remove.add(bi)
+                    b.removed = True
                     w.hit_count += 1
                     break
-        self.bullets = [b for i, b in enumerate(self.bullets) if i not in bullets_to_remove]
 
     def _remove_destroyed_walls(self):
         before = len(self.walls)
@@ -1198,9 +1200,13 @@ class HeadlessGame:
         self._emit(EventType.PLAYER_HIT, lives=self.player_lives)
 
         # Clear threats
-        self.bullets = [b for b in self.bullets if not b.is_enemy]
-        self.missiles = []
-        self.kamikazes = []
+        for b in self.bullets:
+            if b.is_enemy:
+                b.removed = True
+        for m in self.missiles:
+            m.removed = True
+        for k in self.kamikazes:
+            k.removed = True
 
         if self.player_lives <= 0:
             self.game_over = True
@@ -1252,29 +1258,47 @@ if HAS_TORCH:
 
 
 # =============================================================================
-# Replay Buffer
+# Replay Buffer (fast numpy-backed uniform sampling)
 # =============================================================================
-Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
+class FastReplayBuffer:
+    def __init__(self, capacity, state_size):
+        self.capacity = capacity
+        self.states = np.zeros((capacity, state_size), dtype=np.float32)
+        self.actions = np.zeros(capacity, dtype=np.int64)
+        self.rewards = np.zeros(capacity, dtype=np.float32)
+        self.next_states = np.zeros((capacity, state_size), dtype=np.float32)
+        self.dones = np.zeros(capacity, dtype=np.float32)
+        self.idx = 0
+        self.size = 0
 
+    def push(self, state, action, reward, next_state, done):
+        i = self.idx % self.capacity
+        self.states[i] = state
+        self.actions[i] = action
+        self.rewards[i] = reward
+        self.next_states[i] = next_state
+        self.dones[i] = float(done)
+        self.idx += 1
+        self.size = min(self.size + 1, self.capacity)
 
-class ReplayBuffer:
-    def __init__(self, capacity=100_000):
-        self.buffer = deque(maxlen=capacity)
-
-    def push(self, *args):
-        self.buffer.append(Transition(*args))
+    def push_batch(self, states, actions, rewards, next_states, dones):
+        n = len(actions)
+        idxs = np.arange(self.idx, self.idx + n) % self.capacity
+        self.states[idxs] = states
+        self.actions[idxs] = actions
+        self.rewards[idxs] = rewards
+        self.next_states[idxs] = next_states
+        self.dones[idxs] = dones
+        self.idx += n
+        self.size = min(self.size + n, self.capacity)
 
     def sample(self, batch_size):
-        batch = random.sample(self.buffer, batch_size)
-        states = np.array([t.state for t in batch])
-        actions = np.array([t.action for t in batch])
-        rewards = np.array([t.reward for t in batch], dtype=np.float32)
-        next_states = np.array([t.next_state for t in batch])
-        dones = np.array([t.done for t in batch], dtype=np.float32)
-        return states, actions, rewards, next_states, dones
+        idxs = np.random.randint(0, self.size, size=batch_size)
+        return (self.states[idxs], self.actions[idxs], self.rewards[idxs],
+                self.next_states[idxs], self.dones[idxs])
 
     def __len__(self):
-        return len(self.buffer)
+        return self.size
 
 
 # =============================================================================
@@ -1290,17 +1314,25 @@ class DQNAgent:
         self.target_net = DQN(state_size, action_size).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
-        self.memory = ReplayBuffer(200_000)
+        # torch.compile() for PyTorch 2.x+ speedup
+        try:
+            self.policy_net = torch.compile(self.policy_net)
+            self.target_net = torch.compile(self.target_net)
+        except Exception:
+            pass  # Not available on older PyTorch versions
+
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=3e-5)
+        self.memory = FastReplayBuffer(500_000, state_size)
 
         self.batch_size = 256
         self.gamma = 0.99
         self.epsilon = 1.0
         self.epsilon_min = 0.02
-        self.epsilon_decay = 0.99998  # reaches ~0.02 around ep 200k
-        self.target_update = 1000
-        self.train_every = 8  # Only train every N steps (huge speedup)
+        self.epsilon_decay = 0.9999  # reaches ~0.02 around ep 50k
+        self.tau = 0.005  # Polyak averaging coefficient for soft target updates
+        self.train_every = 4  # Train every N environment steps
         self.steps = 0
+        self.env_steps = 0  # track environment steps for step-based training
 
     def select_action(self, state):
         if random.random() < self.epsilon:
@@ -1311,17 +1343,29 @@ class DQNAgent:
             q_values = self.policy_net(state_t)
             return q_values.argmax(dim=1).item()
 
+    def select_actions_batch(self, states_batch):
+        """Select actions for all environments in one forward pass."""
+        n = len(states_batch) if isinstance(states_batch, list) else states_batch.shape[0]
+        if random.random() < self.epsilon:
+            return [random.randrange(self.action_size) for _ in range(n)]
+        with torch.no_grad():
+            states_t = torch.as_tensor(
+                np.array(states_batch) if isinstance(states_batch, list) else states_batch,
+                dtype=torch.float32, device=self.device)
+            q_values = self.policy_net(states_t)
+            return q_values.argmax(dim=1).cpu().tolist()
+
     def train_step(self):
         if len(self.memory) < self.batch_size:
             return 0.0
 
         states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
 
-        states_t = torch.FloatTensor(states).to(self.device)
-        actions_t = torch.LongTensor(actions).to(self.device)
-        rewards_t = torch.FloatTensor(rewards).to(self.device)
-        next_states_t = torch.FloatTensor(next_states).to(self.device)
-        dones_t = torch.FloatTensor(dones).to(self.device)
+        states_t = torch.as_tensor(states, dtype=torch.float32, device=self.device)
+        actions_t = torch.as_tensor(actions, dtype=torch.long, device=self.device)
+        rewards_t = torch.as_tensor(rewards, dtype=torch.float32, device=self.device)
+        next_states_t = torch.as_tensor(next_states, dtype=torch.float32, device=self.device)
+        dones_t = torch.as_tensor(dones, dtype=torch.float32, device=self.device)
 
         # Current Q values
         q_values = self.policy_net(states_t).gather(1, actions_t.unsqueeze(1)).squeeze(1)
@@ -1339,12 +1383,21 @@ class DQNAgent:
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
         self.optimizer.step()
 
-        # Update target network
+        # Soft target network update (Polyak averaging)
         self.steps += 1
-        if self.steps % self.target_update == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        with torch.no_grad():
+            for p_target, p_policy in zip(self.target_net.parameters(),
+                                          self.policy_net.parameters()):
+                p_target.data.mul_(1.0 - self.tau).add_(p_policy.data * self.tau)
 
         return loss.item()
+
+    def maybe_train(self):
+        """Step-based training: train once every N environment steps."""
+        self.env_steps += 1
+        if self.env_steps % self.train_every == 0:
+            return self.train_step()
+        return 0.0
 
     def decay_epsilon(self):
         """Call once per episode."""
@@ -1357,6 +1410,7 @@ class DQNAgent:
             'optimizer': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
             'steps': self.steps,
+            'env_steps': self.env_steps,
         }, path)
 
     def load(self, path):
@@ -1366,15 +1420,31 @@ class DQNAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer'])
         self.epsilon = checkpoint['epsilon']
         self.steps = checkpoint['steps']
+        self.env_steps = checkpoint.get('env_steps', 0)
 
 
 # =============================================================================
 # Training Loop
 # =============================================================================
-def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None):
+NUM_ENVS = 128  # Number of parallel game instances
+
+
+def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
+          num_envs=NUM_ENVS):
     os.makedirs(save_dir, exist_ok=True)
 
-    game = HeadlessGame()
+    use_rust = HAS_RUST_SIM
+    if use_rust:
+        envs = RustBatchedGames(num_envs, seed=42)
+        state_size = envs.state_size
+        action_size = envs.action_size
+        print("Using Rust game simulation (fast mode)")
+    else:
+        games = [HeadlessGame() for _ in range(num_envs)]
+        state_size = games[0].state_size
+        action_size = games[0].action_size
+        print("Using Python game simulation (slow mode)")
+
     if device_override:
         device = device_override
     else:
@@ -1385,7 +1455,7 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             device = 'mps'
 
     if HAS_TORCH:
-        agent = DQNAgent(game.state_size, game.action_size, device=device)
+        agent = DQNAgent(state_size, action_size, device=device)
         if resume_path:
             agent.load(resume_path)
             print(f"Resumed from {resume_path} (epsilon={agent.epsilon:.4f}, steps={agent.steps})")
@@ -1393,8 +1463,10 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
         agent = None
 
     print(f"Training on device: {device}")
-    print(f"State size: {game.state_size}, Action size: {game.action_size}")
+    print(f"Parallel environments: {num_envs}")
+    print(f"State size: {state_size}, Action size: {action_size}")
     print(f"Episodes: {episodes:,}")
+    print(f"Training: 32 gradient steps per completed episode")
     print("-" * 70)
 
     # Stats tracking
@@ -1404,107 +1476,201 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     best_level = 0
     total_events = {t: 0 for t in dir(EventType) if not t.startswith('_')}
     start_time = time.time()
-    train_steps = 0
-    pending_experiences = []  # Batch experiences before training
 
     # Event log file
     log_path = os.path.join(save_dir, "training_events.jsonl")
     log_file = open(log_path, "a")
 
-    # Training schedule: train N batches after every K episodes
-    TRAIN_INTERVAL = 10       # Train every N episodes
-    TRAIN_BATCHES = 32        # Number of gradient steps per training round
+    # Initialize all environments
+    if use_rust:
+        states = envs.reset_all()  # numpy [num_envs, 24]
+    else:
+        states = [game.reset() for game in games]
+    episode_rewards = np.zeros(num_envs, dtype=np.float32)
+    episode_count = 0
+    tick_count = 0
 
-    for episode in range(1, episodes + 1):
-        state = game.reset()
-        episode_reward = 0.0
-
-        while not game.game_over:
-            # Select action
+    while episode_count < episodes:
+        if use_rust:
+            # Batch action selection: ONE forward pass for all envs
             if agent:
-                action = agent.select_action(state)
+                actions = agent.select_actions_batch(states)
             else:
-                action = random.randrange(game.action_size)
+                actions = [random.randrange(action_size) for _ in range(num_envs)]
 
-            next_state, reward, done, info = game.step(action)
-            episode_reward += reward
+            # Step all environments — fast path, no dict overhead
+            next_states, rewards, dones = envs.step_all_fast(actions)
+            tick_count += 1
 
-            # Store experience (defer training)
+            # Batch push ALL experiences at once
             if agent:
-                agent.memory.push(state, action, reward, next_state, done)
-                train_steps += 1
+                rewards_np = np.asarray(rewards, dtype=np.float32)
+                dones_np = np.asarray(dones, dtype=np.float32)
+                agent.memory.push_batch(
+                    states, np.array(actions, dtype=np.int64),
+                    rewards_np, next_states, dones_np)
+            else:
+                rewards_np = np.asarray(rewards, dtype=np.float32)
+                dones_np = np.asarray(dones, dtype=np.float32)
 
-            # Collect events
-            for event in info.get("events", []):
-                etype = event["type"].upper()
-                if etype in total_events:
-                    total_events[etype] += 1
+            episode_rewards += rewards_np
 
-            state = next_state
-            if done:
-                break
+            # Handle done envs (typically 0-3 per tick out of 128)
+            done_mask = np.asarray(dones)
+            done_idxs = np.where(done_mask)[0]
+            for i in done_idxs:
+                i = int(i)
+                episode_count += 1
 
-        # Batch training: do multiple gradient steps periodically
-        if agent:
-            agent.decay_epsilon()
-            if episode % TRAIN_INTERVAL == 0 and len(agent.memory) >= agent.batch_size:
-                for _ in range(TRAIN_BATCHES):
-                    agent.train_step()
+                ep_score, ep_level, ep_lives, ep_steps, ep_ekills, ep_kkills, ep_mshots, ep_hits = envs.get_stats(i)
+                scores.append(ep_score)
+                levels.append(ep_level)
+                if ep_score > best_score:
+                    best_score = ep_score
+                if ep_level > best_level:
+                    best_level = ep_level
 
-        # Track stats
-        scores.append(game.score)
-        levels.append(game.current_level)
-        if game.score > best_score:
-            best_score = game.score
-        if game.current_level > best_level:
-            best_level = game.current_level
+                episode_summary = {
+                    "episode": episode_count,
+                    "score": ep_score,
+                    "level": ep_level,
+                    "lives_left": ep_lives,
+                    "steps": ep_steps,
+                    "enemies_killed": ep_ekills,
+                    "kamikazes_killed": ep_kkills,
+                    "missiles_shot": ep_mshots,
+                    "times_hit": ep_hits,
+                    "epsilon": agent.epsilon if agent else 0,
+                    "reward": round(float(episode_rewards[i]), 2),
+                }
+                log_file.write(json.dumps(episode_summary) + "\n")
 
-        # Log episode summary
-        episode_summary = {
-            "episode": episode,
-            "score": game.score,
-            "level": game.current_level,
-            "lives_left": game.player_lives,
-            "steps": game.total_steps,
-            "enemies_killed": game.enemies_killed,
-            "kamikazes_killed": game.kamikazes_killed,
-            "missiles_shot": game.missiles_shot,
-            "times_hit": game.times_hit,
-            "epsilon": agent.epsilon if agent else 0,
-            "reward": round(episode_reward, 2),
-        }
-        log_file.write(json.dumps(episode_summary) + "\n")
+                if agent:
+                    agent.decay_epsilon()
 
-        # Print progress
-        if episode % 1000 == 0 or episode <= 5:
-            elapsed = time.time() - start_time
-            eps_per_sec = episode / elapsed if elapsed > 0 else 0
-            avg_score = np.mean(scores) if scores else 0
-            avg_level = np.mean(levels) if levels else 0
-            eps = agent.epsilon if agent else 0
+                if episode_count % 1000 == 0 or episode_count <= 5:
+                    elapsed = time.time() - start_time
+                    eps_per_sec = episode_count / elapsed if elapsed > 0 else 0
+                    avg_score = np.mean(scores) if scores else 0
+                    avg_level = np.mean(levels) if levels else 0
+                    eps = agent.epsilon if agent else 0
+                    print(f"Ep {episode_count:>8,} | "
+                          f"Avg Score: {avg_score:>8.0f} | "
+                          f"Best: {best_score:>8,} | "
+                          f"Avg Lvl: {avg_level:.1f} | "
+                          f"Best Lvl: {best_level} | "
+                          f"Eps: {eps:.4f} | "
+                          f"{eps_per_sec:.0f} ep/s | "
+                          f"{elapsed:.0f}s")
 
-            print(f"Ep {episode:>8,} | "
-                  f"Avg Score: {avg_score:>8.0f} | "
-                  f"Best: {best_score:>8,} | "
-                  f"Avg Lvl: {avg_level:.1f} | "
-                  f"Best Lvl: {best_level} | "
-                  f"Eps: {eps:.4f} | "
-                  f"{eps_per_sec:.0f} ep/s | "
-                  f"{elapsed:.0f}s")
+                if agent and episode_count % 10_000 == 0:
+                    path = os.path.join(save_dir, f"model_ep{episode_count}.pt")
+                    agent.save(path)
+                    print(f"  -> Saved checkpoint: {path}")
 
-        # Save checkpoints
-        if agent and episode % 10_000 == 0:
-            path = os.path.join(save_dir, f"model_ep{episode}.pt")
-            agent.save(path)
-            print(f"  -> Saved checkpoint: {path}")
+                if agent and ep_score >= best_score and episode_count > 100:
+                    agent.save(os.path.join(save_dir, "model_best.pt"))
 
-        # Save best model
-        if agent and game.score >= best_score and episode > 100:
-            agent.save(os.path.join(save_dir, "model_best.pt"))
+                if episode_count % 100 == 0:
+                    log_file.flush()
 
-        # Periodic flush
-        if episode % 100 == 0:
-            log_file.flush()
+                states[i] = envs.reset_one(i)
+                episode_rewards[i] = 0.0
+
+                if episode_count >= episodes:
+                    break
+
+            # Update non-done states in bulk
+            not_done = ~done_mask
+            states[not_done] = next_states[not_done]
+
+            # Train every 2 ticks
+            if agent and tick_count % 2 == 0 and len(agent.memory) >= agent.batch_size:
+                agent.train_step()
+        else:
+            # Python fallback path
+            for i, game in enumerate(games):
+                if agent:
+                    action = agent.select_action(states[i])
+                else:
+                    action = random.randrange(action_size)
+
+                next_state, reward, done, info = game.step(action)
+                episode_rewards[i] += reward
+
+                if agent:
+                    agent.memory.push(states[i], action, reward, next_state, done)
+
+                for event in info.get("events", []):
+                    etype = event["type"].upper()
+                    if etype in total_events:
+                        total_events[etype] += 1
+
+                if done:
+                    episode_count += 1
+
+                    if agent and len(agent.memory) >= agent.batch_size:
+                        for _ in range(32):
+                            agent.train_step()
+
+                    scores.append(game.score)
+                    levels.append(game.current_level)
+                    if game.score > best_score:
+                        best_score = game.score
+                    if game.current_level > best_level:
+                        best_level = game.current_level
+
+                    episode_summary = {
+                        "episode": episode_count,
+                        "score": game.score,
+                        "level": game.current_level,
+                        "lives_left": game.player_lives,
+                        "steps": game.total_steps,
+                        "enemies_killed": game.enemies_killed,
+                        "kamikazes_killed": game.kamikazes_killed,
+                        "missiles_shot": game.missiles_shot,
+                        "times_hit": game.times_hit,
+                        "epsilon": agent.epsilon if agent else 0,
+                        "reward": round(float(episode_rewards[i]), 2),
+                    }
+                    log_file.write(json.dumps(episode_summary) + "\n")
+
+                    if agent:
+                        agent.decay_epsilon()
+
+                    if episode_count % 1000 == 0 or episode_count <= 5:
+                        elapsed = time.time() - start_time
+                        eps_per_sec = episode_count / elapsed if elapsed > 0 else 0
+                        avg_score = np.mean(scores) if scores else 0
+                        avg_level = np.mean(levels) if levels else 0
+                        eps = agent.epsilon if agent else 0
+                        print(f"Ep {episode_count:>8,} | "
+                              f"Avg Score: {avg_score:>8.0f} | "
+                              f"Best: {best_score:>8,} | "
+                              f"Avg Lvl: {avg_level:.1f} | "
+                              f"Best Lvl: {best_level} | "
+                              f"Eps: {eps:.4f} | "
+                              f"{eps_per_sec:.0f} ep/s | "
+                              f"{elapsed:.0f}s")
+
+                    if agent and episode_count % 10_000 == 0:
+                        path = os.path.join(save_dir, f"model_ep{episode_count}.pt")
+                        agent.save(path)
+                        print(f"  -> Saved checkpoint: {path}")
+
+                    if agent and game.score >= best_score and episode_count > 100:
+                        agent.save(os.path.join(save_dir, "model_best.pt"))
+
+                    if episode_count % 100 == 0:
+                        log_file.flush()
+
+                    states[i] = game.reset()
+                    episode_rewards[i] = 0.0
+
+                    if episode_count >= episodes:
+                        break
+                else:
+                    states[i] = next_state
 
     # Final save
     if agent:
@@ -1562,7 +1728,10 @@ if __name__ == "__main__":
                         help="Directory to save models (default: models)")
     parser.add_argument("--device", type=str, default=None,
                         help="Force device (cpu, cuda, mps)")
+    parser.add_argument("--num-envs", type=int, default=None,
+                        help=f"Number of parallel environments (default: {NUM_ENVS})")
     args = parser.parse_args()
 
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
-          device_override=args.device)
+          device_override=args.device,
+          num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS)
