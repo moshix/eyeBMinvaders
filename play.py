@@ -147,7 +147,7 @@ if HAS_TORCH:
 # =============================================================================
 # ASCII Renderer (larger, colored)
 # =============================================================================
-def render_game(entities, width=60, height=24):
+def render_game(entities, width=60, height=24, return_grid=False):
     """Render game state as a rich.text.Text object with proper alignment."""
     grid = [[None] * width for _ in range(height)]
 
@@ -229,6 +229,17 @@ def render_game(entities, width=60, height=24):
                 result.append(' ')
         if y < height - 1:
             result.append('\n')
+
+    if return_grid:
+        # Convert grid to compact ASCII for debug logging
+        ascii_grid = []
+        for y in range(height):
+            row = ''
+            for x in range(width):
+                key = grid[y][x]
+                row += SPRITES[key][0] if key else '.'
+            ascii_grid.append(row)
+        return result, ascii_grid
     return result
 
 
@@ -336,6 +347,8 @@ def main():
                         help="Field width in chars (default: auto-fit terminal)")
     parser.add_argument("--height", type=int, default=0,
                         help="Field height in chars (default: auto-fit terminal)")
+    parser.add_argument("--debug", type=str, nargs='?', const='play_debug.log', default=None,
+                        help="Log entity data + grid to file each second (default: play_debug.log)")
     args = parser.parse_args()
 
     model = None
@@ -347,6 +360,11 @@ def main():
         print("AI mode active. Press F1 to toggle.")
     elif args.ai and not HAS_TORCH:
         print("PyTorch not found — playing in manual mode")
+
+    debug_file = None
+    if args.debug:
+        debug_file = open(args.debug, 'w')
+        print(f"Debug logging to: {args.debug}")
 
     game = Game(seed=int(time.time()) % 100000)
     state = np.array(game.reset())
@@ -416,7 +434,37 @@ def main():
 
                 # Render
                 entities = game.get_entities()
-                field = render_game(entities, field_w, field_h)
+                if debug_file and step % max(1, speed) == 0:
+                    field, debug_grid = render_game(entities, field_w, field_h, return_grid=True)
+                    import json as _json
+                    bullets = entities.get('bullets', [])
+                    debug_entry = {
+                        "frame": step,
+                        "term": [term_w, term_h],
+                        "field": [field_w, field_h],
+                        "score": entities.get('score', 0),
+                        "level": entities.get('level', 1),
+                        "counts": {
+                            "enemies": len(entities.get('enemies', [])),
+                            "e_bullets": len([b for b in bullets if b[2]]),
+                            "p_bullets": len([b for b in bullets if not b[2]]),
+                            "kamikazes": len(entities.get('kamikazes', [])),
+                            "missiles": len(entities.get('missiles', [])),
+                            "monster": entities.get('monster') is not None,
+                            "monster2": entities.get('monster2') is not None,
+                        },
+                        "player": [round(entities.get('player_x', 0), 1),
+                                   round(entities.get('player_y', 0), 1)],
+                        "enemies_sample": [[round(e[0], 1), round(e[1], 1)]
+                                           for e in entities.get('enemies', [])[:3]],
+                        "action": ACTION_NAMES[action] if not paused else '-',
+                        "ai": ai_mode,
+                        "grid": debug_grid,
+                    }
+                    debug_file.write(_json.dumps(debug_entry) + '\n')
+                    debug_file.flush()
+                else:
+                    field = render_game(entities, field_w, field_h)
 
                 score = entities.get('score', 0)
                 level = entities.get('level', 1)
@@ -485,6 +533,9 @@ def main():
         pass
     finally:
         keys.stop()
+        if debug_file:
+            debug_file.close()
+            print(f"\nDebug log written to: {args.debug}")
         print(f"\nGame over! High score: {high_score:,} across {games_played} games.")
 
 
