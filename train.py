@@ -24,7 +24,7 @@ import argparse
 import os
 from collections import deque, namedtuple
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 import numpy as np
 
@@ -1302,13 +1302,122 @@ class FastReplayBuffer:
 
 
 # =============================================================================
+# Training Configuration
+# =============================================================================
+@dataclass
+class TrainingConfig:
+    """All tunable hyperparameters for DQN training."""
+    lr: float = 3e-5
+    batch_size: int = 256
+    gamma: float = 0.99
+    tau: float = 0.005
+    epsilon_start: float = 1.0
+    epsilon_min: float = 0.02
+    epsilon_decay: float = 0.9999
+    buffer_capacity: int = 500_000
+    train_every: int = 4
+
+    def to_dict(self):
+        return {f.name: getattr(self, f.name) for f in self.__dataclass_fields__.values()}
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+# =============================================================================
+# Plateau Detector
+# =============================================================================
+class PlateauDetector:
+    """Detects training plateaus using multi-signal analysis."""
+
+    def __init__(self, window=5000, min_episodes=15000, cooldown=10000,
+                 score_threshold=0.03):
+        self.window = window
+        self.min_episodes = min_episodes
+        self.cooldown = cooldown
+        self.score_threshold = score_threshold
+        self.scores = []
+        self.levels = []
+        self.hits = []
+        self.best_score_ever = 0
+        self.last_trigger_episode = 0
+        self.total_episodes = 0
+
+    def add(self, score, level, times_hit=0):
+        self.scores.append(score)
+        self.levels.append(level)
+        self.hits.append(times_hit)
+        self.best_score_ever = max(self.best_score_ever, score)
+        self.total_episodes += 1
+
+    def check(self) -> bool:
+        """Returns True if plateau detected."""
+        ep = self.total_episodes
+        if ep < self.min_episodes:
+            return False
+        if ep - self.last_trigger_episode < self.cooldown:
+            return False
+        if len(self.scores) < self.window * 3:
+            return False
+
+        w = self.window
+        w_old = self.scores[-3 * w:-2 * w]
+        w_mid = self.scores[-2 * w:-w]
+        w_recent = self.scores[-w:]
+
+        mean_mid = np.mean(w_mid)
+        mean_recent = np.mean(w_recent)
+        mean_old = np.mean(w_old)
+
+        # Primary: score stagnation over two windows
+        if mean_mid > 0:
+            recent_vs_mid = abs(mean_recent - mean_mid) / mean_mid
+            if recent_vs_mid >= self.score_threshold:
+                return False
+
+        # Longer horizon check
+        if mean_old > 0:
+            recent_vs_old = abs(mean_recent - mean_old) / mean_old
+            if recent_vs_old >= 0.05:
+                return False
+
+        # Anti-false-positive: recent breakthrough
+        recent_best = max(w_recent)
+        if recent_best > self.best_score_ever * 1.10:
+            return False
+
+        # Secondary confirmation: at least one must hold
+        level_stagnant = abs(np.mean(self.levels[-w:]) - np.mean(self.levels[-2 * w:-w])) < 0.15
+        hits_stagnant = len(self.hits) >= 2 * w and np.mean(self.hits[-w:]) >= np.mean(self.hits[-2 * w:-w]) * 0.95
+
+        if not (level_stagnant or hits_stagnant):
+            return False
+
+        self.last_trigger_episode = ep
+        return True
+
+    def get_stats(self):
+        """Return current stats for logging."""
+        w = min(self.window, len(self.scores))
+        return {
+            "avg_score": float(np.mean(self.scores[-w:])) if self.scores else 0,
+            "avg_level": float(np.mean(self.levels[-w:])) if self.levels else 0,
+            "best_score": self.best_score_ever,
+            "total_episodes": self.total_episodes,
+        }
+
+
+# =============================================================================
 # DQN Agent
 # =============================================================================
 class DQNAgent:
-    def __init__(self, state_size, action_size, device='cpu'):
+    def __init__(self, state_size, action_size, device='cpu', config=None):
+        cfg = config or TrainingConfig()
         self.state_size = state_size
         self.action_size = action_size
         self.device = torch.device(device)
+        self.config = cfg
 
         self.policy_net = DQN(state_size, action_size).to(self.device)
         self.target_net = DQN(state_size, action_size).to(self.device)
@@ -1321,18 +1430,18 @@ class DQNAgent:
         except Exception:
             pass  # Not available on older PyTorch versions
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=3e-5)
-        self.memory = FastReplayBuffer(500_000, state_size)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.lr)
+        self.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
 
-        self.batch_size = 256
-        self.gamma = 0.99
-        self.epsilon = 1.0
-        self.epsilon_min = 0.02
-        self.epsilon_decay = 0.9999  # reaches ~0.02 around ep 50k
-        self.tau = 0.005  # Polyak averaging coefficient for soft target updates
-        self.train_every = 4  # Train every N environment steps
+        self.batch_size = cfg.batch_size
+        self.gamma = cfg.gamma
+        self.epsilon = cfg.epsilon_start
+        self.epsilon_min = cfg.epsilon_min
+        self.epsilon_decay = cfg.epsilon_decay
+        self.tau = cfg.tau
+        self.train_every = cfg.train_every
         self.steps = 0
-        self.env_steps = 0  # track environment steps for step-based training
+        self.env_steps = 0
 
     def select_action(self, state):
         if random.random() < self.epsilon:
@@ -1430,7 +1539,8 @@ NUM_ENVS = 128  # Number of parallel game instances
 
 
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
-          num_envs=NUM_ENVS):
+          num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
+          flush_buffer=False):
     os.makedirs(save_dir, exist_ok=True)
 
     use_rust = HAS_RUST_SIM
@@ -1454,11 +1564,25 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
         elif HAS_TORCH and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             device = 'mps'
 
+    cfg = config or TrainingConfig()
+
     if HAS_TORCH:
-        agent = DQNAgent(state_size, action_size, device=device)
+        agent = DQNAgent(state_size, action_size, device=device, config=cfg)
         if resume_path:
             agent.load(resume_path)
-            print(f"Resumed from {resume_path} (epsilon={agent.epsilon:.4f}, steps={agent.steps})")
+            # Apply config overrides after load (for meta-learning)
+            agent.optimizer = optim.Adam(agent.policy_net.parameters(), lr=cfg.lr)
+            agent.batch_size = cfg.batch_size
+            agent.gamma = cfg.gamma
+            agent.tau = cfg.tau
+            agent.train_every = cfg.train_every
+            agent.epsilon = max(cfg.epsilon_start, agent.epsilon)  # allow epsilon bump
+            agent.epsilon_min = cfg.epsilon_min
+            agent.epsilon_decay = cfg.epsilon_decay
+            if flush_buffer:
+                agent.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
+                print("  Replay buffer flushed (fresh start)")
+            print(f"Resumed from {resume_path} (epsilon={agent.epsilon:.4f}, lr={cfg.lr}, steps={agent.steps})")
     else:
         agent = None
 
@@ -1466,6 +1590,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     print(f"Parallel environments: {num_envs}")
     print(f"State size: {state_size}, Action size: {action_size}")
     print(f"Episodes: {episodes:,}")
+    if cycle > 0:
+        print(f"Meta-learning cycle: {cycle}")
     print(f"Training: 32 gradient steps per completed episode")
     print("-" * 70)
 
@@ -1489,8 +1615,9 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     episode_rewards = np.zeros(num_envs, dtype=np.float32)
     episode_count = 0
     tick_count = 0
+    plateau_detected = False
 
-    while episode_count < episodes:
+    while episode_count < episodes and not plateau_detected:
         if use_rust:
             # Batch action selection: ONE forward pass for all envs
             if agent:
@@ -1543,7 +1670,13 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                     "epsilon": agent.epsilon if agent else 0,
                     "reward": round(float(episode_rewards[i]), 2),
                 }
+                if cycle > 0:
+                    episode_summary["cycle"] = cycle
                 log_file.write(json.dumps(episode_summary) + "\n")
+
+                # Feed plateau detector
+                if plateau_detector:
+                    plateau_detector.add(ep_score, ep_level, ep_hits)
 
                 if agent:
                     agent.decay_epsilon()
@@ -1562,6 +1695,16 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                           f"Eps: {eps:.4f} | "
                           f"{eps_per_sec:.0f} ep/s | "
                           f"{elapsed:.0f}s")
+
+                    # Check for plateau every 1000 episodes
+                    if plateau_detector and plateau_detector.check():
+                        print(f"\n{'='*70}")
+                        print(f"PLATEAU DETECTED at episode {episode_count}")
+                        stats = plateau_detector.get_stats()
+                        print(f"  Avg Score: {stats['avg_score']:.0f} | Avg Level: {stats['avg_level']:.1f}")
+                        print(f"{'='*70}\n")
+                        plateau_detected = True
+                        break
 
                 if agent and episode_count % 10_000 == 0:
                     path = os.path.join(save_dir, f"model_ep{episode_count}.pt")
@@ -1633,7 +1776,12 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                         "epsilon": agent.epsilon if agent else 0,
                         "reward": round(float(episode_rewards[i]), 2),
                     }
+                    if cycle > 0:
+                        episode_summary["cycle"] = cycle
                     log_file.write(json.dumps(episode_summary) + "\n")
+
+                    if plateau_detector:
+                        plateau_detector.add(game.score, game.current_level, game.times_hit)
 
                     if agent:
                         agent.decay_epsilon()
@@ -1652,6 +1800,15 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                               f"Eps: {eps:.4f} | "
                               f"{eps_per_sec:.0f} ep/s | "
                               f"{elapsed:.0f}s")
+
+                        if plateau_detector and plateau_detector.check():
+                            print(f"\n{'='*70}")
+                            print(f"PLATEAU DETECTED at episode {episode_count}")
+                            stats = plateau_detector.get_stats()
+                            print(f"  Avg Score: {stats['avg_score']:.0f} | Avg Level: {stats['avg_level']:.1f}")
+                            print(f"{'='*70}\n")
+                            plateau_detected = True
+                            break
 
                     if agent and episode_count % 10_000 == 0:
                         path = os.path.join(save_dir, f"model_ep{episode_count}.pt")
@@ -1680,14 +1837,16 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
 
     # Print final stats
     elapsed = time.time() - start_time
+    avg_score_final = float(np.mean(scores)) if scores else 0
+    stop_reason = "plateau" if plateau_detected else "complete"
     print("\n" + "=" * 70)
-    print("TRAINING COMPLETE")
+    print(f"TRAINING {'PAUSED (plateau)' if plateau_detected else 'COMPLETE'}")
     print("=" * 70)
-    print(f"Episodes:    {episodes:,}")
+    print(f"Episodes:    {episode_count:,}")
     print(f"Time:        {elapsed:.0f}s ({elapsed / 3600:.1f}h)")
     print(f"Best Score:  {best_score:,}")
     print(f"Best Level:  {best_level}")
-    print(f"Avg Score (last 1k): {np.mean(scores):.0f}")
+    print(f"Avg Score (last 1k): {avg_score_final:.0f}")
     print(f"\nEvent totals:")
     for k, v in sorted(total_events.items()):
         if v > 0:
@@ -1700,6 +1859,16 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
         export_path = os.path.join(save_dir, "model_weights.json")
         export_model_to_json(agent, export_path)
         print(f"JSON weights:    {export_path}")
+
+    return {
+        "episodes_completed": episode_count,
+        "best_score": best_score,
+        "best_level": best_level,
+        "avg_score": avg_score_final,
+        "avg_level": float(np.mean(levels)) if levels else 0,
+        "elapsed": elapsed,
+        "stop_reason": stop_reason,
+    }
 
 
 def export_model_to_json(agent, path):
