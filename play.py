@@ -174,43 +174,46 @@ def render_game(entities, width=60, height=24):
             else:
                 place(x, wy, 'wall_crit')
 
-    # Enemies
-    for ex, ey, hits in entities.get('enemies', []):
-        gx, gy = sx(ex + 21), sy(ey + 21)
-        place(gx, gy, 'enemy_full' if hits == 0 else 'enemy_hit')
+    def place_rect(x_game, y_game, w_game, h_game, sprite_key):
+        """Render an entity's full width/height on the grid."""
+        x1, x2 = sx(x_game), sx(x_game + w_game)
+        y1, y2 = sy(y_game), sy(y_game + h_game)
+        for gy in range(y1, y2 + 1):
+            for gx in range(x1, x2 + 1):
+                place(gx, gy, sprite_key)
 
-    # Bullets
+    # Enemies (43x43)
+    for ex, ey, hits in entities.get('enemies', []):
+        place_rect(ex, ey, 43, 43, 'enemy_full' if hits == 0 else 'enemy_hit')
+
+    # Bullets (small, single pixel is fine)
     for bx, by, is_enemy in entities.get('bullets', []):
         gx, gy = sx(bx), sy(by)
         place(gx, gy, 'bullet_enemy' if is_enemy else 'bullet_player')
 
-    # Kamikazes
+    # Kamikazes (43x43)
     for kx, ky in entities.get('kamikazes', []):
-        gx, gy = sx(kx + 21), sy(ky + 21)
-        place(gx, gy, 'kamikaze')
+        place_rect(kx, ky, 43, 43, 'kamikaze')
 
-    # Missiles
+    # Missiles (57x57)
     for mx, my in entities.get('missiles', []):
-        gx, gy = sx(mx), sy(my)
-        place(gx, gy, 'missile')
+        place_rect(mx, my, 57, 57, 'missile')
 
-    # Monster
+    # Monster (56x56)
     m = entities.get('monster')
     if m is not None:
-        gx, gy = sx(m[0] + 28), sy(m[1] + 28)
-        place(gx, gy, 'monster')
+        place_rect(m[0], m[1], 56, 56, 'monster')
 
-    # Monster2
+    # Monster2 (56x56)
     m2 = entities.get('monster2')
     if m2 is not None:
-        gx, gy = sx(m2[0] + 28), sy(m2[1] + 28)
-        place(gx, gy, 'monster2')
+        place_rect(m2[0], m2[1], 56, 56, 'monster2')
 
-    # Player (drawn last)
+    # Player (48x48, drawn last)
     px = entities.get('player_x', 512)
     py_val = entities.get('player_y', 546)
-    gx, gy = sx(px + 24), sy(py_val + 24)
-    place(gx, gy, 'player_hit' if entities.get('is_hit') else 'player')
+    skey = 'player_hit' if entities.get('is_hit') else 'player'
+    place_rect(px, py_val, 48, 48, skey)
 
     # Build rich Text object — each char is exactly 1 column wide
     result = Text()
@@ -355,7 +358,7 @@ def main():
     # Auto-fit terminal size (leave room for panel border + header/footer)
     term_w, term_h = os.get_terminal_size()
     field_w = args.width if args.width > 0 else max(40, term_w - 8)
-    field_h = args.height if args.height > 0 else max(16, term_h - 10)
+    field_h = args.height if args.height > 0 else max(16, term_h - 14)
     keys = KeyReader()
     keys.start()
 
@@ -462,6 +465,7 @@ def main():
                     subtitle="[dim]Arrow/AD:move  Space:fire  F1:AI  P:pause  +/-:speed  R:restart  Q:quit[/]",
                     border_style="cyan" if not game_over else "red",
                     width=field_w + 6,
+                    height=term_h - 2,
                 )
 
                 if paused:
