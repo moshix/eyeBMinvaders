@@ -32,17 +32,21 @@ from train import train, TrainingConfig, PlateauDetector, NUM_ENVS
 # Mutation Definitions
 # =============================================================================
 DEFAULT_MUTATION_WEIGHTS = {
-    "lr_reduce": 0.30,
-    "epsilon_bump": 0.30,
+    "lr_reduce": 0.15,
+    "lr_boost": 0.15,
+    "epsilon_bump": 0.15,
     "epsilon_bump_large": 0.05,
     "buffer_flush": 0.10,
     "batch_size_up": 0.05,
     "gamma_increase": 0.05,
     "tau_reduce": 0.05,
+    "n_step_change": 0.05,
+    "cosine_reset": 0.10,
+    "train_steps_up": 0.05,
+    "num_envs_up": 0.05,
 }
 
-# Mutations that are always applied (proven effective from learnings.md)
-ALWAYS_APPLY = {"lr_reduce", "epsilon_bump"}
+ALWAYS_APPLY = set()
 
 
 def apply_mutation(config: TrainingConfig, mutation: str) -> TrainingConfig:
@@ -50,7 +54,10 @@ def apply_mutation(config: TrainingConfig, mutation: str) -> TrainingConfig:
     cfg = deepcopy(config)
     if mutation == "lr_reduce":
         factor = random.uniform(0.3, 0.5)
-        cfg.lr = max(1e-6, cfg.lr * factor)
+        cfg.lr = max(1e-5, cfg.lr * factor)
+    elif mutation == "lr_boost":
+        factor = random.uniform(1.5, 3.0)
+        cfg.lr = min(3e-4, cfg.lr * factor)
     elif mutation == "epsilon_bump":
         cfg.epsilon_start = random.uniform(0.10, 0.25)
     elif mutation == "epsilon_bump_large":
@@ -58,11 +65,19 @@ def apply_mutation(config: TrainingConfig, mutation: str) -> TrainingConfig:
     elif mutation == "buffer_flush":
         pass  # handled via flush_buffer flag in train()
     elif mutation == "batch_size_up":
-        cfg.batch_size = min(1024, cfg.batch_size * 2)
+        cfg.batch_size = min(8192, cfg.batch_size * 2)
     elif mutation == "gamma_increase":
         cfg.gamma = min(0.999, cfg.gamma + 0.005)
     elif mutation == "tau_reduce":
         cfg.tau = max(0.0005, cfg.tau * 0.5)
+    elif mutation == "n_step_change":
+        cfg.n_step = random.choice([3, 5, 7])
+    elif mutation == "cosine_reset":
+        pass  # handled via flag in train()
+    elif mutation == "train_steps_up":
+        cfg.train_steps_per_tick = min(8, cfg.train_steps_per_tick + 2)
+    elif mutation == "num_envs_up":
+        pass  # handled via num_envs parameter
     return cfg
 
 
@@ -199,12 +214,16 @@ def meta_train(total_episodes=500_000, save_dir="models", device=None,
             cycle_resume = resume_path
             mutations = []
             flush_buffer = False
+            cosine_reset = False
             print("First cycle — using base configuration")
         else:
             # Subsequent cycles: mutate and restart from best
             mutations = select_mutations(meta["mutation_weights"])
             config = deepcopy(base_config)
             flush_buffer = "buffer_flush" in mutations
+            cosine_reset = "cosine_reset" in mutations
+            if "num_envs_up" in mutations:
+                num_envs = min(4096, num_envs * 2)
 
             for m in mutations:
                 config = apply_mutation(config, m)
@@ -249,6 +268,7 @@ def meta_train(total_episodes=500_000, save_dir="models", device=None,
             plateau_detector=detector,
             cycle=cycle_num,
             flush_buffer=flush_buffer,
+            cosine_reset=cosine_reset,
             auto_scale=auto_scale,
         )
 

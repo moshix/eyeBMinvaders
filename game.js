@@ -2196,6 +2196,40 @@ let autoPlayEnabled = false;
 let dqnModel = null;       // loaded model weights
 let dqnModelLoading = false;
 let dqnModelTimestamp = 0;  // last modified time of the JSON file
+let dqnFrameBuffer = null;  // frame stacking buffer
+
+function dqnInitFrameBuffer(nFrames, stateSize) {
+  dqnFrameBuffer = {
+    nFrames: nFrames,
+    stateSize: stateSize,
+    buffer: new Array(nFrames).fill(null).map(() => new Float32Array(stateSize)),
+  };
+}
+
+function dqnPushFrame(state) {
+  const fb = dqnFrameBuffer;
+  // Shift buffer left
+  for (let i = 0; i < fb.nFrames - 1; i++) {
+    fb.buffer[i] = fb.buffer[i + 1];
+  }
+  fb.buffer[fb.nFrames - 1] = new Float32Array(state);
+  // Flatten
+  const out = new Array(fb.nFrames * fb.stateSize);
+  for (let f = 0; f < fb.nFrames; f++) {
+    for (let j = 0; j < fb.stateSize; j++) {
+      out[f * fb.stateSize + j] = fb.buffer[f][j];
+    }
+  }
+  return out;
+}
+
+function dqnResetFrameBuffer(state) {
+  const fb = dqnFrameBuffer;
+  for (let i = 0; i < fb.nFrames; i++) {
+    fb.buffer[i] = new Float32Array(state);
+  }
+  return dqnPushFrame(state);
+}
 
 // Attempt to load/reload model weights from models/model_weights.json
 async function loadDQNModel() {
@@ -2218,35 +2252,53 @@ setInterval(() => {
   if (autoPlayEnabled) loadDQNModel();
 }, 30000);
 
-// Forward pass through the DQN network: [23] -> 256 -> 256 -> 128 -> [6]
+// Generic linear forward: weight[out][in] * x[in] + bias[out], optional ReLU
+function linearForward(weight, bias, x, relu) {
+  const out = new Array(weight.length);
+  for (let i = 0; i < weight.length; i++) {
+    let sum = bias[i];
+    const row = weight[i];
+    for (let j = 0; j < row.length; j++) sum += row[j] * x[j];
+    out[i] = relu ? Math.max(0, sum) : sum;
+  }
+  return out;
+}
+
+// Forward pass — auto-detects dueling vs standard architecture
 function dqnForward(state) {
   if (!dqnModel) return null;
   const w = dqnModel.weights;
-  let x = state;
+  const isDueling = dqnModel.type === 'dueling';
 
-  // Layer names from PyTorch Sequential: net.0, net.2, net.4, net.6
-  const layers = [
-    { w: 'net.0.weight', b: 'net.0.bias', relu: true },
-    { w: 'net.2.weight', b: 'net.2.bias', relu: true },
-    { w: 'net.4.weight', b: 'net.4.bias', relu: true },
-    { w: 'net.6.weight', b: 'net.6.bias', relu: false },
-  ];
-
-  for (const layer of layers) {
-    const weight = w[layer.w]; // shape [out, in]
-    const bias = w[layer.b];   // shape [out]
-    const out = new Array(weight.length);
-    for (let i = 0; i < weight.length; i++) {
-      let sum = bias[i];
-      const row = weight[i];
-      for (let j = 0; j < row.length; j++) {
-        sum += row[j] * x[j];
-      }
-      out[i] = layer.relu ? Math.max(0, sum) : sum;
+  if (isDueling) {
+    // Feature extractor: features.0, features.2, ...
+    let x = state;
+    let layerIdx = 0;
+    while (w[`features.${layerIdx}.weight`]) {
+      x = linearForward(w[`features.${layerIdx}.weight`],
+                        w[`features.${layerIdx}.bias`], x, true);
+      layerIdx += 2;
     }
-    x = out;
+    // Value stream
+    let v = linearForward(w['value_hidden.weight'], w['value_hidden.bias'], x, true);
+    v = linearForward(w['value_out.weight'], w['value_out.bias'], v, false);
+    // Advantage stream
+    let a = linearForward(w['adv_hidden.weight'], w['adv_hidden.bias'], x, true);
+    a = linearForward(w['adv_out.weight'], w['adv_out.bias'], a, false);
+    // Q = V + A - mean(A)
+    const aMean = a.reduce((s, v) => s + v, 0) / a.length;
+    return a.map((ai) => v[0] + ai - aMean);
+  } else {
+    // Standard: net.0, net.2, net.4, ...
+    let x = state, layerIdx = 0;
+    while (w[`net.${layerIdx}.weight`]) {
+      const isLast = !w[`net.${layerIdx + 2}.weight`];
+      x = linearForward(w[`net.${layerIdx}.weight`],
+                        w[`net.${layerIdx}.bias`], x, !isLast);
+      layerIdx += 2;
+    }
+    return x;
   }
-  return x; // Q-values for 6 actions
 }
 
 // Build the 23-feature state vector matching train.py's _get_state()
@@ -2395,7 +2447,14 @@ function applyDQNAction(action) {
 function updateDQN() {
   if (!dqnModel) return false;
 
-  const state = buildDQNState();
+  const nFrames = dqnModel.n_frames || 1;
+  if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
+    const rawStateSize = dqnModel.architecture[0] / nFrames;
+    dqnInitFrameBuffer(nFrames, rawStateSize);
+  }
+
+  const rawState = buildDQNState();
+  const state = nFrames > 1 ? dqnPushFrame(rawState) : rawState;
   const qValues = dqnForward(state);
   if (!qValues) return false;
 

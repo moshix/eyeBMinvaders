@@ -9,6 +9,7 @@ mod state;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use numpy::{PyArray1, PyArray2};
+use rayon::prelude::*;
 use game::HeadlessGame;
 
 #[pyclass]
@@ -127,14 +128,13 @@ impl BatchedGames {
     }
 
     fn reset_all<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<f32>> {
-        let n = self.games.len();
-        let mut data = vec![0.0f32; n * constants::STATE_SIZE];
-        for (i, game) in self.games.iter_mut().enumerate() {
-            let state = game.reset();
-            data[i * constants::STATE_SIZE..(i + 1) * constants::STATE_SIZE]
-                .copy_from_slice(&state);
-        }
-        PyArray2::from_vec2_bound(py, &data.chunks(constants::STATE_SIZE).map(|c| c.to_vec()).collect::<Vec<_>>()).unwrap()
+        let states: Vec<[f32; constants::STATE_SIZE]> = py.allow_threads(|| {
+            self.games.par_iter_mut()
+                .map(|game| game.reset())
+                .collect()
+        });
+        let data: Vec<Vec<f32>> = states.iter().map(|s| s.to_vec()).collect();
+        PyArray2::from_vec2_bound(py, &data).unwrap()
     }
 
     fn reset_one<'py>(&mut self, py: Python<'py>, idx: usize) -> Bound<'py, PyArray1<f32>> {
@@ -150,19 +150,30 @@ impl BatchedGames {
         actions: Vec<u8>,
     ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<f32>>, Bound<'py, PyArray1<bool>>, Vec<PyObject>)> {
         let n = self.games.len();
+
+        // Parallel step with GIL release
+        let results: Vec<game::StepResult> = py.allow_threads(|| {
+            self.games.par_iter_mut()
+                .enumerate()
+                .map(|(i, game)| {
+                    let action = actions.get(i).copied().unwrap_or(0);
+                    game.step(action)
+                })
+                .collect()
+        });
+
+        // Sequential: pack into numpy arrays + info dicts (needs GIL)
         let mut states = vec![0.0f32; n * constants::STATE_SIZE];
         let mut rewards = vec![0.0f32; n];
         let mut dones = vec![false; n];
         let mut infos = Vec::with_capacity(n);
 
-        for (i, game) in self.games.iter_mut().enumerate() {
-            let action = actions.get(i).copied().unwrap_or(0);
-            let result = game.step(action);
+        for (i, result) in results.iter().enumerate() {
             states[i * constants::STATE_SIZE..(i + 1) * constants::STATE_SIZE]
                 .copy_from_slice(&result.state);
             rewards[i] = result.reward;
             dones[i] = result.done;
-            infos.push(make_info(py, &result)?);
+            infos.push(make_info(py, result)?);
         }
 
         let states_arr = PyArray2::from_vec2_bound(
@@ -182,13 +193,24 @@ impl BatchedGames {
         actions: Vec<u8>,
     ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<f32>>, Bound<'py, PyArray1<bool>>)> {
         let n = self.games.len();
+
+        // Parallel step with GIL release
+        let results: Vec<game::StepResult> = py.allow_threads(|| {
+            self.games.par_iter_mut()
+                .enumerate()
+                .map(|(i, game)| {
+                    let action = actions.get(i).copied().unwrap_or(0);
+                    game.step(action)
+                })
+                .collect()
+        });
+
+        // Sequential: pack into numpy arrays (needs GIL)
         let mut states = vec![0.0f32; n * constants::STATE_SIZE];
         let mut rewards = vec![0.0f32; n];
         let mut dones = vec![false; n];
 
-        for (i, game) in self.games.iter_mut().enumerate() {
-            let action = actions.get(i).copied().unwrap_or(0);
-            let result = game.step(action);
+        for (i, result) in results.iter().enumerate() {
             states[i * constants::STATE_SIZE..(i + 1) * constants::STATE_SIZE]
                 .copy_from_slice(&result.state);
             rewards[i] = result.reward;

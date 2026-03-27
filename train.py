@@ -1315,6 +1315,98 @@ if HAS_TORCH:
             return self.net(x)
 
 
+    class NoisyLinear(nn.Module):
+        """Factorized NoisyNet linear layer for state-dependent exploration."""
+        def __init__(self, in_features, out_features, sigma_init=0.5):
+            super().__init__()
+            self.in_features = in_features
+            self.out_features = out_features
+            self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
+            self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
+            self.register_buffer('weight_epsilon', torch.empty(out_features, in_features))
+            self.bias_mu = nn.Parameter(torch.empty(out_features))
+            self.bias_sigma = nn.Parameter(torch.empty(out_features))
+            self.register_buffer('bias_epsilon', torch.empty(out_features))
+            self.sigma_init = sigma_init
+            self.reset_parameters()
+            self.reset_noise()
+
+        def reset_parameters(self):
+            mu_range = 1 / math.sqrt(self.in_features)
+            self.weight_mu.data.uniform_(-mu_range, mu_range)
+            self.weight_sigma.data.fill_(self.sigma_init / math.sqrt(self.in_features))
+            self.bias_mu.data.uniform_(-mu_range, mu_range)
+            self.bias_sigma.data.fill_(self.sigma_init / math.sqrt(self.out_features))
+
+        def _scale_noise(self, size):
+            x = torch.randn(size, device=self.weight_mu.device)
+            return x.sign().mul(x.abs().sqrt())
+
+        def reset_noise(self):
+            epsilon_in = self._scale_noise(self.in_features)
+            epsilon_out = self._scale_noise(self.out_features)
+            self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
+            self.bias_epsilon.copy_(epsilon_out)
+
+        def forward(self, x):
+            if self.training:
+                weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
+                bias = self.bias_mu + self.bias_sigma * self.bias_epsilon
+            else:
+                weight = self.weight_mu
+                bias = self.bias_mu
+            return F.linear(x, weight, bias)
+
+
+    class DuelingDQN(nn.Module):
+        """Dueling DQN with optional NoisyNet layers."""
+        def __init__(self, state_size, action_size, hidden_sizes=None,
+                     use_noisy=False, use_layer_norm=False):
+            super().__init__()
+            sizes = hidden_sizes or [512, 256, 128]
+            self.action_size = action_size
+            self.use_noisy = use_noisy
+            self.hidden_sizes = sizes
+
+            # Shared feature extractor (all layers except last)
+            layers = []
+            prev = state_size
+            for h in sizes[:-1]:
+                layers.append(nn.Linear(prev, h))
+                layers.append(nn.ReLU())
+                if use_layer_norm:
+                    layers.append(nn.LayerNorm(h))
+                prev = h
+            self.features = nn.Sequential(*layers)
+
+            last_h = sizes[-1]
+            Linear = NoisyLinear if use_noisy else nn.Linear
+
+            # Value stream: state -> V(s)
+            self.value_hidden = Linear(prev, last_h)
+            self.value_out = Linear(last_h, 1)
+
+            # Advantage stream: state -> A(s, a)
+            self.adv_hidden = Linear(prev, last_h)
+            self.adv_out = Linear(last_h, action_size)
+
+        def forward(self, x):
+            features = self.features(x)
+            v = F.relu(self.value_hidden(features))
+            v = self.value_out(v)
+            a = F.relu(self.adv_hidden(features))
+            a = self.adv_out(a)
+            q = v + a - a.mean(dim=1, keepdim=True)
+            return q
+
+        def reset_noise(self):
+            if self.use_noisy:
+                self.value_hidden.reset_noise()
+                self.value_out.reset_noise()
+                self.adv_hidden.reset_noise()
+                self.adv_out.reset_noise()
+
+
 # =============================================================================
 # Replay Buffer (fast numpy-backed uniform sampling)
 # =============================================================================
@@ -1460,6 +1552,38 @@ class NStepBuffer:
 
 
 # =============================================================================
+# Frame Stacking
+# =============================================================================
+class FrameStack:
+    """Maintains a rolling buffer of the last N state vectors per environment."""
+    def __init__(self, num_envs, state_size, n_frames=4):
+        self.n_frames = n_frames
+        self.state_size = state_size
+        self.stacked_size = n_frames * state_size
+        self.buffer = np.zeros((num_envs, n_frames, state_size), dtype=np.float32)
+
+    def reset(self, env_idx, state):
+        for i in range(self.n_frames):
+            self.buffer[env_idx, i] = state
+        return self.buffer[env_idx].reshape(-1)
+
+    def reset_all(self, states):
+        n = states.shape[0]
+        for i in range(self.n_frames):
+            self.buffer[:n, i] = states
+        return self.buffer[:n].reshape(n, -1)
+
+    def push(self, states, dones=None):
+        n = states.shape[0]
+        self.buffer[:n, :-1] = self.buffer[:n, 1:]
+        self.buffer[:n, -1] = states
+        return self.buffer[:n].reshape(n, -1)
+
+    def get_all(self):
+        return self.buffer.reshape(self.buffer.shape[0], -1)
+
+
+# =============================================================================
 # Training Configuration
 # =============================================================================
 @dataclass
@@ -1485,6 +1609,9 @@ class TrainingConfig:
     use_cosine_lr: bool = True  # cosine annealing LR schedule
     cosine_cycle_episodes: int = 50_000  # episodes per LR cycle
     lr_min: float = 1e-5
+    use_dueling: bool = True    # dueling architecture (V + A streams)
+    use_noisy: bool = True      # NoisyNet (replaces epsilon-greedy)
+    n_frames: int = 4           # frame stacking (1 = no stacking)
 
     def to_dict(self):
         return {f.name: getattr(self, f.name) for f in self.__dataclass_fields__.values()}
@@ -1588,8 +1715,16 @@ class DQNAgent:
         self.device = torch.device(device)
         self.config = cfg
 
-        self.policy_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
-        self.target_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
+        self.use_noisy = cfg.use_noisy
+
+        if cfg.use_dueling:
+            self.policy_net = DuelingDQN(state_size, action_size, cfg.hidden_sizes,
+                                         use_noisy=cfg.use_noisy, use_layer_norm=cfg.use_layer_norm).to(self.device)
+            self.target_net = DuelingDQN(state_size, action_size, cfg.hidden_sizes,
+                                         use_noisy=cfg.use_noisy, use_layer_norm=cfg.use_layer_norm).to(self.device)
+        else:
+            self.policy_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
+            self.target_net = DQN(state_size, action_size, cfg.hidden_sizes, cfg.use_layer_norm).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         # torch.compile() for PyTorch 2.x+ speedup
@@ -1642,18 +1777,45 @@ class DQNAgent:
     def select_actions_batch(self, states_batch):
         """Select actions for all environments in one forward pass."""
         n = len(states_batch) if isinstance(states_batch, list) else states_batch.shape[0]
-        if random.random() < self.epsilon:
-            return [random.randrange(self.action_size) for _ in range(n)]
+
+        if self.use_noisy:
+            # NoisyNet: reset noise for diverse exploration
+            policy_mod = self.policy_net._orig_mod if hasattr(self.policy_net, '_orig_mod') else self.policy_net
+            if hasattr(policy_mod, 'reset_noise'):
+                policy_mod.reset_noise()
+            with torch.no_grad():
+                states_t = torch.as_tensor(
+                    np.array(states_batch) if isinstance(states_batch, list) else states_batch,
+                    dtype=torch.float32, device=self.device)
+                q_values = self.policy_net(states_t)
+                actions = q_values.argmax(dim=1).cpu().numpy()
+            return actions.tolist()
+
+        # Per-env epsilon-greedy (each env independently explores)
+        explore_mask = np.random.random(n) < self.epsilon
+        n_explore = int(explore_mask.sum())
+
         with torch.no_grad():
             states_t = torch.as_tensor(
                 np.array(states_batch) if isinstance(states_batch, list) else states_batch,
                 dtype=torch.float32, device=self.device)
             q_values = self.policy_net(states_t)
-            return q_values.argmax(dim=1).cpu().tolist()
+            actions = q_values.argmax(dim=1).cpu().numpy()
+
+        if n_explore > 0:
+            actions[explore_mask] = np.random.randint(0, self.action_size, size=n_explore)
+
+        return actions.tolist()
 
     def train_step(self):
         if len(self.memory) < self.batch_size:
             return 0.0
+
+        if self.use_noisy:
+            for net in [self.policy_net, self.target_net]:
+                mod = net._orig_mod if hasattr(net, '_orig_mod') else net
+                if hasattr(mod, 'reset_noise'):
+                    mod.reset_noise()
 
         states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
 
@@ -1716,6 +1878,12 @@ class DQNAgent:
             'epsilon': self.epsilon,
             'steps': self.steps,
             'env_steps': self.env_steps,
+            'arch': {
+                'use_dueling': self.config.use_dueling,
+                'use_noisy': self.config.use_noisy,
+                'n_frames': self.config.n_frames,
+                'hidden_sizes': self.config.hidden_sizes,
+            },
         }
         if self.scheduler:
             data['scheduler'] = self.scheduler.state_dict()
@@ -1820,19 +1988,19 @@ def auto_scale_for_gpu(config: 'TrainingConfig', device: str, num_envs: int) -> 
         if gpu_mem_gb >= 24:
             config.batch_size = max(config.batch_size, 4096)
             config.train_steps_per_tick = max(config.train_steps_per_tick, 2)
-            num_envs = max(num_envs, 1024)
+            num_envs = max(num_envs, 2048)
             config.buffer_capacity = max(config.buffer_capacity, 2_000_000)
         elif gpu_mem_gb >= 16:
             config.batch_size = max(config.batch_size, 2048)
             config.train_steps_per_tick = max(config.train_steps_per_tick, 2)
-            num_envs = max(num_envs, 512)
+            num_envs = max(num_envs, 1024)
             config.buffer_capacity = max(config.buffer_capacity, 1_000_000)
         elif gpu_mem_gb >= 8:
             config.batch_size = max(config.batch_size, 1024)
-            num_envs = max(num_envs, 256)
+            num_envs = max(num_envs, 512)
         elif gpu_mem_gb >= 4:
             config.batch_size = max(config.batch_size, 512)
-            num_envs = max(num_envs, 128)
+            num_envs = max(num_envs, 256)
 
         print(f"Auto-scaled: batch_size={config.batch_size}, num_envs={num_envs}, buffer={config.buffer_capacity:,}")
 
@@ -1845,12 +2013,12 @@ def auto_scale_for_gpu(config: 'TrainingConfig', device: str, num_envs: int) -> 
 # =============================================================================
 # Training Loop
 # =============================================================================
-NUM_ENVS = 128  # Number of parallel game instances
+NUM_ENVS = 256  # Number of parallel game instances
 
 
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
           num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
-          flush_buffer=False, auto_scale=True):
+          flush_buffer=False, cosine_reset=False, auto_scale=True):
     os.makedirs(save_dir, exist_ok=True)
 
     if device_override:
@@ -1871,14 +2039,22 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     use_rust = HAS_RUST_SIM
     if use_rust:
         envs = RustBatchedGames(num_envs, seed=42)
-        state_size = envs.state_size
+        raw_state_size = envs.state_size
         action_size = envs.action_size
         print("Using Rust game simulation (fast mode)")
     else:
         games = [HeadlessGame() for _ in range(num_envs)]
-        state_size = games[0].state_size
+        raw_state_size = games[0].state_size
         action_size = games[0].action_size
         print("Using Python game simulation (slow mode)")
+
+    # Frame stacking
+    frame_stack = None
+    if cfg.n_frames > 1:
+        frame_stack = FrameStack(num_envs, raw_state_size, cfg.n_frames)
+        state_size = frame_stack.stacked_size
+    else:
+        state_size = raw_state_size
 
     if HAS_TORCH:
         agent = DQNAgent(state_size, action_size, device=device, config=cfg)
@@ -1906,6 +2082,14 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                 else:
                     agent.memory = FastReplayBuffer(cfg.buffer_capacity, state_size)
                 print("  Replay buffer flushed (fresh start)")
+            if cosine_reset and cfg.use_cosine_lr:
+                from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+                agent.scheduler = CosineAnnealingWarmRestarts(
+                    agent.optimizer, T_0=cfg.cosine_cycle_episodes, T_mult=1, eta_min=cfg.lr_min)
+                print("  Cosine LR scheduler reset")
+            agent.n_step = cfg.n_step
+            agent.gamma_n = cfg.gamma ** cfg.n_step
+            agent.train_steps_per_tick = cfg.train_steps_per_tick
             print(f"Resumed from {resume_path} (epsilon={agent.epsilon:.4f}, lr={cfg.lr}, steps={agent.steps})")
     else:
         agent = None
@@ -1920,7 +2104,12 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     lr_type = f"cosine({cfg.lr_min:.0e}-{cfg.lr:.0e})" if cfg.use_cosine_lr else f"fixed({cfg.lr})"
     print(f"Training: {cfg.train_steps_per_tick} gradient steps every {cfg.train_every} ticks, "
           f"{cfg.n_step}-step returns, batch_size={cfg.batch_size}")
-    print(f"Buffer: {buffer_type} | LR: {lr_type} | Network: {cfg.hidden_sizes}"
+    arch_desc = "Dueling" if cfg.use_dueling else "Standard"
+    if cfg.use_noisy:
+        arch_desc += "+NoisyNet"
+    if cfg.n_frames > 1:
+        arch_desc += f"+{cfg.n_frames}frames"
+    print(f"Buffer: {buffer_type} | LR: {lr_type} | Network: {cfg.hidden_sizes} ({arch_desc})"
           f"{' +LayerNorm' if cfg.use_layer_norm else ''}")
     print("-" * 70)
 
@@ -1943,7 +2132,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
 
     # Initialize all environments
     if use_rust:
-        states = envs.reset_all()  # numpy [num_envs, 24]
+        raw_states = envs.reset_all()
+        states = frame_stack.reset_all(raw_states) if frame_stack else raw_states
     else:
         states = [game.reset() for game in games]
     episode_rewards = np.zeros(num_envs, dtype=np.float32)
@@ -1960,7 +2150,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                 actions = [random.randrange(action_size) for _ in range(num_envs)]
 
             # Step all environments — fast path, no dict overhead
-            next_states, rewards, dones = envs.step_all_fast(actions)
+            raw_next_states, rewards, dones = envs.step_all_fast(actions)
+            next_states = frame_stack.push(raw_next_states) if frame_stack else raw_next_states
             tick_count += 1
 
             # Push experiences (N-step or direct)
@@ -2053,7 +2244,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                 if episode_count % 100 == 0:
                     log_file.flush()
 
-                states[i] = envs.reset_one(i)
+                raw_state = envs.reset_one(i)
+                states[i] = frame_stack.reset(i, raw_state) if frame_stack else raw_state
                 episode_rewards[i] = 0.0
 
                 if episode_count >= episodes:
@@ -2210,19 +2402,37 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
 
 def export_model_to_json(agent, path):
     """Export model weights to JSON for loading in JavaScript."""
-    # Get the underlying module if torch.compile() wrapped it
     net = agent.policy_net
     if hasattr(net, '_orig_mod'):
         net = net._orig_mod
     weights = {}
+    is_dueling = isinstance(net, DuelingDQN)
     for name, param in net.named_parameters():
-        weights[name] = param.detach().cpu().numpy().tolist()
-    # Build architecture list from actual layer sizes
-    arch = [net.net[0].in_features] + net.hidden_sizes + [agent.action_size]
+        # For NoisyNet, export weight_mu/bias_mu as standard weight/bias
+        export_name = name.replace('.weight_mu', '.weight').replace('.bias_mu', '.bias')
+        # Skip sigma parameters (browser doesn't need noise)
+        if '.weight_sigma' in name or '.bias_sigma' in name:
+            continue
+        weights[export_name] = param.detach().cpu().numpy().tolist()
+
+    if is_dueling:
+        # Infer input size from first feature layer
+        first_layer = net.features[0]
+        in_size = first_layer.in_features
+        arch = [in_size] + net.hidden_sizes + [net.action_size]
+        model_type = "dueling"
+    else:
+        arch = [net.net[0].in_features] + net.hidden_sizes + [agent.action_size]
+        model_type = "standard"
+
+    n_frames = agent.config.n_frames if hasattr(agent.config, 'n_frames') else 1
+
     with open(path, 'w') as f:
         json.dump({
             "architecture": arch,
             "activation": "relu",
+            "type": model_type,
+            "n_frames": n_frames,
             "weights": weights,
         }, f)
 
