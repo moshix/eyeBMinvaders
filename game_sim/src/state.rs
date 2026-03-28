@@ -317,12 +317,5 @@ pub fn calculate_reward(
         reward += 5.0 + 3.0 * level;
     }
 
-    // Edge-only penalty: punish hugging walls, but NO center bonus
-    // (center bonus caused agent to stand still and not dodge)
-    let player_nx = ((game.player_x + PLAYER_WIDTH / 2.0) / GAME_WIDTH) as f32;
-    if player_nx < 0.08 || player_nx > 0.92 {
-        reward -= 0.2;
-    }
-
     reward
 }
