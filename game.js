@@ -2586,81 +2586,44 @@ function updateDQN() {
     if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
   }
 
-  // --- Heuristic safety layer: fix DQN's worst decisions ---
+  // Minimal safety: only strip pure fire (action 3) when under a wall
   const fireX = player.x + player.width / 2;
-
-  // Rule 1: Don't fire through walls — convert fire to move-only
-  const wallBlocks = walls.some(w =>
-    fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL);
-  if (wallBlocks && bestAction >= 3) {
-    if (bestAction === 4) bestAction = 1;      // fire+left -> left
-    else if (bestAction === 5) bestAction = 2;  // fire+right -> right
-    else bestAction = 0;                        // fire -> idle
-  }
-
-  // Rule 2: Don't fire into empty space — only strip pure fire (action 3)
-  // Keep fire+move (4,5) since the agent uses them for movement
   if (bestAction === 3) {
-    const targetInColumn = enemies.some(e =>
-      fireX >= e.x - 25 && fireX <= e.x + e.width + 25)
-      || (monster && !monster.hit && Math.abs(monster.x + MONSTER_WIDTH/2 - fireX) < 40)
-      || (monster2 && !monster2.hit && Math.abs(monster2.x + (monster2.width||56)/2 - fireX) < 40)
-      || kamikazeEnemies.some(k => Math.abs(k.x + k.width/2 - fireX) < 30);
-    if (!targetInColumn) bestAction = 0; // no target -> idle instead of fire
+    const wallBlocks = walls.some(w =>
+      fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL);
+    if (wallBlocks) bestAction = 0;
   }
 
-  // Rule 3: Emergency dodge — override when threat is dangerously close
+  // Emergency dodge: tight zones, only truly imminent threats
   const playerCx = player.x + player.width / 2;
   const playerCy = player.y + player.height / 2;
-  let urgentLeft = false, urgentRight = false;
-  const enemyBulletsNow = bullets.filter(b => b.isEnemyBullet);
-  for (const b of enemyBulletsNow) {
+  let imminent = false;
+  let threatDx = 0; // sum of threat directions
+  for (const b of bullets) {
+    if (!b.isEnemyBullet) continue;
     const dx = b.x - playerCx, dy = b.y - playerCy;
-    if (dy > -70 && dy < 20 && Math.abs(dx) < 45) {
-      if (dx > 0) urgentLeft = true; else urgentRight = true;
-    }
-  }
-  for (const k of kamikazeEnemies) {
-    const dx = k.x + k.width/2 - playerCx, dy = k.y + k.height/2 - playerCy;
-    if (Math.abs(dy) < 80 && Math.abs(dx) < 60) {
-      if (dx > 0) urgentLeft = true; else urgentRight = true;
+    if (dy > -40 && dy < 10 && Math.abs(dx) < 30) { // very tight: ~1 player width
+      threatDx += dx;
+      imminent = true;
     }
   }
   for (const m of homingMissiles) {
-    const mx = m.x + (m.width || 57) / 2, my = m.y + (m.height || 57) / 2;
+    const mx = m.x + (m.width||57)/2, my = m.y + (m.height||57)/2;
     const dx = mx - playerCx, dy = my - playerCy;
-    // Missiles are large (57x57), curve sideways, and home — need wide detection
-    if (Math.abs(dy) < 100 && Math.abs(dx) < 80) {
-      if (dx > 0) urgentLeft = true; else urgentRight = true;
+    if (Math.abs(dy) < 60 && Math.abs(dx) < 45) {
+      threatDx += dx * 3;
+      imminent = true;
     }
   }
-  if (urgentLeft && !urgentRight) bestAction = 1;
-  else if (urgentRight && !urgentLeft) bestAction = 2;
-  else if (urgentLeft && urgentRight) {
-    // Threats from both sides — count which side has fewer and dodge there
-    let leftCount = 0, rightCount = 0;
-    for (const b of enemyBulletsNow) {
-      const dx = b.x - playerCx, dy = b.y - playerCy;
-      if (dy > -70 && dy < 20 && Math.abs(dx) < 60) {
-        if (dx > 0) rightCount++; else leftCount++;
-      }
+  if (imminent) {
+    // Dodge away from threats, but always prefer toward center
+    const toCenter = canvas.width / 2 - playerCx; // positive = center is right
+    if (Math.abs(threatDx) < 10) {
+      // Threat is directly above — dodge toward center
+      bestAction = toCenter > 0 ? 2 : 1;
+    } else {
+      bestAction = threatDx > 0 ? 1 : 2; // dodge away from threat
     }
-    for (const m of homingMissiles) {
-      const mx = m.x + (m.width || 57) / 2;
-      if (Math.abs(mx - playerCx) < 100) {
-        if (mx > playerCx) rightCount += 3; else leftCount += 3; // missiles count more
-      }
-    }
-    for (const k of kamikazeEnemies) {
-      const kx = k.x + k.width / 2;
-      if (Math.abs(kx - playerCx) < 80) {
-        if (kx > playerCx) rightCount += 2; else leftCount += 2;
-      }
-    }
-    // Dodge toward the side with fewer threats; if equal, dodge toward center
-    if (leftCount < rightCount) bestAction = 1;
-    else if (rightCount < leftCount) bestAction = 2;
-    else bestAction = playerCx > canvas.width / 2 ? 1 : 2; // dodge toward center
   }
 
   applyDQNAction(bestAction);
