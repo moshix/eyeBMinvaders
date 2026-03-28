@@ -74,6 +74,7 @@ fn check_bullet_wall(game: &mut HeadlessGame) {
             {
                 game.bullets[bi].removed = true;
                 game.walls[wi].hit_count += 1;
+                game.player_wall_hits += 1;
                 break;
             }
         }

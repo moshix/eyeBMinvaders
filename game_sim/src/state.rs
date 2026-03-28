@@ -277,6 +277,7 @@ pub fn calculate_reward(
     missiles_shot_this_step: i32,
     near_misses: i32,
     level_completed: bool,
+    player_wall_hits: i32,
 ) -> f32 {
     let mut reward: f32 = 0.0;
 
@@ -292,7 +293,12 @@ pub fn calculate_reward(
     }
 
     if wall_destroyed_count > 0 {
-        reward -= 2.0 * wall_destroyed_count as f32;
+        reward -= 3.0 * wall_destroyed_count as f32;
+    }
+
+    // Penalty for shooting own walls — teach agent to aim past gaps, not through walls
+    if player_wall_hits > 0 {
+        reward -= 0.5 * player_wall_hits as f32;
     }
 
     // Progressive survival bonus: scales with level

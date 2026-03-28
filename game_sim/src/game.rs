@@ -64,6 +64,7 @@ pub struct HeadlessGame {
     pub missiles_shot: u32,
     pub times_hit: u32,
     pub near_misses: i32,
+    pub player_wall_hits: i32,  // player bullets hitting own walls
 }
 
 pub struct StepResult {
@@ -121,6 +122,7 @@ impl HeadlessGame {
             missiles_shot: 0,
             times_hit: 0,
             near_misses: 0,
+            player_wall_hits: 0,
         };
         game.next_kamikaze_time = game.random_kamikaze_time();
         game.restore_walls();
@@ -164,6 +166,7 @@ impl HeadlessGame {
         self.missiles_shot = 0;
         self.times_hit = 0;
         self.near_misses = 0;
+        self.player_wall_hits = 0;
         self.create_enemies();
         state::get_state(self)
     }
@@ -285,10 +288,12 @@ impl HeadlessGame {
             .count() as i32;
         let level_completed = self.events.iter()
             .any(|e| matches!(e.event_type, EventType::LevelComplete));
+        let player_wall_hits = self.player_wall_hits;
+        self.player_wall_hits = 0;  // reset per-tick counter
         let reward = state::calculate_reward(
             self, old_score, old_lives, wall_destroyed_count,
             kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses,
-            level_completed);
+            level_completed, player_wall_hits);
 
         let st = state::get_state(self);
         StepResult {
