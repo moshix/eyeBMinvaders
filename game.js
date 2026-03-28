@@ -2580,6 +2580,21 @@ function updateDQN() {
   const qValues = dqnForward(state);
   if (!qValues) return false;
 
+  // Action masking: prevent shooting when wall blocks or no enemy above
+  const fireX = player.x + player.width / 2;
+  const wallBlocks = walls.some(w =>
+    fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL
+  );
+  const enemyAbove = enemies.some(e =>
+    fireX >= e.x - 10 && fireX <= e.x + e.width + 10
+  );
+  if (wallBlocks || !enemyAbove) {
+    // Mask fire actions: 3=fire, 4=fire+left, 5=fire+right
+    qValues[3] = -Infinity;
+    qValues[4] = -Infinity;
+    qValues[5] = -Infinity;
+  }
+
   // Pick action with highest Q-value (greedy)
   let bestAction = 0, bestQ = -Infinity;
   for (let i = 0; i < qValues.length; i++) {
