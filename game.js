@@ -233,6 +233,9 @@ const MONSTER2_PATTERNS = {
     4: 'figure8',     // Level 4: Figure 8 pattern
     5: 'bounce',      // Level 5: Bounce off screen edges
     6: 'wave',        // Level 6: Sinusoidal wave pattern
+    7: 'teleport',    // Level 7: Random teleport jumps
+    8: 'chase',       // Level 8: Actively chases player
+    9: 'random',      // Level 9+: Fully random movement
     7: 'teleport',    // Level 7: Random teleportation
     8: 'chase',       // Level 8: Chase player with prediction
     9: 'random'       // Level 9+: Random quick movements
@@ -669,7 +672,14 @@ function movePlayer(deltaTime) {
 function moveBullets(deltaTime) {
   bullets.forEach((bullet) => {
     if (bullet.isEnemyBullet) {
-      if (!whilePlayerHit) bullet.y += ENEMY_BULLET_SPEED * deltaTime; // Slower enemy bullets
+      if (!whilePlayerHit) {
+        if (bullet.dx !== undefined && bullet.dy !== undefined && bullet.isMonster2Bullet) {
+          bullet.x += bullet.dx * deltaTime;
+          bullet.y += bullet.dy * deltaTime;
+        } else {
+          bullet.y += ENEMY_BULLET_SPEED * deltaTime;
+        }
+      }
     } else {
       if (!whilePlayerHit) bullet.y -= BULLET_SPEED * deltaTime; // no bullets during player hit
     }
@@ -3584,7 +3594,7 @@ function moveMonster2(deltaTime) {
     }
 
     // Get movement pattern based on level
-    const pattern = currentLevel <= 6 ? MONSTER2_PATTERNS[currentLevel] : 'random';
+    const pattern = currentLevel <= 9 ? (MONSTER2_PATTERNS[currentLevel] || 'random') : 'random';
     
     // Base vertical movement
     monster2.y += MONSTER2_VERTICAL_SPEED * deltaTime;
