@@ -2616,7 +2616,7 @@ function updateDQN() {
   const enemyBulletsNow = bullets.filter(b => b.isEnemyBullet);
   for (const b of enemyBulletsNow) {
     const dx = b.x - playerCx, dy = b.y - playerCy;
-    if (dy > -60 && dy < 10 && Math.abs(dx) < 40) {
+    if (dy > -70 && dy < 20 && Math.abs(dx) < 45) {
       if (dx > 0) urgentLeft = true; else urgentRight = true;
     }
   }
@@ -2627,8 +2627,10 @@ function updateDQN() {
     }
   }
   for (const m of homingMissiles) {
-    const dx = m.x - playerCx, dy = m.y - playerCy;
-    if (Math.abs(dy) < 70 && Math.abs(dx) < 50) {
+    const mx = m.x + (m.width || 57) / 2, my = m.y + (m.height || 57) / 2;
+    const dx = mx - playerCx, dy = my - playerCy;
+    // Missiles are large (57x57), curve sideways, and home — need wide detection
+    if (Math.abs(dy) < 100 && Math.abs(dx) < 80) {
       if (dx > 0) urgentLeft = true; else urgentRight = true;
     }
   }
