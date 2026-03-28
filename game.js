@@ -685,7 +685,8 @@ function moveBullets(deltaTime) {
     }
   });
   bullets = bullets.filter((bullet) =>
-    bullet.y > 0 && bullet.y < canvas.height
+    bullet.y > 0 && bullet.y < canvas.height &&
+    bullet.x > 0 && bullet.x < canvas.width
   );
 }
 

@@ -9,8 +9,8 @@ pub const PLAYER_HEIGHT: f64 = 48.0;
 pub const PLAYER_LIVES: i32 = 6;
 pub const FIRE_RATE: f64 = 0.16; // seconds
 pub const BULLET_SPEED: f64 = 300.0;
-pub const BULLET_W: f64 = 3.4;
-pub const BULLET_H: f64 = 5.9;
+pub const BULLET_W: f64 = 5.0;   // matches JS hardcoded hitbox (was 3.4)
+pub const BULLET_H: f64 = 10.0;  // matches JS hardcoded hitbox (was 5.9)
 
 pub const ENEMY_SPEED: f64 = 50.0;
 pub const ENEMY_WIDTH: f64 = 43.0;
