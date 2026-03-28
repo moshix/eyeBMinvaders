@@ -1619,7 +1619,7 @@ document.addEventListener("keydown", (e) => {
     playerExplosionSound.muted = isMuted;
     gameOverSound.muted = isMuted;
   }
-  if (e.code === "F1") {
+  if (e.code === "Digit0" || e.code === "Numpad0") {
     autoPlayEnabled = !autoPlayEnabled;
     // Reset movement keys when toggling to prevent stuck movement
     keys.ArrowLeft = false;
@@ -2308,121 +2308,218 @@ function buildDQNState() {
   const nx = v => v / GAME_WIDTH;
   const ny = v => v / GAME_HEIGHT;
 
-  const features = [];
+  const f = new Array(50).fill(0.0);
 
-  // 1. Player position
-  features.push(nx(playerCx));
+  // [0] Player position
+  f[0] = nx(playerCx);
 
-  // 2. Player lives
-  features.push(player.lives / PLAYER_LIVES);
+  // [1] Player lives
+  f[1] = player.lives / PLAYER_LIVES;
 
-  // 3. Level
-  features.push(Math.min(currentLevel, 10) / 10.0);
+  // [2] Level
+  f[2] = Math.min(currentLevel, 10) / 10.0;
 
-  // 4. Number of enemies
-  features.push(Math.min(enemies.length, 60) / 60.0);
+  // [3] Number of enemies
+  f[3] = Math.min(enemies.length, 60) / 60.0;
 
-  // 5-6. Nearest enemy relative position
+  // [4-5] Nearest enemy relative position
   if (enemies.length > 0) {
     let nearest = enemies[0], nearestDist = Infinity;
     for (const e of enemies) {
       const d = Math.abs(e.x + e.width / 2 - playerCx);
       if (d < nearestDist) { nearestDist = d; nearest = e; }
     }
-    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
-    features.push(ny(nearest.y + nearest.height / 2 - playerCy));
+    f[4] = nx(nearest.x + nearest.width / 2 - playerCx);
+    f[5] = ny(nearest.y + nearest.height / 2 - playerCy);
   } else {
-    features.push(0.0, -1.0);
+    f[5] = -1.0;
   }
 
-  // 7-8. Lowest enemy position
+  // [6-7] Lowest enemy position
   if (enemies.length > 0) {
     let lowest = enemies[0];
     for (const e of enemies) { if (e.y > lowest.y) lowest = e; }
-    features.push(nx(lowest.x + lowest.width / 2 - playerCx));
-    features.push(ny(lowest.y));
-  } else {
-    features.push(0.0, 0.0);
+    f[6] = nx(lowest.x + lowest.width / 2 - playerCx);
+    f[7] = ny(lowest.y);
   }
 
-  // 9-11. Nearest enemy bullet
+  // Enemy bullets sorted by distance
   const enemyBullets = bullets.filter(b => b.isEnemyBullet);
-  if (enemyBullets.length > 0) {
-    let nearest = enemyBullets[0], nearestDist = Infinity;
-    for (const b of enemyBullets) {
-      const d = (b.x - playerCx) ** 2 + (b.y - playerCy) ** 2;
-      if (d < nearestDist) { nearestDist = d; nearest = b; }
+  const sortedBullets = enemyBullets.slice().sort((a, b) => {
+    const da = (a.x - playerCx) ** 2 + (a.y - playerCy) ** 2;
+    const db = (b.x - playerCx) ** 2 + (b.y - playerCy) ** 2;
+    return da - db;
+  });
+
+  // [8-12] Nearest enemy bullet + velocity
+  if (sortedBullets.length > 0) {
+    const b = sortedBullets[0];
+    f[8] = nx(b.x - playerCx);
+    f[9] = ny(b.y - playerCy);
+    f[10] = enemyBullets.length / 10.0;
+    if (b.dx !== undefined && b.dy !== undefined) {
+      f[11] = b.dx / ENEMY_BULLET_SPEED;
+      f[12] = b.dy / ENEMY_BULLET_SPEED;
+    } else {
+      f[11] = 0.0;
+      f[12] = 1.0;
     }
-    features.push(nx(nearest.x - playerCx));
-    features.push(ny(nearest.y - playerCy));
-    features.push(enemyBullets.length / 10.0);
   } else {
-    features.push(0.0, -1.0, 0.0);
+    f[9] = -1.0;
   }
 
-  // 12-14. Nearest homing missile
-  if (homingMissiles.length > 0) {
-    let nearest = homingMissiles[0], nearestDist = Infinity;
-    for (const m of homingMissiles) {
-      const d = (m.x - playerCx) ** 2 + (m.y - playerCy) ** 2;
-      if (d < nearestDist) { nearestDist = d; nearest = m; }
-    }
-    features.push(nx(nearest.x - playerCx));
-    features.push(ny(nearest.y - playerCy));
-    features.push(homingMissiles.length / 5.0);
+  // Missiles sorted by distance
+  const sortedMissiles = homingMissiles.slice().sort((a, b) => {
+    const da = (a.x - playerCx) ** 2 + (a.y - playerCy) ** 2;
+    const db = (b.x - playerCx) ** 2 + (b.y - playerCy) ** 2;
+    return da - db;
+  });
+
+  // [13-17] Nearest missile + velocity
+  if (sortedMissiles.length > 0) {
+    const m = sortedMissiles[0];
+    f[13] = nx(m.x - playerCx);
+    f[14] = ny(m.y - playerCy);
+    f[15] = homingMissiles.length / 5.0;
+    f[16] = Math.cos(m.angle);
+    f[17] = Math.sin(m.angle);
   } else {
-    features.push(0.0, -1.0, 0.0);
+    f[14] = -1.0;
   }
 
-  // 15-17. Nearest kamikaze
-  if (kamikazeEnemies.length > 0) {
-    let nearest = kamikazeEnemies[0], nearestDist = Infinity;
-    for (const k of kamikazeEnemies) {
-      const d = (k.x + k.width / 2 - playerCx) ** 2 + (k.y + k.height / 2 - playerCy) ** 2;
-      if (d < nearestDist) { nearestDist = d; nearest = k; }
-    }
-    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
-    features.push(ny(nearest.y + nearest.height / 2 - playerCy));
-    features.push(kamikazeEnemies.length / 5.0);
+  // Kamikazes sorted by distance
+  const sortedKamikazes = kamikazeEnemies.slice().sort((a, b) => {
+    const da = (a.x + a.width / 2 - playerCx) ** 2 + (a.y + a.height / 2 - playerCy) ** 2;
+    const db = (b.x + b.width / 2 - playerCx) ** 2 + (b.y + b.height / 2 - playerCy) ** 2;
+    return da - db;
+  });
+
+  // [18-22] Nearest kamikaze + velocity
+  if (sortedKamikazes.length > 0) {
+    const k = sortedKamikazes[0];
+    f[18] = nx(k.x + k.width / 2 - playerCx);
+    f[19] = ny(k.y + k.height / 2 - playerCy);
+    f[20] = kamikazeEnemies.length / 5.0;
+    f[21] = Math.cos(k.angle);
+    f[22] = Math.sin(k.angle);
   } else {
-    features.push(0.0, -1.0, 0.0);
+    f[19] = -1.0;
   }
 
-  // 18-19. Monster info
+  // [23-24] Monster info
   if (monster && !monster.hit) {
-    features.push(nx(monster.x + MONSTER_WIDTH / 2 - playerCx));
-    features.push(ny(monster.y));
+    f[23] = nx(monster.x + MONSTER_WIDTH / 2 - playerCx);
+    f[24] = ny(monster.y);
   } else {
-    features.push(0.0, -1.0);
+    f[24] = -1.0;
   }
 
-  // 20. Is player invulnerable
-  features.push(isPlayerHit ? 1.0 : 0.0);
+  // [25-28] Monster2 info (position + velocity)
+  if (monster2 && !monster2.hit && !monster2.isDisappeared) {
+    f[25] = nx(monster2.x + MONSTER_WIDTH / 2 - playerCx);
+    f[26] = ny(monster2.y);
+    f[27] = (monster2.dx || 0) / MONSTER2_SPEED;
+    f[28] = (monster2.dy || 0) / MONSTER2_SPEED;
+  } else {
+    f[26] = -1.0;
+  }
 
-  // 21. Number of walls remaining
-  features.push(walls.length / 4.0);
+  // [29] Is player invulnerable
+  f[29] = isPlayerHit ? 1.0 : 0.0;
 
-  // 22-23. Nearest wall relative position
-  // 24. Nearest wall health (only for 24-feature models)
+  // [30] Number of walls remaining
+  f[30] = walls.length / 4.0;
+
+  // [31-33] Nearest wall
   if (walls.length > 0) {
     let nearest = walls[0], nearestDist = Infinity;
     for (const w of walls) {
       const d = Math.abs(w.x + w.width / 2 - playerCx);
       if (d < nearestDist) { nearestDist = d; nearest = w; }
     }
-    features.push(nx(nearest.x + nearest.width / 2 - playerCx));
-    features.push(ny(nearest.y - playerCy));
-    if (dqnModel && dqnModel.architecture[0] >= 24) {
-      features.push(1.0 - (nearest.hitCount || 0) / WALL_MAX_HITS_TOTAL);
-    }
-  } else {
-    features.push(0.0, 0.0);
-    if (dqnModel && dqnModel.architecture[0] >= 24) {
-      features.push(0.0);
-    }
+    f[31] = nx(nearest.x + nearest.width / 2 - playerCx);
+    f[32] = ny(nearest.y - playerCy);
+    f[33] = 1.0 - (nearest.hitCount || 0) / WALL_MAX_HITS_TOTAL;
   }
 
-  return features;
+  // [34-36] 2nd nearest enemy bullet
+  if (sortedBullets.length >= 2) {
+    const b2 = sortedBullets[1];
+    f[34] = nx(b2.x - playerCx);
+    f[35] = ny(b2.y - playerCy);
+    f[36] = (b2.dy !== undefined) ? b2.dy / ENEMY_BULLET_SPEED : 1.0;
+  } else {
+    f[35] = -1.0;
+  }
+
+  // [37-39] 2nd nearest missile
+  if (sortedMissiles.length >= 2) {
+    const m2 = sortedMissiles[1];
+    f[37] = nx(m2.x - playerCx);
+    f[38] = ny(m2.y - playerCy);
+    f[39] = Math.sin(m2.angle);
+  } else {
+    f[38] = -1.0;
+  }
+
+  // [40-44] Danger heatmap: 5 columns
+  const colWidth = GAME_WIDTH / 5.0;
+  for (const b of enemyBullets) {
+    const col = Math.min(Math.floor(b.x / colWidth), 4);
+    f[40 + col] += 1.0;
+  }
+  for (const m of homingMissiles) {
+    const col = Math.min(Math.floor(m.x / colWidth), 4);
+    f[40 + col] += 2.0;
+  }
+  for (const k of kamikazeEnemies) {
+    const col = Math.min(Math.floor((k.x + k.width / 2) / colWidth), 4);
+    f[40 + col] += 3.0;
+  }
+  for (let j = 40; j < 45; j++) {
+    f[j] = Math.min(f[j] / 10.0, 1.0);
+  }
+
+  // [45] Enemy speed (normalized)
+  f[45] = Math.min(enemySpeed / 10.0, 1.0);
+
+  // [46] Enemy direction (-1 left, +1 right) -> normalized to [0, 1]
+  f[46] = (enemyDirection + 1.0) / 2.0;
+
+  // [47] Fire cooldown (0 = just fired, 1 = ready to fire)
+  const fireElapsed = (Date.now() - lastFireTime) / 1000.0;
+  f[47] = Math.min(fireElapsed / currentFireRate, 1.0);
+
+  // [48] Threat urgency: closest threat time-to-impact
+  let minTTI = 1.0;
+  for (const b of enemyBullets) {
+    if (b.y < playerCy) {
+      const dy = playerCy - b.y;
+      const tti = dy / (ENEMY_BULLET_SPEED / 60.0);
+      const ttiNorm = Math.min(tti / 60.0, 1.0);
+      if (ttiNorm < minTTI) minTTI = ttiNorm;
+    }
+  }
+  for (const k of kamikazeEnemies) {
+    const ky = k.y + k.height / 2;
+    if (ky < playerCy) {
+      const dist = Math.sqrt((k.x + k.width / 2 - playerCx) ** 2 + (ky - playerCy) ** 2);
+      const tti = dist / (KAMIKAZE_SPEED / 60.0);
+      const ttiNorm = Math.min(tti / 60.0, 1.0);
+      if (ttiNorm < minTTI) minTTI = ttiNorm;
+    }
+  }
+  f[48] = minTTI;
+
+  // [49] Enemies in bottom half
+  const bottomHalfY = GAME_HEIGHT / 2.0;
+  let bottomEnemies = 0;
+  for (const e of enemies) {
+    if (e.y > bottomHalfY) bottomEnemies++;
+  }
+  f[49] = Math.min(bottomEnemies / 15.0, 1.0);
+
+  return f;
 }
 
 // Apply DQN action: 0=stay, 1=left, 2=right, 3=shoot, 4=left+shoot, 5=right+shoot
