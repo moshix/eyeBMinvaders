@@ -2580,16 +2580,6 @@ function updateDQN() {
   const qValues = dqnForward(state);
   if (!qValues) return false;
 
-  // Action masking: prevent shooting when wall blocks the firing line
-  // Only mask pure fire (3), NOT fire+move (4,5) — agent needs those for dodging
-  const fireX = player.x + player.width / 2;
-  const wallBlocks = walls.some(w =>
-    fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL
-  );
-  if (wallBlocks) {
-    qValues[3] = -Infinity; // mask pure fire only
-  }
-
   // Pick action with highest Q-value (greedy)
   let bestAction = 0, bestQ = -Infinity;
   for (let i = 0; i < qValues.length; i++) {
