@@ -87,9 +87,10 @@ async function loadModel() {
 
 // Run one episode, return stats
 function runEpisode(episodeNum) {
-  // Reset mock time and clear rAF queue before restart
+  // Reset mock time, clear rAF queue and pending timers before restart
   setMockTime(1000);
   global._rafCallbacks = [];  // prevent duplicate gameLoop instances
+  global._pendingTimers = []; // clear level-transition timeouts
 
   global.restartGame();
 

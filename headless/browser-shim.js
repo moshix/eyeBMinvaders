@@ -230,6 +230,28 @@ function installShims() {
   };
   global.cancelAnimationFrame = function() {};
 
+  // Mock setTimeout/setInterval to use mock clock
+  // Stores pending timers and fires them when mock time advances past their deadline
+  global._pendingTimers = [];
+  let _timerIdCounter = 1000;
+  const _origSetTimeout = global.setTimeout;
+  const _origClearTimeout = global.clearTimeout;
+
+  global.setTimeout = function(cb, delay, ...args) {
+    const id = _timerIdCounter++;
+    global._pendingTimers.push({ id, cb, fireAt: _mockTime + (delay || 0), args, type: 'timeout' });
+    return id;
+  };
+  global.setInterval = function(cb, delay, ...args) {
+    const id = _timerIdCounter++;
+    global._pendingTimers.push({ id, cb, fireAt: _mockTime + (delay || 0), interval: delay, args, type: 'interval' });
+    return id;
+  };
+  global.clearTimeout = function(id) {
+    global._pendingTimers = global._pendingTimers.filter(t => t.id !== id);
+  };
+  global.clearInterval = global.clearTimeout;
+
   // fetch stub for model loading
   global.fetch = async function(url) {
     const fs = require('fs');
@@ -260,16 +282,31 @@ function dispatchKeyEvent(type, key) {
   }
 }
 
-// Step the game loop by one frame (call stored rAF callbacks)
+// Step the game loop by one frame (call stored rAF callbacks + fire pending timers)
 function stepFrame(timestamp) {
+  // Fire any timers whose deadline has passed
+  const ready = global._pendingTimers.filter(t => _mockTime >= t.fireAt);
+  global._pendingTimers = global._pendingTimers.filter(t => _mockTime < t.fireAt);
+  for (const t of ready) {
+    try {
+      t.cb(...t.args);
+    } catch (e) {
+      // swallow timer errors
+    }
+    // Re-schedule intervals
+    if (t.type === 'interval') {
+      global._pendingTimers.push({ ...t, fireAt: _mockTime + t.interval });
+    }
+  }
+
+  // Run rAF callbacks
   const callbacks = global._rafCallbacks.slice();
   global._rafCallbacks = [];
   for (const cb of callbacks) {
     try {
       cb(timestamp);
     } catch (e) {
-      // game.js has some variable scoping bugs (bIndex vs bulletIndex)
-      // that browsers tolerate but Node doesn't. Swallow and re-register gameLoop.
+      // game.js has some variable scoping bugs — swallow and re-register gameLoop.
       if (typeof global.gameLoop === 'function') {
         global._rafCallbacks.push(global.gameLoop);
       }
