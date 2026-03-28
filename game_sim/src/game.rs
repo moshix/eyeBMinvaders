@@ -67,7 +67,7 @@ pub struct HeadlessGame {
 }
 
 pub struct StepResult {
-    pub state: [f32; 45],
+    pub state: [f32; STATE_SIZE],
     pub reward: f32,
     pub done: bool,
     pub score: i32,
@@ -128,7 +128,7 @@ impl HeadlessGame {
         game
     }
 
-    pub fn reset(&mut self) -> [f32; 45] {
+    pub fn reset(&mut self) -> [f32; STATE_SIZE] {
         self.game_time = 0.0;
         self.score = 0;
         self.current_level = 1;
@@ -165,6 +165,23 @@ impl HeadlessGame {
         self.times_hit = 0;
         self.near_misses = 0;
         self.create_enemies();
+        state::get_state(self)
+    }
+
+    /// Reset to a specific starting level (for curriculum learning).
+    /// Sets enemy speed and fire rate as if the agent had cleared (level-1) levels.
+    pub fn reset_at_level(&mut self, level: i32) -> [f32; STATE_SIZE] {
+        let state = self.reset();
+        if level <= 1 {
+            return state;
+        }
+        // Apply level-ups: same math as victory() applied (level-1) times
+        self.current_level = level;
+        self.enemy_speed = 0.54 * 1.33_f64.powi(level - 1);
+        self.current_enemy_fire_rate = BASE_ENEMY_FIRE_RATE
+            / (1.0 + ENEMY_FIRE_RATE_INCREASE * (level - 1) as f64);
+        // Give score credit for previous levels
+        self.score = 2500 * (level - 1);
         state::get_state(self)
     }
 

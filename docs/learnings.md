@@ -70,16 +70,17 @@
 - Without PER, the agent learns rare high-level events slower
 - **Critical bug**: resuming from checkpoint with default `epsilon_start=1.0` resets epsilon to 1.0, erasing all learned exploitation — agent plays randomly again. Fix: only override epsilon when config explicitly sets it below 1.0 (i.e., a mutation bumps it to 0.1-0.3, not back to 1.0)
 
-### Score progression milestones
-| Episodes | Avg Score | Avg Level | Best Level | Notes |
-|----------|-----------|-----------|------------|-------|
-| 1K | 5,000 | 1.0 | 1 | Random play |
-| 5K | 8,000 | 1.0 | 2 | Learning to shoot |
-| 10K | 21,000 | 1.7 | 4 | Clearing level 1 |
-| 20K | 33,600 | 2.1 | 5 | Consistent level 2 |
-| 50K | 47,000 | 2.7 | 7 | Epsilon at floor |
-| 100K | 65,000 | 3.3 | 7 | Plateau begins |
-| 140K | 66,000 | 3.3 | 7 | Plateau continues |
+### Score progression milestones (Dueling+NoisyNet+2frames, 50-feat state)
+| Episodes | Avg Score | Avg Level | Best Level | Best Score | Notes |
+|----------|-----------|-----------|------------|------------|-------|
+| 1K | 5,000 | 1.0 | 1 | 13K | Random play |
+| 5K | 10,000 | 1.1 | 2 | 27K | Learning to shoot |
+| 10K | 18,000 | 1.6 | 3 | 51K | Clearing level 1 |
+| 20K | 34,000 | 2.1 | 5 | 84K | Consistent level 2 |
+| 50K | 60,000 | 3.2 | 7 | 127K | Epsilon at floor |
+| 100K | 65,000 | 3.4 | 7 | 141K | Old plateau zone |
+| 200K | 62,000 | 3.7 | 8 | 153K | Level 8 reached |
+| 292K | 59,000 | 3.5 | 8 | 153K | Training stopped (CPU) |
 
 ### PER vs Uniform Replay
 - PER (old version): Higher sample efficiency, earlier level 2 (ep 1K vs 2K), but 50-100x slower buffer operations
@@ -105,7 +106,7 @@
 - 5-step returns (default, configurable via `--n-step`)
 - 6 actions: idle, left, right, fire, fire+left, fire+right
 
-### State representation (45 features)
+### State representation (50 features)
 0. Player X position
 1. Player lives
 2. Level
@@ -123,6 +124,11 @@
 34-36. 2nd nearest bullet (dx, dy, velocity_dy)
 37-39. 2nd nearest missile (dx, dy, sin(angle))
 40-44. Danger heatmap: 5 columns (weighted threat density, bullets=1, missiles=2, kamikazes=3)
+45. Enemy speed (normalized, critical for high-level play)
+46. Enemy direction (-1 left, +1 right, normalized)
+47. Fire cooldown (0=can fire now, 1=just fired)
+48. Threat urgency (min time-to-impact across bullets + kamikazes, lower=more dangerous)
+49. Enemies in bottom half (danger level, enemies close to walls/player)
 
 ### Reward shaping
 - Score-based: (score_delta) * 0.01
@@ -133,6 +139,7 @@
 - Kamikaze kill bonus: +1.5 (extra on top of score reward)
 - Missile shoot-down bonus: +2.0 (hardest threat to deal with)
 - Dodging reward: +0.1 per near-miss (threat passes within 80px without hitting)
+- Level completion bonus: +5.0 + 3.0 * level (scales with progression)
 
 ### Weight transfer across architectures
 - When upgrading network size (e.g., 256→256→128 to 512→256→128), weights can be transferred
@@ -161,8 +168,8 @@
 
 ### Mutation bandit (`meta_train.py`)
 - Multi-armed bandit selects hyperparameter mutations per cycle
-- Always applies: `lr_reduce` + `epsilon_bump` (proven effective)
-- Additional mutations sampled by weight: buffer_flush, batch_size_up, gamma_increase, tau_reduce
+- ALWAYS_APPLY emptied (lr_reduce was always applied before, killing LR after a few cycles)
+- 12 mutations: lr_reduce, lr_boost, epsilon_bump, epsilon_bump_large, buffer_flush, batch_size_up, gamma_increase, tau_reduce, n_step_change, cosine_reset, train_steps_up, num_envs_up
 - Weights updated after each cycle: +50% for >5% improvement, -40% for regression
 - State persisted in `models/meta_learning.json`
 
@@ -176,3 +183,58 @@
 - `replay.py` — Side-by-side ASCII model comparison TUI, loads two checkpoints, runs games with same seed
 - `export_model.py` — Converts .pt checkpoint to JSON weights for browser inference
 - `meta_train.py` — Meta-learning outer loop with plateau detection, mutation bandit, and cycle management
+
+## Breaking the Level 7-8 Plateau (March 2025)
+
+### Changes Made (rust branch)
+
+1. **Dueling DQN + NoisyNet + Frame Stacking** — new architecture replacing standard DQN
+2. **Rayon parallelization** — `par_iter_mut` for `reset_all`, `step_all`, `step_all_fast`
+3. **50-feature state vector** — added enemy speed, fire cooldown, threat urgency, enemy direction, bottom-half enemy count
+4. **Scaled level completion bonus** — `+5 + 3*level` instead of flat `+5`
+5. **Curriculum learning support** — `reset_at_level()` in Rust sim (available but not recommended without tuning)
+6. **Per-env epsilon fix** — critical bug where all envs explored/exploited simultaneously
+7. **Meta-train mutation overhaul** — removed always-applied lr_reduce, added lr_boost, cosine_reset, n_step_change, train_steps_up, num_envs_up
+
+### Experiments Run on CPU (32-core, no GPU)
+
+| Run | Config | Best Level | Best Score | Avg Score | Episodes | Wall Clock |
+|-----|--------|-----------|-----------|-----------|----------|------------|
+| 1 | 45-feat, 256-128-64, 2-frame, original reward | **8** | **153K** | 59K | 292K | ~7 hours |
+| 2 | 45-feat, 256-128-64, scaled death penalty | 6 | 114K | 38K | 68K | ~2 hours |
+| 3 | 45-feat, 512-256-128, 4-frame | 5 | 112K | 47K | 54K | ~1.5 hours |
+| 4 | 50-feat, 256-128-64, original reward | 7 | 135K | 55K | 95K | ~1.5 hours |
+| 5 | 50-feat, 256-128-64, curriculum+clipping | 7 | 135K | 33K | 132K | ~1.5 hours |
+| 6 | 50-feat, 256-128-64, proven config (still running when stopped) | 8 | 139K | 63K | 40K | ~30 min |
+
+**Key takeaway**: Run 1 (simplest config, longest duration) performed best. Duration matters more than complexity on CPU.
+
+### GPU Training Plan (Level 9-10 Target)
+
+**Recommended config for GPU with 16+ GB VRAM:**
+```python
+cfg = TrainingConfig(
+    train_steps_per_tick=4,       # full gradient steps
+    train_every=4,
+    batch_size=2048,              # large batch for GPU
+    n_frames=4,                   # full 4-frame stacking
+    hidden_sizes=[512, 256, 128], # full network
+    buffer_capacity=1_000_000,    # 1M buffer
+    use_dueling=True,
+    use_noisy=True,
+    lr=1e-4,
+    n_step=5,
+    num_envs=2048,                # rayon handles this easily
+)
+```
+
+**Expected timeline on GPU:**
+- Level 8 reliable: ~1-2 hours
+- Level 9 occasional: ~3-5 hours
+- Level 10: ~10+ hours (500K+ episodes)
+
+**Future improvements to implement on GPU:**
+1. True PER (SumTree) — highest impact, 15-30% sample efficiency gain
+2. C51 distributional DQN — risk-aware decisions at high levels
+3. RND exploration — directed exploration toward novel high-level states
+4. Curriculum learning with separate buffers — needs careful tuning

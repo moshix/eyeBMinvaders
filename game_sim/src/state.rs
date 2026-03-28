@@ -225,6 +225,46 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
         f[j] = (f[j] / 10.0).min(1.0);
     }
 
+    // [45] Enemy speed (normalized) — critical for high-level play
+    // Speed starts at 0.54 and multiplies by 1.33 each level. At level 10 ~= 8.6
+    f[45] = (game.enemy_speed / 10.0).min(1.0) as f32;
+
+    // [46] Enemy direction (-1 left, +1 right) -> normalized to [0, 1]
+    f[46] = (game.enemy_direction as f32 + 1.0) / 2.0;
+
+    // [47] Fire cooldown (0 = can fire now, 1 = just fired)
+    let fire_elapsed = game.game_time - game.last_fire_time;
+    let fire_ready = (fire_elapsed / (FIRE_RATE * 1000.0)).min(1.0) as f32;
+    f[47] = fire_ready;
+
+    // [48] Threat urgency: closest threat time-to-impact (lower = more dangerous)
+    // Combines bullets, missiles, kamikazes — picks the most imminent
+    let player_y = game.player_y + PLAYER_HEIGHT / 2.0;
+    let mut min_tti: f64 = 1.0; // normalized, 1.0 = no immediate threat
+    for b in game.bullets.iter().filter(|b| b.is_enemy) {
+        if b.y < player_y {
+            let dy = player_y - b.y;
+            let tti = dy / (ENEMY_BULLET_SPEED * 1000.0 / 60.0); // frames to impact
+            let tti_norm = (tti / 60.0).min(1.0); // normalize to ~1 second
+            if tti_norm < min_tti { min_tti = tti_norm; }
+        }
+    }
+    for k in game.kamikazes.iter() {
+        let ky = k.y + k.height / 2.0;
+        if ky < player_y {
+            let dist = ((k.x + k.width/2.0 - player_cx).powi(2) + (ky - player_y).powi(2)).sqrt();
+            let tti = dist / (KAMIKAZE_SPEED * 1000.0 / 60.0);
+            let tti_norm = (tti / 60.0).min(1.0);
+            if tti_norm < min_tti { min_tti = tti_norm; }
+        }
+    }
+    f[48] = min_tti as f32;
+
+    // [49] Enemies in bottom half (danger level — enemies close to walls/player)
+    let bottom_half_y = GAME_HEIGHT / 2.0;
+    let bottom_enemies = game.enemies.iter().filter(|e| e.y > bottom_half_y).count();
+    f[49] = (bottom_enemies as f32 / 15.0).min(1.0);
+
     f
 }
 
@@ -240,6 +280,7 @@ pub fn calculate_reward(
 ) -> f32 {
     let mut reward: f32 = 0.0;
 
+    // Original proven reward function (reached level 7)
     reward += (game.score - old_score) as f32 * 0.01;
 
     if game.player_lives < old_lives {
@@ -264,9 +305,10 @@ pub fn calculate_reward(
     // Dodging reward: threats passed close but missed
     reward += near_misses as f32 * 0.1;
 
-    // Level completion bonus: clear signal that clearing levels is the objective
+    // Level completion bonus — increased and scaling to push past level 7
     if level_completed {
-        reward += 5.0;
+        let level = game.current_level as f32;
+        reward += 5.0 + 3.0 * level;
     }
 
     reward

@@ -142,6 +142,12 @@ impl BatchedGames {
         PyArray1::from_slice_bound(py, &state)
     }
 
+    /// Reset a specific env to start at a given level (curriculum learning).
+    fn reset_one_at_level<'py>(&mut self, py: Python<'py>, idx: usize, level: i32) -> Bound<'py, PyArray1<f32>> {
+        let state = self.games[idx].reset_at_level(level);
+        PyArray1::from_slice_bound(py, &state)
+    }
+
     /// Step all environments.
     /// Returns (states [num_envs, 45], rewards [num_envs], dones [num_envs], infos list[dict])
     fn step_all<'py>(

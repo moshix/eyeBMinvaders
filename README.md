@@ -94,12 +94,43 @@ Live TUI dashboard showing score trends, level progression, and training metrics
 
 ## Architecture
 
-- **`game.js`** — Complete game engine + neural network inference
-- **`train.py`** — DQN training with Rust game simulation backend
-- **`meta_train.py`** — Meta-learning outer loop with plateau detection
-- **`game_sim/`** — Rust game simulation (PyO3) for fast training
+- **`game.js`** — Complete game engine + neural network inference (supports standard DQN, Dueling DQN, NoisyNet, frame stacking)
+- **`train.py`** — DQN training with Rust game simulation backend. Supports Dueling DQN, NoisyNet exploration, N-step returns, frame stacking, dual-buffer PER, cosine LR annealing
+- **`meta_train.py`** — Meta-learning outer loop with plateau detection and multi-armed bandit hyperparameter mutation
+- **`game_sim/`** — Rust game simulation (PyO3 + Rayon) for parallel training. 50-feature state vector, ~5.7M env-steps/s on GPU-class hardware
 - **`visualize.py`** — Live training dashboard (rich TUI)
-- **`export_model.py`** — PyTorch to JSON model converter
+- **`export_model.py`** — PyTorch to JSON model converter (handles Dueling, NoisyNet, frame stacking architectures)
+
+### DQN Architecture
+
+| Component | Details |
+|-----------|---------|
+| Network | Dueling DQN (shared features → separate Value + Advantage streams) |
+| Exploration | NoisyNet (factorized, sigma=0.5) + epsilon-greedy fallback |
+| State | 50 hand-crafted features × 2-4 frame stack (enemy speed, fire cooldown, threat urgency, danger heatmap) |
+| Returns | N-step (n=5) with gamma=0.99 |
+| Replay | Dual-buffer: uniform (300K) + important transitions (100K, 35% sampling) |
+| Parallelism | Rayon-parallelized Rust sim, 128-2048 envs |
+
+### Training Results
+
+| Metric | Standard DQN | Dueling+NoisyNet+Frames |
+|--------|-------------|------------------------|
+| Best Level | 7 | 8 |
+| Best Score | ~100K | 153K |
+| Avg Score | ~45K plateau | 59-65K |
+| Training Speed | ~700K steps/s | ~5.7M steps/s (GPU), ~700K (CPU) |
+
+### GPU Recommendations
+
+Training benefits enormously from GPU acceleration. CPU training is functional but ~10x slower for neural network operations. Recommended: NVIDIA GPU with 8GB+ VRAM.
+
+```bash
+# GPU auto-scales batch size and parallel envs based on VRAM
+python3 train.py --episodes 500000
+# CPU explicit config
+python3 train.py --episodes 500000 --num-envs 128
+```
 
 March, 2025
 
