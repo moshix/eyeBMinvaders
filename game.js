@@ -2586,6 +2586,56 @@ function updateDQN() {
     if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
   }
 
+  // --- Heuristic safety layer: fix DQN's worst decisions ---
+  const fireX = player.x + player.width / 2;
+
+  // Rule 1: Don't fire through walls — convert fire to move-only
+  const wallBlocks = walls.some(w =>
+    fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL);
+  if (wallBlocks && bestAction >= 3) {
+    if (bestAction === 4) bestAction = 1;      // fire+left -> left
+    else if (bestAction === 5) bestAction = 2;  // fire+right -> right
+    else bestAction = 0;                        // fire -> idle
+  }
+
+  // Rule 2: Don't fire into empty space — only fire if enemy is in column
+  if (bestAction >= 3) {
+    const enemyInColumn = enemies.some(e =>
+      fireX >= e.x - 15 && fireX <= e.x + e.width + 15);
+    if (!enemyInColumn) {
+      if (bestAction === 4) bestAction = 1;
+      else if (bestAction === 5) bestAction = 2;
+      else bestAction = 0;
+    }
+  }
+
+  // Rule 3: Emergency dodge — override when threat is dangerously close
+  const playerCx = player.x + player.width / 2;
+  const playerCy = player.y + player.height / 2;
+  let urgentLeft = false, urgentRight = false;
+  const enemyBulletsNow = bullets.filter(b => b.isEnemyBullet);
+  for (const b of enemyBulletsNow) {
+    const dx = b.x - playerCx, dy = b.y - playerCy;
+    if (dy > -60 && dy < 10 && Math.abs(dx) < 40) {
+      if (dx > 0) urgentLeft = true; else urgentRight = true;
+    }
+  }
+  for (const k of kamikazeEnemies) {
+    const dx = k.x + k.width/2 - playerCx, dy = k.y + k.height/2 - playerCy;
+    if (Math.abs(dy) < 80 && Math.abs(dx) < 60) {
+      if (dx > 0) urgentLeft = true; else urgentRight = true;
+    }
+  }
+  for (const m of homingMissiles) {
+    const dx = m.x - playerCx, dy = m.y - playerCy;
+    if (Math.abs(dy) < 70 && Math.abs(dx) < 50) {
+      if (dx > 0) urgentLeft = true; else urgentRight = true;
+    }
+  }
+  if (urgentLeft && !urgentRight) bestAction = 1;
+  else if (urgentRight && !urgentLeft) bestAction = 2;
+  else if (urgentLeft && urgentRight) bestAction = 0; // boxed in, stay
+
   applyDQNAction(bestAction);
   return true;
 }
