@@ -317,16 +317,12 @@ pub fn calculate_reward(
         reward += 5.0 + 3.0 * level;
     }
 
-    // Center positioning: edge penalty + center bonus
-    // The heuristic AI uses strong cubic center-gravity — DQN needs similar signal
+    // Edge-only penalty: punish hugging walls, but NO center bonus
+    // (center bonus caused agent to stand still and not dodge)
     let player_nx = ((game.player_x + PLAYER_WIDTH / 2.0) / GAME_WIDTH) as f32;
-    let edge_dist = (0.5 - player_nx).abs(); // 0 at center, 0.5 at edge
-    if edge_dist > 0.4 {
-        // Within 10% of either edge: penalty scales from 0 to -0.3
-        reward -= (edge_dist - 0.4) * 3.0;
+    if player_nx < 0.08 || player_nx > 0.92 {
+        reward -= 0.2;
     }
-    // Small center bonus: 0.05 at center, 0 at edges
-    reward += 0.05 * (1.0 - 4.0 * edge_dist * edge_dist);
 
     reward
 }
