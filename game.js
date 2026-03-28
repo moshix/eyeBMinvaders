@@ -2598,15 +2598,15 @@ function updateDQN() {
     else bestAction = 0;                        // fire -> idle
   }
 
-  // Rule 2: Don't fire into empty space — only fire if enemy is in column
-  if (bestAction >= 3) {
-    const enemyInColumn = enemies.some(e =>
-      fireX >= e.x - 15 && fireX <= e.x + e.width + 15);
-    if (!enemyInColumn) {
-      if (bestAction === 4) bestAction = 1;
-      else if (bestAction === 5) bestAction = 2;
-      else bestAction = 0;
-    }
+  // Rule 2: Don't fire into empty space — only strip pure fire (action 3)
+  // Keep fire+move (4,5) since the agent uses them for movement
+  if (bestAction === 3) {
+    const targetInColumn = enemies.some(e =>
+      fireX >= e.x - 25 && fireX <= e.x + e.width + 25)
+      || (monster && !monster.hit && Math.abs(monster.x + MONSTER_WIDTH/2 - fireX) < 40)
+      || (monster2 && !monster2.hit && Math.abs(monster2.x + (monster2.width||56)/2 - fireX) < 40)
+      || kamikazeEnemies.some(k => Math.abs(k.x + k.width/2 - fireX) < 30);
+    if (!targetInColumn) bestAction = 0; // no target -> idle instead of fire
   }
 
   // Rule 3: Emergency dodge — override when threat is dangerously close
