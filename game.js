@@ -2359,10 +2359,12 @@ function buildDQNState() {
     f[8] = nx(b.x - playerCx);
     f[9] = ny(b.y - playerCy);
     f[10] = enemyBullets.length / 10.0;
-    if (b.dx !== undefined && b.dy !== undefined) {
+    if (b.isMonster2Bullet && b.dx !== undefined && b.dy !== undefined) {
+      // Only Monster2 bullets have true directional movement
       f[11] = b.dx / ENEMY_BULLET_SPEED;
       f[12] = b.dy / ENEMY_BULLET_SPEED;
     } else {
+      // Regular enemy bullets go straight down (matches Rust has_direction=false)
       f[11] = 0.0;
       f[12] = 1.0;
     }
@@ -2449,7 +2451,7 @@ function buildDQNState() {
     const b2 = sortedBullets[1];
     f[34] = nx(b2.x - playerCx);
     f[35] = ny(b2.y - playerCy);
-    f[36] = (b2.dy !== undefined) ? b2.dy / ENEMY_BULLET_SPEED : 1.0;
+    f[36] = (b2.isMonster2Bullet && b2.dy !== undefined) ? b2.dy / ENEMY_BULLET_SPEED : 1.0;
   } else {
     f[35] = -1.0;
   }
