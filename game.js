@@ -2636,7 +2636,32 @@ function updateDQN() {
   }
   if (urgentLeft && !urgentRight) bestAction = 1;
   else if (urgentRight && !urgentLeft) bestAction = 2;
-  else if (urgentLeft && urgentRight) bestAction = 0; // boxed in, stay
+  else if (urgentLeft && urgentRight) {
+    // Threats from both sides — count which side has fewer and dodge there
+    let leftCount = 0, rightCount = 0;
+    for (const b of enemyBulletsNow) {
+      const dx = b.x - playerCx, dy = b.y - playerCy;
+      if (dy > -70 && dy < 20 && Math.abs(dx) < 60) {
+        if (dx > 0) rightCount++; else leftCount++;
+      }
+    }
+    for (const m of homingMissiles) {
+      const mx = m.x + (m.width || 57) / 2;
+      if (Math.abs(mx - playerCx) < 100) {
+        if (mx > playerCx) rightCount += 3; else leftCount += 3; // missiles count more
+      }
+    }
+    for (const k of kamikazeEnemies) {
+      const kx = k.x + k.width / 2;
+      if (Math.abs(kx - playerCx) < 80) {
+        if (kx > playerCx) rightCount += 2; else leftCount += 2;
+      }
+    }
+    // Dodge toward the side with fewer threats; if equal, dodge toward center
+    if (leftCount < rightCount) bestAction = 1;
+    else if (rightCount < leftCount) bestAction = 2;
+    else bestAction = playerCx > canvas.width / 2 ? 1 : 2; // dodge toward center
+  }
 
   applyDQNAction(bestAction);
   return true;
