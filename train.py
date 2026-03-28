@@ -2144,7 +2144,7 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     tick_count = 0
     plateau_detected = False
     # God mode: track per-env steps for forced episode reset
-    god_mode_max_steps = 3000  # ~100 seconds of game time at 30Hz (reaches level 3-4)
+    god_mode_max_steps = 6000  # ~200 seconds of game time at 30Hz (reaches level 3-5)
     env_step_counts = np.zeros(num_envs, dtype=np.int32) if god_mode else None
 
     while episode_count < episodes and not plateau_detected:
