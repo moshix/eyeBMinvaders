@@ -2499,7 +2499,7 @@ function buildDQNState() {
   for (const b of enemyBullets) {
     if (b.y < playerCy) {
       const dy = playerCy - b.y;
-      const tti = dy / (ENEMY_BULLET_SPEED / 60.0);
+      const tti = dy / (ENEMY_BULLET_SPEED * 1000.0 / 60.0);  // must match Rust: speed*1000/60
       const ttiNorm = Math.min(tti / 60.0, 1.0);
       if (ttiNorm < minTTI) minTTI = ttiNorm;
     }
@@ -2508,7 +2508,7 @@ function buildDQNState() {
     const ky = k.y + k.height / 2;
     if (ky < playerCy) {
       const dist = Math.sqrt((k.x + k.width / 2 - playerCx) ** 2 + (ky - playerCy) ** 2);
-      const tti = dist / (KAMIKAZE_SPEED / 60.0);
+      const tti = dist / (KAMIKAZE_SPEED * 1000.0 / 60.0);  // must match Rust: speed*1000/60
       const ttiNorm = Math.min(tti / 60.0, 1.0);
       if (ttiNorm < minTTI) minTTI = ttiNorm;
     }
