@@ -764,7 +764,7 @@ function detectCollisions() {
             bullet.y < kamikaze.y + kamikaze.height &&
             bullet.y + 10 > kamikaze.y) {
           // Remove bullet
-          bullets.splice(bulletIndex, 1);
+          bullets.splice(bIndex, 1);
           
           // Increment hit counter
           kamikaze.hits++;
@@ -841,7 +841,7 @@ function detectCollisions() {
           wall.missileHits++;
         }
 
-        bullets.splice(bulletIndex, 1);
+        bullets.splice(bIndex, 1);
         return;
       }
     });
