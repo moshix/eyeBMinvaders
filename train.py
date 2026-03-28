@@ -2018,7 +2018,7 @@ NUM_ENVS = 256  # Number of parallel game instances
 
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
           num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
-          flush_buffer=False, cosine_reset=False, auto_scale=True):
+          flush_buffer=False, cosine_reset=False, auto_scale=True, god_mode=False):
     os.makedirs(save_dir, exist_ok=True)
 
     if device_override:
@@ -2039,6 +2039,9 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     use_rust = HAS_RUST_SIM
     if use_rust:
         envs = RustBatchedGames(num_envs, seed=42)
+        if god_mode:
+            envs.set_god_mode(True)
+            print("GOD MODE: hits penalized but no life loss")
         raw_state_size = envs.state_size
         action_size = envs.action_size
         print("Using Rust game simulation (fast mode)")
@@ -2140,6 +2143,9 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     episode_count = 0
     tick_count = 0
     plateau_detected = False
+    # God mode: track per-env steps for forced episode reset
+    god_mode_max_steps = 15000  # ~500 seconds of game time at 30Hz
+    env_step_counts = np.zeros(num_envs, dtype=np.int32) if god_mode else None
 
     while episode_count < episodes and not plateau_detected:
         if use_rust:
@@ -2168,6 +2174,15 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                         rewards_np, next_states, dones_np)
 
             episode_rewards += rewards_np
+
+            # God mode: force episode end after max steps (game never ends naturally)
+            if god_mode:
+                env_step_counts += 1
+                timed_out = env_step_counts >= god_mode_max_steps
+                if timed_out.any():
+                    for idx in np.where(timed_out)[0]:
+                        dones[idx] = True
+                    env_step_counts[timed_out] = 0
 
             # Handle done envs (typically 0-3 per tick out of 128)
             done_mask = np.asarray(dones)
@@ -2246,6 +2261,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
 
                 raw_state = envs.reset_one(i)
                 states[i] = frame_stack.reset(i, raw_state) if frame_stack else raw_state
+                if god_mode:
+                    env_step_counts[i] = 0
                 episode_rewards[i] = 0.0
 
                 if episode_count >= episodes:
@@ -2462,6 +2479,8 @@ if __name__ == "__main__":
                         help="Gradient steps per training tick (default: 4, auto-scaled by GPU)")
     parser.add_argument("--no-auto-scale", action="store_true",
                         help="Disable GPU auto-scaling of batch size and num_envs")
+    parser.add_argument("--god-mode", action="store_true",
+                        help="God mode: hits penalized but no life loss (agent never dies, learns avoidance)")
     parser.add_argument("--layer-norm", action="store_true",
                         help="Enable LayerNorm in network")
     parser.add_argument("--no-dual-buffer", action="store_true",
@@ -2501,4 +2520,5 @@ if __name__ == "__main__":
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
           device_override=args.device,
           num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS,
-          config=cfg, auto_scale=not args.no_auto_scale)
+          config=cfg, auto_scale=not args.no_auto_scale,
+          god_mode=args.god_mode)

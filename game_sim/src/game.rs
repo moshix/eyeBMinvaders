@@ -11,6 +11,7 @@ use crate::state;
 
 pub struct HeadlessGame {
     pub rng: ChaCha8Rng,
+    pub god_mode: bool, // hits penalized but don't lose lives or end game
     pub game_time: f64,
     pub score: i32,
     pub current_level: i32,
@@ -87,6 +88,7 @@ impl HeadlessGame {
     pub fn new(seed: u64) -> Self {
         let mut game = Self {
             rng: ChaCha8Rng::seed_from_u64(seed),
+            god_mode: false,
             game_time: 0.0,
             score: 0,
             current_level: 1,
@@ -347,11 +349,21 @@ impl HeadlessGame {
     }
 
     pub fn handle_player_hit(&mut self) {
+        self.times_hit += 1;
+        self.emit(EventType::PlayerHit);
+
+        if self.god_mode {
+            // God mode: track the hit for reward penalty but don't lose lives
+            // Brief invulnerability still applies so the agent feels the hit
+            self.is_player_hit = true;
+            self.player_hit_timer = self.game_time;
+            // Don't clear threats — agent must learn to survive through them
+            return;
+        }
+
         self.player_lives -= 1;
         self.is_player_hit = true;
         self.player_hit_timer = self.game_time;
-        self.times_hit += 1;
-        self.emit(EventType::PlayerHit);
 
         // Clear threats
         for b in self.bullets.iter_mut() {

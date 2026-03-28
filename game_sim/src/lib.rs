@@ -148,6 +148,13 @@ impl BatchedGames {
         PyArray1::from_slice_bound(py, &state)
     }
 
+    /// Enable/disable god mode for all envs (hits penalized but no life loss)
+    fn set_god_mode(&mut self, enabled: bool) {
+        for game in &mut self.games {
+            game.god_mode = enabled;
+        }
+    }
+
     /// Step all environments.
     /// Returns (states [num_envs, 45], rewards [num_envs], dones [num_envs], infos list[dict])
     fn step_all<'py>(

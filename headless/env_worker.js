@@ -16,8 +16,11 @@ const { installShims, stepFrame, advanceMockTime, setMockTime } = require('./bro
 
 const GAME_ROOT = process.argv[2] || path.resolve(__dirname, '..');
 const FPS = parseInt(process.argv[3] || '30');
+const GOD_MODE = process.argv.includes('--god-mode');
 const DT_MS = 1000.0 / FPS;
 const STATE_SIZE = 50;
+const GOD_MODE_MAX_STEPS = 15000; // forced episode end
+let godModeSteps = 0;
 
 // Install shims and load game.js
 installShims();
@@ -108,6 +111,8 @@ function calculateReward(oldScore, oldLives, oldLevel) {
 function resetGame() {
   setMockTime(1000);
   global._rafCallbacks = [];
+  global._pendingTimers = [];
+  godModeSteps = 0;
 
   restartGame();
   autoPlayEnabled = false;  // we control actions manually
@@ -149,14 +154,33 @@ function stepGame(action) {
   advanceMockTime(DT_MS);
   stepFrame(Date.now());
 
+  // God mode: restore lives if hit, prevent game over
+  if (GOD_MODE) {
+    godModeSteps++;
+    if (player && player.lives < oldLives) {
+      player.lives = oldLives; // restore lives (hit still registered for reward)
+    }
+    if (gameOverFlag) {
+      gameOverFlag = false; // prevent game over
+      gamePaused = false;
+    }
+  }
+
   // Get new state
   const rawState = buildDQNState();
   pushFrame(rawState);
   const stackedState = getStackedState();
 
-  // Compute reward
-  const reward = calculateReward(oldScore, oldLives, oldLevel);
-  const done = !!gameOverFlag;
+  // Compute reward — in god mode, still penalize hits heavily
+  let reward = calculateReward(oldScore, oldLives, oldLevel);
+  if (GOD_MODE && player && player.lives >= oldLives && oldLives > (player.lives || 0)) {
+    // Shouldn't happen since we restored lives, but safety check
+  }
+  // God mode: check if hit happened (lives were restored above but reward still applies)
+  const wasHit = GOD_MODE && player && isPlayerHit;
+  if (wasHit) reward -= 5.0; // explicit hit penalty since life loss won't trigger in reward calc
+
+  const done = GOD_MODE ? (godModeSteps >= GOD_MODE_MAX_STEPS) : !!gameOverFlag;
 
   const info = {
     score: score || 0,

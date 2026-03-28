@@ -48,9 +48,10 @@ except ImportError:
 class HeadlessJSEnv:
     """Runs game.js in a Node.js subprocess, communicates via stdin/stdout JSON."""
 
-    def __init__(self, game_root, fps=30):
+    def __init__(self, game_root, fps=30, god_mode=False):
         self.game_root = game_root
         self.fps = fps
+        self.god_mode = god_mode
         self.dt_ms = 1000.0 / fps
         self.proc = None
         self.state_size = 50
@@ -62,8 +63,11 @@ class HeadlessJSEnv:
     def _start_node(self):
         """Start a persistent Node.js process running the game."""
         script = os.path.join(os.path.dirname(__file__), 'env_worker.js')
+        cmd = ['node', script, self.game_root, str(self.fps)]
+        if self.god_mode:
+            cmd.append('--god-mode')
         self.proc = subprocess.Popen(
-            ['node', script, self.game_root, str(self.fps)],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -145,7 +149,7 @@ class ReplayBuffer:
 # =============================================================================
 def finetune(model_path, episodes=2000, lr=1e-5, batch_size=128,
              gamma=0.99, tau=0.005, buffer_size=100_000, save_dir='models',
-             export_after=True, fps=30):
+             export_after=True, fps=30, **kwargs):
 
     game_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     device = 'cpu'  # headless fine-tuning is CPU-bound anyway
@@ -196,7 +200,8 @@ def finetune(model_path, episodes=2000, lr=1e-5, batch_size=128,
     print(f"Fine-tuning: {episodes} episodes, lr={lr}, batch={batch_size}")
     print(f"Starting headless JS environment...\n")
 
-    env = HeadlessJSEnv(game_root, fps=fps)
+    god_mode = kwargs.get('god_mode', False)
+    env = HeadlessJSEnv(game_root, fps=fps, god_mode=god_mode)
     scores = deque(maxlen=100)
     levels = deque(maxlen=100)
     best_score = 0
@@ -316,6 +321,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
     parser.add_argument('--fps', type=int, default=30, help='Game FPS')
     parser.add_argument('--export', action='store_true', help='Export model after fine-tuning')
+    parser.add_argument('--god-mode', action='store_true',
+                        help='God mode: hits penalized but no death (learns avoidance patterns)')
     args = parser.parse_args()
 
     finetune(
@@ -325,4 +332,5 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         fps=args.fps,
         export_after=args.export,
+        god_mode=args.god_mode,
     )
