@@ -2548,6 +2548,9 @@ function updateDQN() {
   if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
     const rawStateSize = dqnModel.architecture[0] / nFrames;
     dqnInitFrameBuffer(nFrames, rawStateSize);
+    // Fill all frames with current state (matches training reset behavior)
+    const initState = buildDQNState();
+    dqnResetFrameBuffer(initState);
   }
 
   const rawState = buildDQNState();
