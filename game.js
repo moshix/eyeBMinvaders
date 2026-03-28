@@ -2586,63 +2586,6 @@ function updateDQN() {
     if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
   }
 
-  // Minimal safety: only strip pure fire (action 3) when under a wall
-  const fireX = player.x + player.width / 2;
-  if (bestAction === 3) {
-    const wallBlocks = walls.some(w =>
-      fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL);
-    if (wallBlocks) bestAction = 0;
-  }
-
-  // Emergency dodge: tight zones, only truly imminent threats
-  const playerCx = player.x + player.width / 2;
-  const playerCy = player.y + player.height / 2;
-  let imminent = false;
-  let threatDx = 0; // sum of threat directions
-  for (const b of bullets) {
-    if (!b.isEnemyBullet) continue;
-    const dx = b.x - playerCx, dy = b.y - playerCy;
-    if (dy > -40 && dy < 10 && Math.abs(dx) < 30) { // very tight: ~1 player width
-      threatDx += dx;
-      imminent = true;
-    }
-  }
-  for (const m of homingMissiles) {
-    const mx = m.x + (m.width||57)/2, my = m.y + (m.height||57)/2;
-    const dx = mx - playerCx, dy = my - playerCy;
-    if (Math.abs(dy) < 60 && Math.abs(dx) < 45) {
-      threatDx += dx * 3;
-      imminent = true;
-    }
-  }
-  // Monsters getting close — dodge away (they're large and deadly)
-  if (monster && !monster.hit) {
-    const dx = monster.x + MONSTER_WIDTH/2 - playerCx;
-    const dy = monster.y + MONSTER_HEIGHT/2 - playerCy;
-    if (Math.abs(dy) < 100 && Math.abs(dx) < 80) {
-      threatDx += dx * 4; // heavy weight — monsters are big
-      imminent = true;
-    }
-  }
-  if (monster2 && !monster2.hit && !monster2.isDisappeared) {
-    const dx = monster2.x + (monster2.width||56)/2 - playerCx;
-    const dy = monster2.y + (monster2.height||56)/2 - playerCy;
-    if (Math.abs(dy) < 120 && Math.abs(dx) < 90) {
-      threatDx += dx * 5; // heaviest weight — monster2 is the biggest threat
-      imminent = true;
-    }
-  }
-
-  if (imminent) {
-    // Dodge away from threats, but always prefer toward center
-    const toCenter = canvas.width / 2 - playerCx;
-    if (Math.abs(threatDx) < 10) {
-      bestAction = toCenter > 0 ? 2 : 1; // threat directly above -> center
-    } else {
-      bestAction = threatDx > 0 ? 1 : 2; // dodge away from threat
-    }
-  }
-
   applyDQNAction(bestAction);
   return true;
 }
