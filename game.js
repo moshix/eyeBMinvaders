@@ -359,7 +359,7 @@ explosionImg.src = 'explosion.svg';
 let explosionAdditionalImg = new Image();
 explosionAdditionalImg.src = 'explosion_additional.svg';
 
-const BASE_FIRE_RATE = 0.190;           // Base time in seconds between shots
+const BASE_FIRE_RATE = 0.16;            // Base time in seconds between shots (matches training sim FIRE_RATE)
 let currentFireRate = BASE_FIRE_RATE; // Current fire rate that can be modified
 
 // for enemies  
@@ -2197,6 +2197,8 @@ let dqnModel = null;       // loaded model weights
 let dqnModelLoading = false;
 let dqnModelTimestamp = 0;  // last modified time of the JSON file
 let dqnFrameBuffer = null;  // frame stacking buffer
+let dqnLastDecisionTime = 0;  // throttle to 30Hz to match training sim
+const DQN_DECISION_INTERVAL = 33.333;  // ms — must match Rust sim dt (30Hz)
 
 function dqnInitFrameBuffer(nFrames, stateSize) {
   dqnFrameBuffer = {
@@ -2543,6 +2545,13 @@ function applyDQNAction(action) {
 // Main DQN update — returns true if DQN handled it, false to fall back to heuristic
 function updateDQN() {
   if (!dqnModel) return false;
+
+  // Throttle decisions to 30Hz to match training sim (Rust dt=33.333ms)
+  // Without this, 60Hz browser sees half the temporal change per frame,
+  // breaking all learned trajectory predictions and dodge timing
+  const now = performance.now();
+  if (now - dqnLastDecisionTime < DQN_DECISION_INTERVAL) return true; // keep last action
+  dqnLastDecisionTime = now;
 
   const nFrames = dqnModel.n_frames || 1;
   if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
