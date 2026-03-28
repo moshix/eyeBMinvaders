@@ -296,9 +296,10 @@ pub fn calculate_reward(
         reward -= 3.0 * wall_destroyed_count as f32;
     }
 
-    // Penalty for shooting own walls — strong to prevent wall destruction
+    // Penalty for shooting own walls — very harsh to prevent wall destruction
+    // Walls are critical shields; destroying them is always worse than missing a shot
     if player_wall_hits > 0 {
-        reward -= 1.5 * player_wall_hits as f32;
+        reward -= 3.0 * player_wall_hits as f32;
     }
 
     // Progressive survival bonus: scales with level
