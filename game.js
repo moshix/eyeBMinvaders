@@ -745,7 +745,7 @@ function moveEnemies(deltaTime) {
 
 function detectCollisions() {
   // Check bullet collisions with walls
-  bullets.forEach((bullet, bulletIndex) => {
+  bullets.forEach((bullet, bIndex) => {
     // kamikaze-bullet collision detection
     if (!bullet.isEnemyBullet) {
       kamikazeEnemies.forEach((kamikaze, kIndex) => {
