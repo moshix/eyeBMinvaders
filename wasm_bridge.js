@@ -142,28 +142,49 @@ let _ppoFrameCount = 0;
 let _ppoEpisodes = 0;
 let _ppoTotalReward = 0;
 let _ppoRewardHistory = [];
+let _recordedTransitions = []; // stored gameplay observations
+const _MAX_RECORDED = 50000;   // cap at 50K transitions (~20MB)
 
 let _prevScore = 0;
 let _prevLives = 0;
 let _prevLevel = 0;
+let _prevState = null;
 
 function updateWasmAgent() {
-  if (!wasmReady || !wasmActive) return null;
+  if (!wasmActive) return null;
 
   _ppoFrameCount++;
+  // Throttle recording to 30Hz
+  if (_ppoFrameCount % 2 !== 0) return true;
 
-  // Track game stats for the HUD (zero-cost — just reading globals)
+  // Read game state
   const newScore = (typeof score !== 'undefined') ? score : 0;
   const newLives = (typeof player !== 'undefined') ? player.lives : 0;
   const newLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
   const isGameOver = (typeof gameOverFlag !== 'undefined') ? gameOverFlag : false;
 
-  // Accumulate reward
+  // Compute reward
   let reward = (newScore - _prevScore) * 0.01;
   if (newLives < _prevLives) reward -= 5.0;
   if (newLevel > _prevLevel) reward += 5.0 + 3.0 * newLevel;
+  reward += 0.01 * newLevel; // survival bonus
   _ppoTotalReward += reward;
 
+  // Get current state and action
+  const curState = (typeof buildDQNState === 'function') ? buildDQNState() : null;
+  const action = _getCurrentAction();
+
+  // Record transition: (state, action, reward, done)
+  if (_prevState && _recordedTransitions.length < _MAX_RECORDED) {
+    _recordedTransitions.push({
+      s: Array.from(_prevState),
+      a: action,
+      r: reward,
+      d: isGameOver ? 1 : 0,
+    });
+  }
+
+  _prevState = curState;
   _prevScore = newScore;
   _prevLives = newLives;
   _prevLevel = newLevel;
@@ -177,21 +198,43 @@ function updateWasmAgent() {
     _prevScore = 0;
     _prevLives = 6;
     _prevLevel = 1;
+    _prevState = null;
   }
 
-  // Update HUD stats (cheap — just setting local object)
+  // Update HUD stats
   agentStats.episode = _ppoEpisodes;
   agentStats.avgReward = _ppoRewardHistory.length > 0
     ? _ppoRewardHistory.reduce((a, b) => a + b, 0) / _ppoRewardHistory.length
     : 0;
-  agentStats.totalSteps = _ppoFrameCount;
+  agentStats.totalSteps = _recordedTransitions.length;
 
-  // Refresh HUD every second (pure JS, no WASM calls)
+  // Refresh HUD every second
   if (_ppoFrameCount % 60 === 0) {
     _updateHud();
   }
 
   return true;
+}
+
+/** Export recorded gameplay as JSON download */
+function exportRecordedGameplay() {
+  if (_recordedTransitions.length === 0) {
+    _showHudMessage('No recorded gameplay yet', 'error');
+    return;
+  }
+  const data = JSON.stringify({
+    transitions: _recordedTransitions,
+    episodes: _ppoEpisodes,
+    timestamp: new Date().toISOString(),
+  });
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `gameplay_${_recordedTransitions.length}steps.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  _showHudMessage(`Exported ${_recordedTransitions.length} transitions`, 'success');
 }
 
 /** Read the current player action from keyboard/AI state */
@@ -620,9 +663,9 @@ function _updateHud() {
         : '-';
       statsEl.textContent = [
         'Games: ' + _ppoEpisodes,
-        'Avg reward: ' + avgR,
-        'Score: ' + ((typeof score !== 'undefined') ? score : 0),
-        'Press T to train',
+        'Avg: ' + avgR,
+        'Recorded: ' + _recordedTransitions.length,
+        'T=train E=export',
       ].join(' | ');
     }
   }
@@ -746,8 +789,12 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyT') {          // T — toggle turbo training
     _toggleTurbo();
   }
-  if (e.code === 'KeyE') {          // E — export trained weights
-    exportWasmWeights();
+  if (e.code === 'KeyE') {          // E — export recorded gameplay or weights
+    if (wasmActive && _recordedTransitions.length > 0) {
+      exportRecordedGameplay();
+    } else {
+      exportWasmWeights();
+    }
   }
 });
 
@@ -760,6 +807,8 @@ window.wasmBridge = {
   update: updateWasmAgent,
   applyState: applyWasmStateToGame,
   exportWeights: exportWasmWeights,
+  exportGameplay: exportRecordedGameplay,
+  get recordedSteps() { return _recordedTransitions.length; },
   importWeights: importWasmWeights,
   get active() { return wasmActive; },
   get ready() { return wasmReady; },
