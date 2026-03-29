@@ -175,12 +175,13 @@ impl WasmAgent {
         self.agent.stats.episodes += 1;
         self.reward_history.push(self.episode_reward);
 
+        // Cap reward_history at 100 entries to prevent unbounded growth
+        if self.reward_history.len() > 100 {
+            self.reward_history.drain(..self.reward_history.len() - 100);
+        }
+
         // Running average over last 100 episodes
-        let window = if self.reward_history.len() > 100 {
-            &self.reward_history[self.reward_history.len() - 100..]
-        } else {
-            &self.reward_history
-        };
+        let window = &self.reward_history;
         self.agent.stats.avg_reward = window.iter().sum::<f32>() / window.len() as f32;
 
         // Reset for next episode

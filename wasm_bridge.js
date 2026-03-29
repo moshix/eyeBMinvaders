@@ -82,7 +82,7 @@ async function initWasmAgent(configOverrides) {
 
   try {
     // Try the pkg output directory first, then the copied location
-    let mod = null;
+    let wasmMod = null;
     const paths = [
       './wasm_agent/pkg/wasm_agent.js',
       './wasm_agent_pkg/wasm_agent.js',
@@ -90,31 +90,31 @@ async function initWasmAgent(configOverrides) {
 
     for (const path of paths) {
       try {
-        mod = await import(path);
+        wasmMod = await import(path);
         break;
       } catch (_e) {
         // Try next path
       }
     }
 
-    if (!mod) {
+    if (!wasmMod) {
       console.warn('[WASM Bridge] Could not load WASM module from any known path.');
       _showHudMessage('WASM module not found. Run wasm_agent/build.sh first.', 'error');
       return false;
     }
 
     // wasm-bindgen --target web requires calling the default init()
-    if (typeof mod.default === 'function') {
-      await mod.default();
+    if (typeof wasmMod.default === 'function') {
+      await wasmMod.default();
     }
 
-    wasmModule = mod;
+    wasmModule = wasmMod;
 
     // Merge config
     const config = Object.assign({}, DEFAULT_AGENT_CONFIG, configOverrides || {});
     const configJson = JSON.stringify(config);
 
-    wasmAgent = new mod.WasmAgent(configJson);
+    wasmAgent = new wasmMod.WasmAgent(configJson);
     wasmReady = true;
 
     console.log('[WASM Bridge] Agent initialized successfully.');
@@ -157,7 +157,7 @@ function updateWasmAgent() {
     applyWasmStateToGame(state);
 
     // Refresh stats periodically (not every frame for perf)
-    if (state.step_count % 30 === 0) {
+    if (state.totalSteps % 30 === 0) {
       _refreshStats();
       _updateHud();
     }
@@ -184,15 +184,15 @@ function updateWasmAgent() {
 function applyWasmStateToGame(state) {
   if (!state) return;
 
-  // --- Player ---
-  if (state.player) {
+  // --- Player (Rust sends flat: playerX, playerY, playerLives, isPlayerHit) ---
+  if (state.playerX !== undefined) {
     if (typeof window.player !== 'undefined') {
-      window.player.x = state.player.x;
-      window.player.y = state.player.y;
+      window.player.x = state.playerX;
+      window.player.y = state.playerY;
       window.player.width = 48;
       window.player.height = 48;
-      if (state.player.lives !== undefined) {
-        window.player.lives = state.player.lives;
+      if (state.playerLives !== undefined) {
+        window.player.lives = state.playerLives;
       }
       // Keep the existing image reference — the renderer owns it
       if (typeof playerNormalImage !== 'undefined' && window.player.image !== playerNormalImage) {
@@ -201,15 +201,14 @@ function applyWasmStateToGame(state) {
     }
   }
 
-  // --- Enemies ---
+  // --- Enemies (Rust sends: x, y, w, h, hits) ---
   if (Array.isArray(state.enemies)) {
-    // Rebuild the enemies array. The renderer iterates over it each frame.
     const mapped = state.enemies.map((e) => {
       const enemy = {
         x: e.x,
         y: e.y,
-        width: e.width || 43,
-        height: e.height || 43,
+        width: e.w || 43,
+        height: e.h || 43,
         hits: e.hits || 0,
         image: new Image(),
       };
@@ -219,22 +218,20 @@ function applyWasmStateToGame(state) {
       enemy.image.src = 'enemy-ship-' + color + '.svg';
       return enemy;
     });
-    // Replace the global array in-place so any external references stay valid
     if (typeof enemies !== 'undefined') {
       enemies.length = 0;
       enemies.push(...mapped);
     }
   }
 
-  // --- Bullets ---
+  // --- Bullets (Rust sends: x, y, isEnemy) ---
   if (Array.isArray(state.bullets)) {
     const mapped = state.bullets.map((b) => ({
       x: b.x,
       y: b.y,
-      isEnemyBullet: !!b.is_enemy_bullet,
+      isEnemyBullet: !!b.isEnemy,
       dx: b.dx || 0,
       dy: b.dy || 0,
-      isMonster2Bullet: !!b.is_monster2_bullet,
     }));
     if (typeof bullets !== 'undefined') {
       bullets.length = 0;
@@ -242,13 +239,13 @@ function applyWasmStateToGame(state) {
     }
   }
 
-  // --- Kamikaze enemies ---
-  if (Array.isArray(state.kamikaze_enemies)) {
-    const mapped = state.kamikaze_enemies.map((k) => ({
+  // --- Kamikaze enemies (Rust sends as "kamikazes": x, y, w, h, angle) ---
+  if (Array.isArray(state.kamikazes)) {
+    const mapped = state.kamikazes.map((k) => ({
       x: k.x,
       y: k.y,
-      width: k.width || 43,
-      height: k.height || 43,
+      width: k.w || 43,
+      height: k.h || 43,
       angle: k.angle || 0,
     }));
     if (typeof kamikazeEnemies !== 'undefined') {
@@ -257,14 +254,14 @@ function applyWasmStateToGame(state) {
     }
   }
 
-  // --- Homing missiles ---
-  if (Array.isArray(state.homing_missiles)) {
-    const mapped = state.homing_missiles.map((m) => ({
+  // --- Homing missiles (Rust sends as "missiles": x, y, angle, w, h) ---
+  if (Array.isArray(state.missiles)) {
+    const mapped = state.missiles.map((m) => ({
       x: m.x,
       y: m.y,
       angle: m.angle || 0,
-      width: 57,
-      height: 57,
+      width: m.w || 57,
+      height: m.h || 57,
       time: m.time || 0,
     }));
     if (typeof homingMissiles !== 'undefined') {
@@ -273,15 +270,15 @@ function applyWasmStateToGame(state) {
     }
   }
 
-  // --- Walls ---
+  // --- Walls (Rust sends: x, y, w, h, hitCount) ---
   if (Array.isArray(state.walls)) {
     const mapped = state.walls.map((w) => ({
       x: w.x,
       y: w.y,
-      width: w.width || 58,
-      height: w.height || 23,
-      hitCount: w.hit_count || 0,
-      missileHits: w.missile_hits || 0,
+      width: w.w || 58,
+      height: w.h || 23,
+      hitCount: w.hitCount || 0,
+      missileHits: w.missileHits || 0,
       image: (typeof wallImage !== 'undefined') ? wallImage : new Image(),
     }));
     if (typeof walls !== 'undefined') {
@@ -290,7 +287,7 @@ function applyWasmStateToGame(state) {
     }
   }
 
-  // --- Monster (boss 1) ---
+  // --- Monster (Rust sends: x, y, w, h — or absent if none/hit) ---
   if (state.monster !== undefined) {
     if (state.monster === null) {
       if (typeof window !== 'undefined') window.monster = null;
@@ -300,17 +297,20 @@ function applyWasmStateToGame(state) {
         window.monster = {
           x: m.x,
           y: m.y,
-          width: m.width || 56,
-          height: m.height || 56,
-          hit: !!m.hit,
-          direction: m.direction || 1,
-          speed: m.speed || 3,
+          width: m.w || 56,
+          height: m.h || 56,
+          hit: false,
+          direction: 1,
+          speed: 3,
         };
       }
     }
+  } else {
+    // Rust omits monster entirely when there is none
+    if (typeof window !== 'undefined') window.monster = null;
   }
 
-  // --- Monster2 (boss 2) ---
+  // --- Monster2 (Rust sends: x, y, w, h — or absent if none/hit/disappeared) ---
   if (state.monster2 !== undefined) {
     if (state.monster2 === null) {
       if (typeof window !== 'undefined') window.monster2 = null;
@@ -320,30 +320,30 @@ function applyWasmStateToGame(state) {
         window.monster2 = {
           x: m2.x,
           y: m2.y,
-          width: m2.width || 56,
-          height: m2.height || 56,
-          spiralAngle: m2.spiral_angle || 0,
-          pattern: m2.pattern || 'bounce',
-          isDisappeared: !!m2.is_disappeared,
+          width: m2.w || 56,
+          height: m2.h || 56,
+          spiralAngle: 0,
+          pattern: 'bounce',
+          isDisappeared: false,
         };
       }
     }
+  } else {
+    if (typeof window !== 'undefined') window.monster2 = null;
   }
 
-  // --- Scalar game state ---
+  // --- Scalar game state (Rust sends: score, level, gameOver) ---
   if (state.score !== undefined && typeof score !== 'undefined') {
-    // Update via window to be safe with var/let scoping
     window.score = state.score;
-    // Also try direct assignment for let-scoped globals in game.js
     try { score = state.score; } catch (_e) { /* let-scoped, window fallback */ }
   }
 
-  if (state.current_level !== undefined) {
-    try { currentLevel = state.current_level; } catch (_e) { /* fallback */ }
+  if (state.level !== undefined) {
+    try { currentLevel = state.level; } catch (_e) { /* fallback */ }
   }
 
-  if (state.game_over !== undefined) {
-    try { gameOverFlag = state.game_over; } catch (_e) { /* fallback */ }
+  if (state.gameOver !== undefined) {
+    try { gameOverFlag = state.gameOver; } catch (_e) { /* fallback */ }
   }
 }
 
@@ -367,6 +367,10 @@ function _turboTrainCallback(deadline) {
       return;
     }
   }
+
+  // Refresh stats and HUD after the turbo batch
+  _refreshStats();
+  _updateHud();
 
   // Schedule next idle callback
   _turboCallbackId = requestIdleCallback(_turboTrainCallback, { timeout: 100 });
@@ -394,12 +398,15 @@ function _refreshStats() {
     const raw = wasmAgent.get_stats();
     const s = (typeof raw === 'string') ? JSON.parse(raw) : raw;
     if (s) {
-      agentStats.episode = s.episode || 0;
-      agentStats.avgReward = s.avg_reward || 0;
-      agentStats.policyLoss = s.policy_loss || 0;
-      agentStats.entropy = s.entropy || 0;
-      agentStats.totalSteps = s.total_steps || 0;
-      agentStats.bestReward = s.best_reward || 0;
+      agentStats.episode = s.episodes || 0;
+      agentStats.avgReward = s.avgReward || 0;
+      agentStats.totalSteps = s.totalSteps || 0;
+      agentStats.bestReward = s.bestScore || 0;
+      // Policy loss and entropy live inside the nested lastUpdate object
+      if (s.lastUpdate) {
+        agentStats.policyLoss = s.lastUpdate.policyLoss || 0;
+        agentStats.entropy = s.lastUpdate.entropy || 0;
+      }
     }
   } catch (_e) {
     // Stats are best-effort
