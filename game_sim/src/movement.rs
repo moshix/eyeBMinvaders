@@ -132,7 +132,7 @@ pub fn move_kamikazes(game: &mut HeadlessGame, dt: f64) {
                     && k.y < w.y + w.height
                 {
                     game.walls[wi].missile_hits += 1;
-                    game.score += 30;
+                    // No score for kamikaze hitting wall (matches JS)
                     game.kamikazes[ki].removed = true;
                     break;
                 }
@@ -365,6 +365,8 @@ pub fn move_monster2(game: &mut HeadlessGame, dt: f64) {
                 m2.zigzag_phase += dt * 1.5;
                 m2.x = GAME_WIDTH / 2.0 + m2.zigzag_phase.sin() * m2.zigzag_amplitude;
                 m2.y += MONSTER2_VERTICAL_SPEED * dt * 0.33;
+                // Vertical oscillation matching JS: sin(phase*2) * dt * 15
+                m2.y += (m2.zigzag_phase * 2.0).sin() * dt * 15.0;
                 m2.x = m2.x.max(0.0).min(GAME_WIDTH - m2.width);
             }
             "figure8" => {
@@ -376,16 +378,42 @@ pub fn move_monster2(game: &mut HeadlessGame, dt: f64) {
                 if m2.dx_val == 0.0 && m2.dy_val == 0.0 {
                     m2.dx_val = bounce_sign_x * MONSTER2_SPEED;
                     m2.dy_val = bounce_sign_y * MONSTER2_SPEED * 0.7;
+                    m2.last_direction_change = game_time;
+                    m2.direction_change_interval = 1500.0 + game.rng.gen::<f64>() * 1500.0;
                 }
                 m2.x += m2.dx_val * dt;
                 m2.y += m2.dy_val * dt;
-                if m2.x < 0.0 || m2.x > GAME_WIDTH - m2.width {
-                    m2.dx_val = -m2.dx_val;
-                    m2.x = m2.x.max(0.0).min(GAME_WIDTH - m2.width);
+                // Wall bounces
+                if m2.x <= 0.0 {
+                    m2.x = 0.0;
+                    m2.dx_val = m2.dx_val.abs();
+                } else if m2.x >= GAME_WIDTH - m2.width {
+                    m2.x = GAME_WIDTH - m2.width;
+                    m2.dx_val = -m2.dx_val.abs();
                 }
-                if m2.y < 0.0 || m2.y > GAME_HEIGHT * 0.7 {
-                    m2.dy_val = -m2.dy_val;
-                    m2.y = m2.y.max(0.0).min(GAME_HEIGHT * 0.7);
+                if m2.y <= 0.0 {
+                    m2.y = 0.0;
+                    m2.dy_val = m2.dy_val.abs();
+                } else if m2.y >= GAME_HEIGHT * 0.7 {
+                    m2.y = GAME_HEIGHT * 0.7;
+                    m2.dy_val = -m2.dy_val.abs();
+                }
+                // Random direction changes matching JS (every 1500-3000ms)
+                if game_time - m2.last_direction_change > m2.direction_change_interval {
+                    if game.rng.gen::<f64>() < 0.3 {
+                        m2.dx_val = -m2.dx_val;
+                    }
+                    if game.rng.gen::<f64>() < 0.3 {
+                        m2.dy_val = -m2.dy_val;
+                    }
+                    if game.rng.gen::<f64>() < 0.2 {
+                        let angle = game.rng.gen::<f64>() * std::f64::consts::TAU;
+                        let speed = MONSTER2_SPEED * (0.8 + game.rng.gen::<f64>() * 0.4);
+                        m2.dx_val = angle.cos() * speed;
+                        m2.dy_val = angle.sin() * speed * 0.7;
+                    }
+                    m2.last_direction_change = game_time;
+                    m2.direction_change_interval = 1500.0 + game.rng.gen::<f64>() * 1500.0;
                 }
             }
             "wave" => {
@@ -395,6 +423,9 @@ pub fn move_monster2(game: &mut HeadlessGame, dt: f64) {
                 m2.x = m2.wave_start_x + (m2.y / 50.0).sin() * (GAME_WIDTH / 4.0);
             }
             "chase" => {
+                // JS uses predictedX with ±100px based on movement keys.
+                // In training the agent's last action determines movement direction,
+                // so we use raw player_x (no prediction available in headless sim)
                 let chase_dx = player_x - m2.x;
                 let chase_dy = player_y - m2.y - 200.0;
                 let dist = (chase_dx * chase_dx + chase_dy * chase_dy).sqrt();
@@ -403,11 +434,19 @@ pub fn move_monster2(game: &mut HeadlessGame, dt: f64) {
                     m2.y += (chase_dy / dist) * MONSTER2_SPEED * 0.7 * dt;
                 }
             }
+            "teleport" => {
+                // JS: instant jump to random position every 2000ms
+                if m2.next_teleport_time == 0.0 || game_time > m2.next_teleport_time {
+                    m2.x = game.rng.gen::<f64>() * (GAME_WIDTH - m2.width);
+                    m2.y = game.rng.gen::<f64>() * (GAME_HEIGHT * 0.66);
+                    m2.next_teleport_time = game_time + 2000.0;
+                }
+            }
             _ => {
-                // teleport / random
+                // "random" pattern: linear movement to random targets every 1000ms
                 if m2.next_move_time == 0.0 || game_time > m2.next_move_time {
-                    m2.target_x = rand1 * (GAME_WIDTH - m2.width);
-                    m2.target_y = (rand2 * GAME_HEIGHT * 0.5).min(m2.y + 100.0);
+                    m2.target_x = game.rng.gen::<f64>() * (GAME_WIDTH - m2.width);
+                    m2.target_y = (game.rng.gen::<f64>() * GAME_HEIGHT * 0.5).min(m2.y + 100.0);
                     m2.next_move_time = game_time + 1000.0;
                 }
                 let tdx = m2.target_x - m2.x;

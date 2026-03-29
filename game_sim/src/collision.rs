@@ -100,7 +100,7 @@ fn check_bullet_enemy(game: &mut HeadlessGame) {
                 game.enemies[ei].hits += 1;
                 game.bullets[bi].removed = true;
                 if game.enemies[ei].hits >= ENEMY_HITS_TO_DESTROY {
-                    game.score += 10 + 30; // kill + explosion
+                    game.score += 10; // matches JS: only 10 per enemy kill
                     game.enemies_killed += 1;
                     game.emit(EventType::EnemyKilled);
                 }
@@ -263,7 +263,7 @@ fn check_kamikaze_player(game: &mut HeadlessGame) {
                 && k.y < w.y + w.height
                 && k.y + k.height > w.y
             {
-                game.score += 30;
+                // No score for kamikaze hitting wall (matches JS)
                 game.kamikazes[ki].removed = true;
                 hit_wall = true;
                 break;
