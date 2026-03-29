@@ -12,10 +12,15 @@ Usage:
 
 import http.server
 import json
+import mimetypes
 import os
 import sys
 import time
 from urllib.parse import urlparse
+
+# Ensure WASM files are served with correct MIME type
+mimetypes.add_type('application/wasm', '.wasm')
+mimetypes.add_type('application/javascript', '.mjs')
 
 GAMEPLAY_FILE = os.path.join(os.path.dirname(__file__), 'models', 'gameplay_data.jsonl')
 
