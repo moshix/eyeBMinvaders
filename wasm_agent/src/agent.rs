@@ -240,7 +240,7 @@ impl PPOAgent {
         let rollout = RolloutBuffer::new(config.rollout_length);
         let rng = ChaCha8Rng::seed_from_u64(config.seed.wrapping_add(1));
         let n_frames = config.n_frames;
-        let obs_size = n_frames * 50;
+        let obs_size = n_frames * game_sim_core::constants::STATE_SIZE;
         let curriculum_level = config.curriculum_start_level;
 
         Self {
@@ -271,9 +271,9 @@ impl PPOAgent {
         }
     }
 
-    /// Get the stacked state (n_frames * 50 = 200 features), optionally normalized.
+    /// Get the stacked state (n_frames * game_sim_core::constants::STATE_SIZE = 200 features), optionally normalized.
     pub fn stacked_state(&mut self) -> Vec<f32> {
-        let mut s = Vec::with_capacity(self.config.n_frames * 50);
+        let mut s = Vec::with_capacity(self.config.n_frames * game_sim_core::constants::STATE_SIZE);
         for frame in &self.frame_buffer {
             s.extend_from_slice(frame);
         }
