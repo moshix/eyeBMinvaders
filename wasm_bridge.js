@@ -571,7 +571,11 @@ function _refreshStats() {
       agentStats.avgReward = s.avgReward || 0;
       agentStats.totalSteps = s.totalSteps || 0;
       agentStats.bestReward = s.bestScore || 0;
-      // Policy loss and entropy live inside the nested lastUpdate object
+      agentStats.bestScore = s.bestScore || 0;
+      agentStats.bestLevel = s.bestLevel || 0;
+      agentStats.currentScore = s.currentScore || 0;
+      agentStats.currentLevel = s.currentLevel || 0;
+      agentStats.currentLives = s.currentLives || 0;
       if (s.lastUpdate) {
         agentStats.policyLoss = s.lastUpdate.policyLoss || 0;
         agentStats.entropy = s.lastUpdate.entropy || 0;
@@ -882,6 +886,16 @@ function _updateDashboard() {
       <div style="color:#fff;">${s.policyLoss.toFixed(4)}</div>
       <div style="text-align:right;color:#888;">Entropy</div>
       <div style="color:#fff;">${s.entropy.toFixed(3)}</div>
+      <div style="text-align:right;color:#888;">Best Score</div>
+      <div style="color:#0ff;font-size:20px;font-weight:bold;">${(s.bestScore || 0).toLocaleString()}</div>
+      <div style="text-align:right;color:#888;">Best Level</div>
+      <div style="color:#0ff;font-size:20px;font-weight:bold;">${s.bestLevel || 0}</div>
+      <div style="text-align:right;color:#888;">Current Score</div>
+      <div style="color:#fff;">${(s.currentScore || 0).toLocaleString()}</div>
+      <div style="text-align:right;color:#888;">Current Level</div>
+      <div style="color:#fff;">${s.currentLevel || 0}</div>
+      <div style="text-align:right;color:#888;">Lives</div>
+      <div style="color:#fff;">${s.currentLives || 0}</div>
       <div style="text-align:right;color:#888;">Steps</div>
       <div style="color:#fff;">${s.totalSteps.toLocaleString()}</div>
       <div style="text-align:right;color:#888;">Time</div>
