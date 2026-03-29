@@ -562,8 +562,8 @@ function _createHud() {
 function _buildHudHtml() {
   return [
     '<div style="display:flex; align-items:center; gap:12px; flex-wrap:nowrap;">',
-    '  <span style="font-weight:bold;">PPO</span>',
-    '  <span id="wasm-hud-stats">Ep: 0 | Avg: 0.0 | Loss: 0.000 | Ent: 0.00</span>',
+    '  <span id="wasm-hud-mode" style="font-weight:bold; color:#FFAA00;">PPO</span>',
+    '  <span id="wasm-hud-stats">Watching...</span>',
     '  <span id="wasm-hud-progress" style="display:inline-block; width:120px; height:10px;',
     '    background:#222; border-radius:5px; overflow:hidden; vertical-align:middle;">',
     '    <span id="wasm-hud-bar" style="display:block; height:100%; width:0%;',
@@ -591,14 +591,40 @@ function _updateHud() {
   // Show/hide based on active state
   hudElement.style.display = wasmActive ? 'block' : 'none';
 
+  // Mode indicator
+  const modeEl = hudElement.querySelector('#wasm-hud-mode');
+  if (modeEl) {
+    if (turboMode) {
+      modeEl.textContent = 'PPO TRAINING';
+      modeEl.style.color = '#39FF14';
+    } else {
+      modeEl.textContent = 'PPO watching';
+      modeEl.style.color = '#FFAA00';
+    }
+  }
+
   const statsEl = hudElement.querySelector('#wasm-hud-stats');
   if (statsEl) {
-    statsEl.textContent = [
-      'Ep: ' + agentStats.episode,
-      'Avg: ' + agentStats.avgReward.toFixed(1),
-      'Loss: ' + agentStats.policyLoss.toFixed(3),
-      'Ent: ' + agentStats.entropy.toFixed(2),
-    ].join(' | ');
+    if (turboMode) {
+      // Show training stats from WASM
+      statsEl.textContent = [
+        'Ep: ' + agentStats.episode,
+        'Avg: ' + agentStats.avgReward.toFixed(1),
+        'Loss: ' + agentStats.policyLoss.toFixed(3),
+        'Ent: ' + agentStats.entropy.toFixed(2),
+      ].join(' | ');
+    } else {
+      // Show observation stats from gameplay
+      const avgR = _ppoRewardHistory.length > 0
+        ? (_ppoRewardHistory.reduce((a, b) => a + b, 0) / _ppoRewardHistory.length).toFixed(1)
+        : '-';
+      statsEl.textContent = [
+        'Games: ' + _ppoEpisodes,
+        'Avg reward: ' + avgR,
+        'Score: ' + ((typeof score !== 'undefined') ? score : 0),
+        'Press T to train',
+      ].join(' | ');
+    }
   }
 
   // Progress bar — show rollout buffer fill percentage
