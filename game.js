@@ -2895,7 +2895,7 @@ function _updateAIOverlay(qValues, action) {
   if (!_aiOverlayEl) {
     _aiOverlayEl = document.createElement('div');
     _aiOverlayEl.id = 'ai-overlay';
-    _aiOverlayEl.style.cssText = 'position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.75);' +
+    _aiOverlayEl.style.cssText = 'position:fixed;top:8px;right:8px;background:rgba(0,0,0,0.75);' +
       'color:#0f0;font:11px monospace;padding:6px 10px;border-radius:4px;z-index:9999;' +
       'pointer-events:none;line-height:1.5;min-width:180px;';
     document.body.appendChild(_aiOverlayEl);
