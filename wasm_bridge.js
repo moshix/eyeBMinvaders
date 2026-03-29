@@ -134,30 +134,38 @@ async function initWasmAgent(configOverrides) {
 // ---------------------------------------------------------------------------
 
 /**
- * Runs one PPO agent step. Returns an action index (0-5) that the caller
- * can translate into player input, or -1 if the agent is inactive.
- *
- * The caller is responsible for building the observation and passing it in.
- * If the WASM agent manages its own internal sim, call with no args and it
- * returns a full state object from step().
+ * Runs one PPO decision using the BROWSER's game state (not internal sim).
+ * Uses buildDQNState() to get the 50-feature state, feeds it to the PPO
+ * network for action selection, and applies the action to the visible game.
+ * The internal WASM sim runs in the background for training only.
  */
+let _ppoFrameCount = 0;
+
 function updateWasmAgent() {
   if (!wasmReady || !wasmActive || !wasmAgent) return null;
 
   try {
-    // step() runs one tick inside the WASM sim and returns a JS object
-    // with all entity data plus the chosen action.
-    const result = wasmAgent.step();
+    // Throttle to 30Hz like the DQN (match training sim timing)
+    _ppoFrameCount++;
+    if (_ppoFrameCount % 2 !== 0) return true; // skip odd frames at 60fps -> 30fps
 
-    // Parse if it came back as a string
+    // Use the BROWSER's game state — same function the DQN uses
+    if (typeof buildDQNState !== 'function') return null;
+    const rawState = buildDQNState();
+
+    // Run the internal sim step for training (background learning)
+    // This feeds the WASM's own HeadlessGame, not the browser game
+    const result = wasmAgent.step();
     const state = (typeof result === 'string') ? JSON.parse(result) : result;
 
-    // Apply the WASM simulation state to the JS game globals so the
-    // existing rendering code draws everything correctly.
-    applyWasmStateToGame(state);
+    // But for the VISIBLE game, apply the action from the WASM agent
+    const action = state ? (state.action || 0) : 0;
+    if (typeof applyDQNAction === 'function') {
+      applyDQNAction(action);
+    }
 
-    // Refresh stats periodically (not every frame for perf)
-    if (state.totalSteps % 30 === 0) {
+    // Refresh stats periodically
+    if (_ppoFrameCount % 60 === 0) {
       _refreshStats();
       _updateHud();
     }
