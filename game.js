@@ -2640,6 +2640,14 @@ function _updateAIOverlay(qValues, action) {
 
 // for AI logic - offense-first AI with gap navigation
 function updateAutoPlay() {
+  // WASM PPO agent takes priority when active (press W)
+  if (typeof wasmBridge !== 'undefined' && wasmBridge.active) {
+    if (!gamePaused && !gameOverFlag) {
+      wasmBridge.update();
+    }
+    return;
+  }
+
   if (!autoPlayEnabled || gamePaused || gameOverFlag) return;
 
   // Try DQN neural network first; fall back to heuristic AI if model not loaded
