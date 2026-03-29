@@ -147,6 +147,7 @@ let _prevScore = 0;
 let _prevLives = 0;
 let _prevLevel = 0;
 let _prevState = null;
+let _restartPending = false;
 
 function updateWasmAgent() {
   if (!wasmActive) return null;
@@ -164,13 +165,25 @@ function updateWasmAgent() {
 
       // Apply PPO's action to the visible game
       if (state && typeof applyDQNAction === 'function') {
-        applyDQNAction(state.action || 0);
+        // Don't apply actions during game over or hit animation
+        if (!gameOverFlag && !isPlayerHit) {
+          applyDQNAction(state.action || 0);
+        }
       }
 
-      // Handle game over in visible game — restart
+      // Handle game over in visible game — quick restart
       if (typeof gameOverFlag !== 'undefined' && gameOverFlag) {
-        if (typeof restartGame === 'function') restartGame();
         _ppoEpisodes++;
+        // Restart after a brief pause so the game over screen shows
+        if (!_restartPending) {
+          _restartPending = true;
+          setTimeout(() => {
+            if (typeof restartGame === 'function') restartGame();
+            // Ensure autoplay stays on so game loop continues
+            if (typeof autoPlayEnabled !== 'undefined') autoPlayEnabled = true;
+            _restartPending = false;
+          }, 500);
+        }
       }
 
       // Update stats from WASM every second
