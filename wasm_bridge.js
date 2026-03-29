@@ -804,6 +804,97 @@ function _showHudMessage(msg, level) {
 }
 
 // ---------------------------------------------------------------------------
+// Training Dashboard — replaces game view during turbo training
+// ---------------------------------------------------------------------------
+
+let _dashboardEl = null;
+let _dashboardInterval = null;
+let _rewardHistory = [];   // for sparkline
+let _maxReward = 1;
+
+function _showTrainingDashboard() {
+  // Hide game canvas
+  const canvas = document.getElementById('gameCanvas');
+  if (canvas) canvas.style.display = 'none';
+
+  if (!_dashboardEl) {
+    _dashboardEl = document.createElement('div');
+    _dashboardEl.id = 'ppo-dashboard';
+    _dashboardEl.style.cssText = [
+      'position:fixed; top:0; left:0; width:100vw; height:100vh',
+      'background:#0a0a0a; color:#e0e0e0; font-family:"Courier New",monospace',
+      'display:flex; flex-direction:column; align-items:center; justify-content:center',
+      'z-index:10000; gap:20px',
+    ].join(';');
+    document.body.appendChild(_dashboardEl);
+  }
+  _dashboardEl.style.display = 'flex';
+  _rewardHistory = [];
+
+  // Update dashboard at 4Hz
+  _dashboardInterval = setInterval(_updateDashboard, 250);
+  _updateDashboard();
+}
+
+function _hideTrainingDashboard() {
+  if (_dashboardEl) _dashboardEl.style.display = 'none';
+  if (_dashboardInterval) { clearInterval(_dashboardInterval); _dashboardInterval = null; }
+  // Restore game canvas
+  const canvas = document.getElementById('gameCanvas');
+  if (canvas) canvas.style.display = 'block';
+}
+
+function _updateDashboard() {
+  if (!_dashboardEl) return;
+
+  // Fetch latest stats from WASM
+  _refreshStats();
+  const s = agentStats;
+
+  // Track reward history for sparkline
+  _rewardHistory.push(s.avgReward || 0);
+  if (_rewardHistory.length > 80) _rewardHistory.shift();
+  _maxReward = Math.max(1, ..._rewardHistory.map(Math.abs));
+
+  // Build sparkline
+  const spark = _rewardHistory.map(r => {
+    const h = Math.max(1, Math.round((r / _maxReward) * 30));
+    return `<span style="display:inline-block;width:4px;height:${h}px;background:#39FF14;vertical-align:bottom;margin:0 1px;border-radius:1px;"></span>`;
+  }).join('');
+
+  const elapsed = (s.totalSteps / 30).toFixed(0); // approx seconds at 30Hz
+
+  _dashboardEl.innerHTML = `
+    <div style="font-size:28px;color:#39FF14;font-weight:bold;letter-spacing:2px;">
+      PPO TRAINING
+    </div>
+    <div style="font-size:14px;color:#888;margin-top:-10px;">
+      Press T to stop and return to game
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px 40px;margin:20px 0;font-size:16px;">
+      <div style="text-align:right;color:#888;">Episodes</div>
+      <div style="color:#fff;font-size:20px;font-weight:bold;">${s.episode}</div>
+      <div style="text-align:right;color:#888;">Avg Reward</div>
+      <div style="color:${s.avgReward > 0 ? '#39FF14' : '#FF4444'};font-size:20px;font-weight:bold;">${s.avgReward.toFixed(1)}</div>
+      <div style="text-align:right;color:#888;">Best Reward</div>
+      <div style="color:#0ff;font-size:20px;font-weight:bold;">${(s.bestReward || 0).toFixed(1)}</div>
+      <div style="text-align:right;color:#888;">Policy Loss</div>
+      <div style="color:#fff;">${s.policyLoss.toFixed(4)}</div>
+      <div style="text-align:right;color:#888;">Entropy</div>
+      <div style="color:#fff;">${s.entropy.toFixed(3)}</div>
+      <div style="text-align:right;color:#888;">Steps</div>
+      <div style="color:#fff;">${s.totalSteps.toLocaleString()}</div>
+      <div style="text-align:right;color:#888;">Time</div>
+      <div style="color:#fff;">${elapsed}s</div>
+    </div>
+    <div style="background:#111;border:1px solid #333;border-radius:8px;padding:15px 20px;min-width:350px;">
+      <div style="color:#888;font-size:12px;margin-bottom:8px;">Reward Trend</div>
+      <div style="height:35px;display:flex;align-items:flex-end;">${spark}</div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
 // Toggle helpers
 // ---------------------------------------------------------------------------
 
@@ -845,11 +936,11 @@ async function _toggleTurbo() {
   if (turboMode) {
     _startTurbo();
     _startBackgroundTraining();
-    _showHudMessage('PPO training in background — game unaffected', 'success');
+    _showTrainingDashboard();
   } else {
     _stopTurbo();
     _stopBackgroundTraining();
-    _showHudMessage('PPO training paused', 'info');
+    _hideTrainingDashboard();
   }
 
   _updateHud();
