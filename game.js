@@ -2864,8 +2864,19 @@ function _updateAIOverlay(qValues, action) {
   const qMax = Math.max(...qValues);
   const qRange = qMax - qMin || 1;
 
-  let html = '<span style="color:#0ff">AI DQN</span> ';
+  // Model info header
+  let html = '<span style="color:#0ff;font-size:12px;font-weight:bold;">AI DQN</span> ';
   html += '<span style="color:#ff0">' + _actionNames[action] + '</span><br>';
+
+  // Model architecture
+  if (dqnModel) {
+    const arch = dqnModel.architecture || [];
+    const type = dqnModel.type || 'standard';
+    const nf = dqnModel.n_frames || 1;
+    html += `<span style="color:#888">${type} ${arch.join('→')} ${nf}f</span><br>`;
+  }
+
+  // Q-value bars
   for (let i = 0; i < qValues.length; i++) {
     const q = qValues[i];
     const pct = ((q - qMin) / qRange * 100).toFixed(0);
@@ -2873,12 +2884,22 @@ function _updateAIOverlay(qValues, action) {
     const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
     html += `<span style="color:${color}">${_actionNames[i].padEnd(7)} ${q.toFixed(1).padStart(6)} ${bar}</span><br>`;
   }
-  // Show threats
+
+  // Confidence (gap between best and 2nd best)
+  const sorted = [...qValues].sort((a, b) => b - a);
+  const confidence = sorted.length > 1 ? (sorted[0] - sorted[1]).toFixed(2) : '0';
+  html += `<span style="color:#888">conf:${confidence}</span> `;
+
+  // Threats + game state
   const nBullets = bullets.filter(b => b.isEnemyBullet).length;
   const nMissiles = homingMissiles.length;
   const nKamikazes = kamikazeEnemies.length;
   html += `<span style="color:#f88">B:${nBullets} M:${nMissiles} K:${nKamikazes}</span>`;
-  html += ` <span style="color:#aaa">E:${enemies.length} L:${currentLevel}</span>`;
+  html += ` <span style="color:#aaa">E:${enemies.length} L:${currentLevel}</span><br>`;
+
+  // WASM physics indicator
+  const wasmOn = typeof wasmPhysics !== 'undefined' && wasmPhysics.ready;
+  html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'} physics</span>`;
 
   _aiOverlayEl.innerHTML = html;
 }
