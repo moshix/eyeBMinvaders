@@ -324,3 +324,85 @@ The **sim-to-real gap is the #1 bottleneck**, not the RL algorithm. The model tr
 | `headless/env_worker.js` | JSON stdin/stdout game worker for Python fine-tuning |
 | `headless/finetune.py` | DQN fine-tuning against real JS game (with god mode support) |
 | `browser_validate.py` | Playwright browser validation — runs AI in real Chrome |
+| `wasm_game.js` | Loads WasmGame, bridges WASM tick() to JS globals for rendering |
+| `wasm_bridge.js` | PPO observation, turbo training dashboard, gameplay recording |
+| `serve.py` | HTTP server + POST /api/gameplay for recording transitions |
+
+## WASM Physics Replacement: Eliminating the Sim-to-Real Gap (March 29, 2025)
+
+### The Problem We Solved
+
+The #1 bottleneck was never the RL algorithm — it was the **sim-to-real gap**. Three independent implementations of the same game physics (Rust training, JS browser, Python fallback) accumulated dozens of subtle divergences:
+- Bullet hitbox 3.4x5.9 vs 5x10
+- Monster2 patterns different between Rust and JS
+- Score values mismatched (40 vs 10 per enemy)
+- Bullet velocity reported as wrong direction
+- Threat urgency 1000x scale error
+- Frame rate mismatch (60Hz browser vs 30Hz training)
+- And many more discovered over 2 days of debugging
+
+### The Solution
+
+Compile `game_sim_core` (Rust) to **both** native (for GPU training) and WASM (for browser). One source of truth, zero gap.
+
+```
+game_sim_core (Rust)
+  ├── wasm32-unknown-unknown → WasmGame (browser physics)
+  └── native + PyO3 → game_sim (GPU training)
+```
+
+### Architecture
+
+- `game_sim_core/` — Pure Rust game simulation, no FFI. ~800 lines.
+- `wasm_agent/` — WASM wrapper exposing WasmGame + PPO agent. 260KB binary.
+- `wasm_game.js` — Loads WASM, calls `wasmGame.tick(dt, action)` each frame, syncs entity state to JS globals for rendering.
+- `game.js` — WASM bypass at top of gameLoop(). If WASM available, skips all JS physics. Falls back to legacy JS if WASM fails.
+
+### Key Design Decisions
+
+1. **Fixed-timestep accumulator**: WASM tick() runs at 33.333ms intervals regardless of browser frame rate. Time accumulates between frames. Prevents 2x speed at 60fps.
+
+2. **Event-driven sound/animation**: WASM emits `RenderEvent`s (EnemyKilled{x,y}, PlayerHit, WallHit{wall_index,x,y}, etc.) during collision detection. JS processes events array for sounds and explosion visuals.
+
+3. **Legacy fallback**: All JS physics code stays in game.js. If WASM fails to load (missing pkg, old browser), the game works exactly as before. Zero risk deployment.
+
+4. **Entity image mapping**: WASM returns position/state data, JS adds image references from pre-loaded sprites. Each entity type maps to the correct SVG via helpers (_wasmGetEnemyImage for row-based colors, missileImage, monsterImage, etc.)
+
+### Integration Issues Found and Fixed
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Game ran at 2x speed | tick() called every frame (60fps × 33ms = 2x) | Fixed-timestep accumulator |
+| Lives never updated | Read from state.player.lives (wrong path) | Changed to state.lives |
+| No sounds played | 5 event name mismatches between Rust and JS | Aligned all strings |
+| Explosions at (0,0) | EventType→RenderEvent mapped without positions | Emit RenderEvents directly from collision code |
+| R key didn't reset WASM | restartGame() only reset JS globals | Added wasmPhysics.reset() |
+| No wall damage | WallHit events not emitted from collision code | Added to all 3 collision points |
+| Missing entity images | WASM sync didn't include sprite references | Added image mapping for all entity types |
+| drawImage TypeError | Explosions pushed with wrong field format | Use createExplosion() from game.js |
+
+### Training Results with Zero Gap
+
+The first training run on the aligned sim showed the fastest learning ever:
+
+| Episode | Avg Score | Avg Level | Best Level |
+|---------|-----------|-----------|------------|
+| 15K | 44K | 2.7 | 6 |
+| 20K | 58K | 3.2 | 6 |
+| 25K | 63K | 3.9 | 7 |
+| 40K (peak) | **74K** | **4.6** | **8** |
+
+Previous best (with sim-to-real gap): avg 84K in Rust, but only avg level 2-3 in browser.
+With zero gap: avg 74K in Rust AND in browser — model transfers perfectly.
+
+### What We Learned
+
+1. **The sim-to-real gap was the real enemy, not the algorithm.** We tried: reward shaping, god mode, safety layers, proximity penalties, edge penalties, curriculum learning, fine-tuning. None of these moved the needle more than fixing the physics mismatches.
+
+2. **One source of truth > two aligned sources.** We spent days finding and fixing individual mismatches. The crate split + dual compilation eliminated the entire class of bugs in one architectural change.
+
+3. **WASM performance is sufficient.** 260KB binary, <1ms per tick, runs at 60fps with time left over. No need for Web Workers or SharedArrayBuffer for the game itself.
+
+4. **Browser fine-tuning needs zero gap to work.** Earlier attempts at JS headless fine-tuning degraded the model because the JS game was subtly different from training. With WASM physics, the PPO trains on identical code.
+
+5. **Fixed-timestep matters.** Variable deltaTime causes training/inference divergence. The accumulator pattern (only tick at 33ms intervals) was essential.
