@@ -69,10 +69,30 @@ function _processEvents(events) {
 
   for (const evt of events) {
     switch (evt.type) {
+      case 'enemy_hit':
+        // First hit sound (enemy not yet dead)
+        if (typeof createExplosionSound === 'function') {
+          _playSoundFactory(createExplosionSound);
+        }
+        break;
+
       case 'enemy_killed':
         // Use game.js createExplosion which handles sound + correct image format
         if (typeof createExplosion === 'function') {
           createExplosion(evt.x || 0, evt.y || 0);
+        }
+        break;
+
+      case 'wall_hit':
+        // Add damage hole to wallHits array for visual rendering
+        if (typeof wallHits !== 'undefined' && evt.wallIndex !== undefined) {
+          if (!wallHits[evt.wallIndex]) wallHits[evt.wallIndex] = [];
+          wallHits[evt.wallIndex].push({
+            x: Math.random() * 40 - 10,
+            y: Math.random() * 30 - 5,
+            rotation: Math.random() * Math.PI * 2,
+            fromEnemy: !evt.fromPlayer,
+          });
         }
         break;
 

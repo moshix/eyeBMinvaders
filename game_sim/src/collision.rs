@@ -79,6 +79,9 @@ fn check_bullet_wall(game: &mut HeadlessGame) {
                 game.bullets[bi].removed = true;
                 game.walls[wi].hit_count += 1;
                 game.player_wall_hits += 1;
+                game.render_events.push(RenderEvent::WallHit {
+                    wall_index: wi, x: game.bullets[bi].x, y: game.bullets[bi].y, from_player: true,
+                });
                 break;
             }
         }
@@ -342,6 +345,9 @@ fn check_missile_wall(game: &mut HeadlessGame) {
             {
                 game.missiles[mi].removed = true;
                 game.walls[wi].missile_hits += 1;
+                game.render_events.push(RenderEvent::WallHit {
+                    wall_index: wi, x: game.missiles[mi].x, y: game.missiles[mi].y, from_player: false,
+                });
                 break;
             }
         }
@@ -367,6 +373,9 @@ fn check_enemy_bullet_wall(game: &mut HeadlessGame) {
             {
                 game.bullets[bi].removed = true;
                 game.walls[wi].hit_count += 1;
+                game.render_events.push(RenderEvent::WallHit {
+                    wall_index: wi, x: game.bullets[bi].x, y: game.bullets[bi].y, from_player: false,
+                });
                 break;
             }
         }
