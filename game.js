@@ -1258,6 +1258,10 @@ function victory() {
 }
 
 function restartGame() {
+  if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
+    wasmPhysics.reset();
+    window._wasmTimeAccum = 0;
+  }
   // Reset player to initial position and state
   player = {
     x: canvas.width / 2 - 37,  // Center player horizontally, offset by half width
@@ -1515,7 +1519,20 @@ function gameLoop(currentTime) {
   // =========================================================================
   if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready && !gamePaused && !gameOverFlag) {
     const action = getPlayerAction();
-    const state = wasmPhysics.tick(deltaTime, action);
+
+    // Fixed-timestep accumulator: WASM ticks at 33.333ms internally,
+    // so only call tick when enough real time has accumulated.
+    if (!window._wasmTimeAccum) window._wasmTimeAccum = 0;
+    window._wasmTimeAccum += deltaTime * 1000; // convert to ms
+    const TICK_MS = 33.333;
+    let state = null;
+    // Only step when we've accumulated enough time for a physics tick
+    if (window._wasmTimeAccum >= TICK_MS) {
+        state = wasmPhysics.tick(TICK_MS, action);
+        window._wasmTimeAccum -= TICK_MS;
+        // Prevent spiral of death if tab was backgrounded
+        if (window._wasmTimeAccum > TICK_MS * 3) window._wasmTimeAccum = 0;
+    }
 
     if (state) {
       // Update global state from WASM (for rendering functions that read globals)
@@ -1523,7 +1540,7 @@ function gameLoop(currentTime) {
       player.y = state.player.y;
       player.width = state.player.width || 48;
       player.height = state.player.height || 48;
-      if (state.player.lives !== undefined) player.lives = state.player.lives;
+      player.lives = state.lives;
       isPlayerHit = state.player.isHit || false;
       // Keep player.image from JS (already set at init)
       if (!player.image) player.image = playerNormalImage;
@@ -1637,34 +1654,35 @@ function gameLoop(currentTime) {
         gameOver();
       }
       if (!state.gameOver) _wasmGameOverHandled = false;
-
-      // Clear canvas and draw everything using the existing draw functions
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      drawPlayer();
-      drawEnemies();
-      drawKamikazeEnemies();
-      drawMonster();
-      drawMonster2();
-      drawBullets();
-      drawMissiles();
-      drawMissileExplosions();
-      drawWalls();
-      drawExplosions();
-      drawScore();
-      drawHitMessage();
-      drawMuteStatus();
-      drawLevelMessage();
-      drawLives();
-      drawPauseMessage();
-      drawLifeGrant();
-      drawAIStatus();
-      drawBonusAnimation();
-      drawHotStreakMessage();
-
-      requestAnimationFrame(gameLoop);
-      return; // Skip all JS physics below
     }
+    // --- Always render using current globals (even if no tick this frame) ---
+
+    // Clear canvas and draw everything using the existing draw functions
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawPlayer();
+    drawEnemies();
+    drawKamikazeEnemies();
+    drawMonster();
+    drawMonster2();
+    drawBullets();
+    drawMissiles();
+    drawMissileExplosions();
+    drawWalls();
+    drawExplosions();
+    drawScore();
+    drawHitMessage();
+    drawMuteStatus();
+    drawLevelMessage();
+    drawLives();
+    drawPauseMessage();
+    drawLifeGrant();
+    drawAIStatus();
+    drawBonusAnimation();
+    drawHotStreakMessage();
+
+    requestAnimationFrame(gameLoop);
+    return; // Skip all JS physics below
   }
   // =========================================================================
   // End WASM Physics Mode — fall through to legacy JS physics

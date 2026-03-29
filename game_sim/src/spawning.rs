@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::entities::*;
+use crate::entities::RenderEvent;
 use crate::game::HeadlessGame;
 use rand::Rng;
 use std::collections::HashMap;
@@ -45,6 +46,7 @@ pub fn handle_monster_creation(game: &mut HeadlessGame) {
     ));
     game.last_monster_time = game.game_time;
     game.emit(EventType::MonsterSpawned);
+    game.render_events.push(RenderEvent::MonsterSpawned);
 }
 
 pub fn handle_monster2_creation(game: &mut HeadlessGame) {
@@ -96,6 +98,9 @@ pub fn handle_kamikaze_creation(game: &mut HeadlessGame) {
         game.game_time,
     ));
     game.emit(EventType::KamikazeSpawned);
+    let kx = game.kamikazes.last().map(|k| k.x).unwrap_or(0.0);
+    let ky = game.kamikazes.last().map(|k| k.y).unwrap_or(0.0);
+    game.render_events.push(RenderEvent::KamikazeSpawned { x: kx, y: ky });
 
     let n = game.enemies.len();
     if n < KAMIKAZE_VERY_AGGRESSIVE_THRESHOLD {

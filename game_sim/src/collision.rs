@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::entities::*;
+use crate::entities::RenderEvent;
 use crate::game::HeadlessGame;
 
 pub fn detect_collisions(game: &mut HeadlessGame) {
@@ -44,10 +45,13 @@ fn check_bullet_kamikaze(game: &mut HeadlessGame) {
                 game.bullets[bi].removed = true;
                 game.kamikazes[ki].hits += 1;
                 if game.kamikazes[ki].hits >= KAMIKAZE_HITS_TO_DESTROY {
+                    let kx = game.kamikazes[ki].x;
+                    let ky = game.kamikazes[ki].y;
                     game.kamikazes[ki].removed = true;
                     game.score += 300;
                     game.kamikazes_killed += 1;
                     game.emit(EventType::KamikazeKilled);
+                    game.render_events.push(RenderEvent::KamikazeKilled { x: kx, y: ky });
                 }
                 break;
             }
@@ -99,10 +103,16 @@ fn check_bullet_enemy(game: &mut HeadlessGame) {
             {
                 game.enemies[ei].hits += 1;
                 game.bullets[bi].removed = true;
+                let ex = game.enemies[ei].x;
+                let ey = game.enemies[ei].y;
                 if game.enemies[ei].hits >= ENEMY_HITS_TO_DESTROY {
                     game.score += 10; // matches JS: only 10 per enemy kill
                     game.enemies_killed += 1;
                     game.emit(EventType::EnemyKilled);
+                    game.render_events.push(RenderEvent::EnemyKilled { x: ex, y: ey });
+                } else {
+                    // Hit but not killed yet (Fix 6)
+                    game.render_events.push(RenderEvent::EnemyHit { x: ex, y: ey });
                 }
                 break;
             }
@@ -125,20 +135,25 @@ fn check_bullet_missile(game: &mut HeadlessGame) {
             let dy = b.y - m.y;
             let radius = m.width / 2.0 + 5.0;
             if dx * dx + dy * dy < radius * radius {
+                let mx = game.missiles[mi].x;
+                let my = game.missiles[mi].y;
                 game.bullets[bi].removed = true;
                 game.missiles[mi].removed = true;
                 game.homing_missile_hits += 1;
                 game.score += 500;
                 game.missiles_shot += 1;
                 game.emit(EventType::MissileShotDown);
+                game.render_events.push(RenderEvent::MissileDestroyed { x: mx, y: my });
                 if game.homing_missile_hits % 4 == 0 {
                     game.score += 500;
                     game.bonus_grants += 1;
                     game.emit(EventType::BonusEarned);
+                    game.render_events.push(RenderEvent::MissileBonus);
                     if game.bonus_grants >= BONUS2LIVES {
                         game.player_lives = (game.player_lives + 1).min(PLAYER_LIVES);
                         game.bonus_grants = 0;
                         game.emit(EventType::LifeGranted);
+                        game.render_events.push(RenderEvent::BonusLife);
                     }
                 }
                 break;
@@ -182,6 +197,7 @@ fn check_bullet_monster(game: &mut HeadlessGame) {
             game.score += 500;
             game.restore_walls();
             game.emit(EventType::MonsterKilled);
+            game.render_events.push(RenderEvent::MonsterHit { x: monster_x, y: monster_y });
             break;
         }
     }
@@ -215,6 +231,7 @@ fn check_bullet_monster2(game: &mut HeadlessGame) {
             game.score += 1500;
             game.restore_walls();
             game.emit(EventType::Monster2Killed);
+            game.render_events.push(RenderEvent::MonsterHit { x: m2_x, y: m2_y });
             break;
         }
     }
@@ -358,11 +375,16 @@ fn check_enemy_bullet_wall(game: &mut HeadlessGame) {
 
 fn remove_destroyed_walls(game: &mut HeadlessGame) {
     let before = game.walls.len();
+    // Track which wall indices are being destroyed
+    let mut wall_idx = 0;
     game.walls.retain(|w| {
-        w.hit_count < WALL_MAX_HITS_TOTAL && w.missile_hits < WALL_MAX_MISSILE_HITS
+        let keep = w.hit_count < WALL_MAX_HITS_TOTAL && w.missile_hits < WALL_MAX_MISSILE_HITS;
+        wall_idx += 1;
+        keep
     });
     let removed = before - game.walls.len();
-    for _ in 0..removed {
+    for i in 0..removed {
         game.emit(EventType::WallDestroyed);
+        game.render_events.push(RenderEvent::WallDestroyed { wall_index: before - removed + i });
     }
 }

@@ -57,6 +57,7 @@ pub struct HeadlessGame {
 
     // Events
     pub events: Vec<GameEvent>,
+    pub render_events: Vec<RenderEvent>,
 
     // Stats
     pub total_steps: u64,
@@ -137,6 +138,7 @@ impl HeadlessGame {
             last_monster2_time: 0.0,
             walls: Vec::new(),
             events: Vec::new(),
+            render_events: Vec::new(),
             total_steps: 0,
             enemies_killed: 0,
             kamikazes_killed: 0,
@@ -181,6 +183,7 @@ impl HeadlessGame {
         self.last_monster2_time = 0.0;
         self.restore_walls();
         self.events.clear();
+        self.render_events.clear();
         self.total_steps = 0;
         self.enemies_killed = 0;
         self.kamikazes_killed = 0;
@@ -211,6 +214,7 @@ impl HeadlessGame {
 
     pub fn step(&mut self, action: u8) -> StepResult {
         self.events.clear();
+        self.render_events.clear();
         self.near_misses = 0;
         let dt_ms: f64 = 33.333;
         let dt = dt_ms / 1000.0;
@@ -269,6 +273,10 @@ impl HeadlessGame {
                 self.bullets.push(Bullet::new(bx, by, false));
                 self.last_fire_time = self.game_time;
                 self.emit(EventType::PlayerShot);
+                self.render_events.push(RenderEvent::PlayerFired {
+                    x: self.player_x + PLAYER_WIDTH / 2.0,
+                    y: self.player_y,
+                });
             }
         }
 
@@ -370,6 +378,7 @@ impl HeadlessGame {
     pub fn handle_player_hit(&mut self) {
         self.times_hit += 1;
         self.emit(EventType::PlayerHit);
+        self.render_events.push(RenderEvent::PlayerHit);
 
         if self.god_mode {
             // God mode: track the hit for reward penalty but don't lose lives
@@ -398,6 +407,7 @@ impl HeadlessGame {
         if self.player_lives <= 0 {
             self.game_over = true;
             self.emit(EventType::GameOver);
+            self.render_events.push(RenderEvent::GameOver);
         }
     }
 
@@ -408,6 +418,7 @@ impl HeadlessGame {
             / (1.0 + ENEMY_FIRE_RATE_INCREASE * (self.current_level - 1) as f64);
         self.score += 2500;
         self.emit(EventType::LevelComplete);
+        self.render_events.push(RenderEvent::LevelComplete { level: self.current_level });
 
         // Clear everything
         self.enemies.clear();
@@ -505,29 +516,8 @@ impl HeadlessGame {
             dx: m.dx_val, dy: m.dy_val, is_disappeared: m.is_disappeared,
         });
 
-        // Map existing EventType events to the richer RenderEvent enum
-        let events: Vec<RenderEvent> = self.events.iter().map(|e| {
-            match e.event_type {
-                EventType::EnemyKilled => RenderEvent::EnemyKilled { x: 0.0, y: 0.0 },
-                EventType::PlayerHit => RenderEvent::PlayerHit,
-                EventType::MissileShotDown => RenderEvent::MissileDestroyed { x: 0.0, y: 0.0 },
-                EventType::KamikazeKilled => RenderEvent::KamikazeKilled { x: 0.0, y: 0.0 },
-                EventType::MonsterKilled => RenderEvent::MonsterHit { x: 0.0, y: 0.0 },
-                EventType::Monster2Killed => RenderEvent::MonsterHit { x: 0.0, y: 0.0 },
-                EventType::LevelComplete => RenderEvent::LevelComplete { level: self.current_level },
-                EventType::GameOver => RenderEvent::GameOver,
-                EventType::WallDestroyed => RenderEvent::WallDestroyed { wall_index: 0 },
-                EventType::BonusEarned => RenderEvent::MissileBonus,
-                EventType::LifeGranted => RenderEvent::BonusLife,
-                EventType::PlayerShot => RenderEvent::PlayerFired {
-                    x: self.player_x + PLAYER_WIDTH / 2.0,
-                    y: self.player_y,
-                },
-                EventType::KamikazeSpawned => RenderEvent::KamikazeSpawned { x: 0.0, y: 0.0 },
-                EventType::MonsterSpawned => RenderEvent::MonsterSpawned,
-                EventType::MissileLaunched => RenderEvent::ScoreChange { delta: 0 },
-            }
-        }).collect();
+        // Use directly-emitted render events with accurate positions
+        let events: Vec<RenderEvent> = self.render_events.clone();
 
         RenderState {
             player, enemies, bullets, kamikazes, missiles, walls, monster, monster2,

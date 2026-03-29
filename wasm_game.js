@@ -92,29 +92,23 @@ function _processEvents(events) {
         _playSound(typeof clearLevelSound !== 'undefined' ? clearLevelSound : null);
         break;
 
-      case 'missile_launched':
-        if (typeof createMissileLaunchSound === 'function') {
-          _playSoundFactory(createMissileLaunchSound);
-        }
-        break;
-
       case 'missile_destroyed':
         _playSound(typeof missileBoomSound !== 'undefined' ? missileBoomSound : null);
         break;
 
-      case 'bonus':
+      case 'missile_bonus':
         _playSound(typeof bonusSound !== 'undefined' ? bonusSound : null);
         break;
 
-      case 'life_granted':
+      case 'bonus_life':
         _playSound(typeof newLifeSound !== 'undefined' ? newLifeSound : null);
         break;
 
-      case 'monster_killed':
+      case 'monster_hit':
         _playSound(typeof monsterDeadSound !== 'undefined' ? monsterDeadSound : null);
         break;
 
-      case 'kamikaze_launched':
+      case 'kamikaze_spawned':
         _playSound(typeof kamikazeLaunchSound !== 'undefined' ? kamikazeLaunchSound : null);
         break;
 
@@ -131,7 +125,7 @@ function _processEvents(events) {
         }
         break;
 
-      case 'player_shot':
+      case 'player_fired':
         _playSound(typeof playerShotSound !== 'undefined' ? playerShotSound : null);
         break;
 
