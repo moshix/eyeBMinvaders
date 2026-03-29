@@ -1,0 +1,9 @@
+[package]
+name = "game_sim_core"
+version = "0.1.0"
+edition = "2021"
+description = "Core game simulation for eyeBMinvaders — pure Rust, no FFI"
+
+[dependencies]
+rand = "0.8"
+rand_chacha = "0.3"
