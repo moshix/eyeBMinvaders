@@ -1521,8 +1521,17 @@ function gameLoop(currentTime) {
       // Update global state from WASM (for rendering functions that read globals)
       player.x = state.player.x;
       player.y = state.player.y;
+      player.width = state.player.width || 48;
+      player.height = state.player.height || 48;
       if (state.player.lives !== undefined) player.lives = state.player.lives;
       isPlayerHit = state.player.isHit || false;
+      // Keep player.image from JS (already set at init)
+      if (!player.image) player.image = playerNormalImage;
+      if (isPlayerHit && typeof playerExplosionImage !== 'undefined') {
+        player.image = playerExplosionImage;
+      } else if (typeof playerNormalImage !== 'undefined') {
+        player.image = playerNormalImage;
+      }
       score = state.score;
       currentLevel = state.level;
       gameOverFlag = state.gameOver || false;
@@ -1554,13 +1563,15 @@ function gameLoop(currentTime) {
         }
       }
 
-      // Kamikazes
+      // Kamikazes — use a red enemy image (kamikazes are enemy ships that dive)
       kamikazeEnemies.length = 0;
       if (state.kamikazes) {
+        const kImg = _wasmGetEnemyImage(0); // red enemy sprite
         for (const k of state.kamikazes) {
           kamikazeEnemies.push({
             x: k.x, y: k.y, width: k.width, height: k.height,
             angle: k.angle || 0,
+            image: kImg,
           });
         }
       }
@@ -1572,6 +1583,7 @@ function gameLoop(currentTime) {
           homingMissiles.push({
             x: m.x, y: m.y, width: m.width, height: m.height,
             angle: m.angle || 0, time: 0,
+            image: typeof missileImage !== 'undefined' ? missileImage : null,
           });
         }
       }
