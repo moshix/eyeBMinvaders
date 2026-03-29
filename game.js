@@ -1197,6 +1197,15 @@ function gameOver() {
   ctx.textAlign = "center";
   ctx.fillText("You lost! Game Over!", canvas.width / 2, canvas.height / 2);
   gamePaused = true;
+
+  // Auto-restart after 1.5s when AI mode is active (DQN or W observation)
+  if (autoPlayEnabled || (typeof wasmBridge !== 'undefined' && wasmBridge.active)) {
+    setTimeout(() => {
+      restartGame();
+      autoPlayEnabled = true;
+      if (typeof loadDQNModel === 'function') loadDQNModel();
+    }, 1500);
+  }
 }
 
 // sound declarations at the top
