@@ -1435,6 +1435,71 @@ function drawLives() {
   ctx.restore();
 }
 
+// ---------------------------------------------------------------------------
+// WASM Physics Mode — helper to read player action from keyboard or AI
+// ---------------------------------------------------------------------------
+
+let _wasmGameOverHandled = false;
+
+// Cache for enemy images used when syncing WASM state to JS globals
+const _wasmEnemyRowColors = ['red', 'orange', 'yellow', 'green', 'blue'];
+const _wasmEnemyImageCache = {};
+function _wasmGetEnemyImage(row) {
+  const color = _wasmEnemyRowColors[row % _wasmEnemyRowColors.length];
+  if (!_wasmEnemyImageCache[color]) {
+    const img = new Image();
+    img.src = `enemy-ship-${color}.svg`;
+    _wasmEnemyImageCache[color] = img;
+  }
+  return _wasmEnemyImageCache[color];
+}
+
+function getPlayerAction() {
+  // If DQN AI is active, let it pick the action via the model
+  if (autoPlayEnabled && typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
+    const features = wasmPhysics.getState();
+    if (features && dqnModel) {
+      const nFrames = dqnModel.n_frames || 1;
+
+      // Initialize frame buffer if needed (for frame stacking)
+      if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
+        const rawStateSize = dqnModel.architecture[0] / nFrames;
+        dqnInitFrameBuffer(nFrames, rawStateSize);
+        dqnResetFrameBuffer(features);
+      }
+
+      const state = nFrames > 1 ? dqnPushFrame(features) : features;
+      const qValues = dqnForward(state);
+      if (qValues) {
+        let bestAction = 0, bestQ = -Infinity;
+        for (let i = 0; i < qValues.length; i++) {
+          if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
+        }
+        // Update AI overlay if available
+        if (typeof _updateAIOverlay === 'function') {
+          _updateAIOverlay(qValues, bestAction);
+        }
+        return bestAction;
+      }
+    }
+    // Fallback: no model loaded — return idle so heuristic can be considered
+    return 0;
+  }
+
+  // Manual keyboard input — map to action codes 0-5
+  const left = keys.ArrowLeft || keys.KeyA;
+  const right = keys.ArrowRight || keys.KeyD;
+  const fire = keys.Space;
+  if (fire && left) return 4;
+  if (fire && right) return 5;
+  if (fire) return 3;
+  if (left) return 1;
+  if (right) return 2;
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+
 function gameLoop(currentTime) {
   // Calculate deltaTime first
   if (!lastTime) {
@@ -1442,6 +1507,154 @@ function gameLoop(currentTime) {
   }
   const deltaTime = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
+
+  // =========================================================================
+  // WASM Physics Mode — if available, use WASM for all game logic
+  // =========================================================================
+  if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready && !gamePaused && !gameOverFlag) {
+    const action = getPlayerAction();
+    const state = wasmPhysics.tick(deltaTime, action);
+
+    if (state) {
+      // Update global state from WASM (for rendering functions that read globals)
+      player.x = state.player.x;
+      player.y = state.player.y;
+      if (state.player.lives !== undefined) player.lives = state.player.lives;
+      isPlayerHit = state.player.isHit || false;
+      score = state.score;
+      currentLevel = state.level;
+      gameOverFlag = state.gameOver || false;
+
+      // --- Sync entity arrays for existing draw functions ---
+
+      // Enemies
+      enemies.length = 0;
+      if (state.enemies) {
+        for (const e of state.enemies) {
+          enemies.push({
+            x: e.x, y: e.y, width: e.width, height: e.height,
+            hits: e.hits,
+            image: _wasmGetEnemyImage(e.row),
+          });
+        }
+      }
+
+      // Bullets
+      bullets.length = 0;
+      if (state.bullets) {
+        for (const b of state.bullets) {
+          bullets.push({
+            x: b.x, y: b.y,
+            isEnemyBullet: b.isEnemy || false,
+            dx: b.dx || 0, dy: b.dy || 0,
+            isMonster2Bullet: b.isMonster2Bullet || false,
+          });
+        }
+      }
+
+      // Kamikazes
+      kamikazeEnemies.length = 0;
+      if (state.kamikazes) {
+        for (const k of state.kamikazes) {
+          kamikazeEnemies.push({
+            x: k.x, y: k.y, width: k.width, height: k.height,
+            angle: k.angle || 0,
+          });
+        }
+      }
+
+      // Missiles
+      homingMissiles.length = 0;
+      if (state.missiles) {
+        for (const m of state.missiles) {
+          homingMissiles.push({
+            x: m.x, y: m.y, width: m.width, height: m.height,
+            angle: m.angle || 0, time: 0,
+          });
+        }
+      }
+
+      // Walls
+      walls.length = 0;
+      if (state.walls) {
+        for (const w of state.walls) {
+          walls.push({
+            x: w.x, y: w.y, width: w.width, height: w.height,
+            hitCount: w.hitCount || 0, missileHits: w.missileHits || 0,
+            image: wallImage,
+          });
+        }
+      }
+
+      // Monster
+      if (state.monster) {
+        monster = {
+          x: state.monster.x, y: state.monster.y,
+          width: state.monster.width, height: state.monster.height,
+          hit: state.monster.isHit || false,
+          isSlaloming: state.monster.isSlaloming || false,
+          image: (state.monster.isHit && typeof monsterHitImage !== 'undefined')
+            ? monsterHitImage : (typeof monsterImage !== 'undefined' ? monsterImage : null),
+        };
+      } else {
+        monster = null;
+      }
+
+      // Monster2
+      if (state.monster2) {
+        monster2 = {
+          x: state.monster2.x, y: state.monster2.y,
+          width: state.monster2.width, height: state.monster2.height,
+          dx: state.monster2.dx || 0, dy: state.monster2.dy || 0,
+          isDisappeared: state.monster2.isDisappeared || false,
+          hit: false,
+          image: typeof monster2Image !== 'undefined' ? monster2Image : null,
+        };
+      } else {
+        monster2 = null;
+      }
+
+      // Process events for sounds and explosions
+      wasmPhysics.processEvents(state.events);
+
+      // Handle game over
+      if (state.gameOver && !_wasmGameOverHandled) {
+        _wasmGameOverHandled = true;
+        gameOver();
+      }
+      if (!state.gameOver) _wasmGameOverHandled = false;
+
+      // Clear canvas and draw everything using the existing draw functions
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawPlayer();
+      drawEnemies();
+      drawKamikazeEnemies();
+      drawMonster();
+      drawMonster2();
+      drawBullets();
+      drawMissiles();
+      drawMissileExplosions();
+      drawWalls();
+      drawExplosions();
+      drawScore();
+      drawHitMessage();
+      drawMuteStatus();
+      drawLevelMessage();
+      drawLives();
+      drawPauseMessage();
+      drawLifeGrant();
+      drawAIStatus();
+      drawBonusAnimation();
+      drawHotStreakMessage();
+
+      requestAnimationFrame(gameLoop);
+      return; // Skip all JS physics below
+    }
+  }
+  // =========================================================================
+  // End WASM Physics Mode — fall through to legacy JS physics
+  // =========================================================================
 
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
