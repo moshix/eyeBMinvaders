@@ -6,9 +6,9 @@
  * drive gameplay and train in the browser.
  *
  * Key bindings:
- *   F2  — Toggle WASM PPO agent on/off
- *   F3  — Toggle turbo training mode
- *   F4  — Export trained weights to JSON download
+ *   W  — Toggle WASM PPO agent on/off
+ *   T  — Toggle turbo training mode
+ *   E  — Export trained weights to JSON download
  *
  * Does NOT modify game.js or index.html. All integration is additive.
  */
@@ -658,16 +658,13 @@ function _toggleLearning() {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'F2') {
-    e.preventDefault();
+  if (e.code === 'KeyW') {          // W — toggle WASM PPO agent
     _toggleWasmAgent();
   }
-  if (e.code === 'F3') {
-    e.preventDefault();
+  if (e.code === 'KeyT') {          // T — toggle turbo training
     _toggleTurbo();
   }
-  if (e.code === 'F4') {
-    e.preventDefault();
+  if (e.code === 'KeyE') {          // E — export trained weights
     exportWasmWeights();
   }
 });
