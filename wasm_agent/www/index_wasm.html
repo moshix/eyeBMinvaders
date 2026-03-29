@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>eyeBMinvaders — WASM PPO Agent Test</title>
+    <link rel="icon" type="image/webp" href="../../favicon.webp">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+            color: white;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ---- WASM status panel ---- */
+        #wasm-status-panel {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            width: 260px;
+            background: rgba(0, 0, 0, 0.88);
+            border: 1px solid #39FF14;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #39FF14;
+            z-index: 10000;
+            box-shadow: 0 0 16px rgba(57, 255, 20, 0.2);
+        }
+
+        #wasm-status-panel h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #39FF1466;
+            padding-bottom: 4px;
+        }
+
+        #wasm-status-panel .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        #wasm-status-panel .label {
+            color: #888;
+        }
+
+        #wasm-status-panel .val {
+            color: #39FF14;
+            font-weight: bold;
+        }
+
+        .status-ok   { color: #39FF14 !important; }
+        .status-warn { color: #FFAA00 !important; }
+        .status-err  { color: #FF4444 !important; }
+
+        #wasm-status-panel button {
+            background: transparent;
+            color: #39FF14;
+            border: 1px solid #39FF14;
+            border-radius: 4px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            margin-top: 6px;
+            margin-right: 4px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        #wasm-status-panel button:hover {
+            background: #39FF14;
+            color: #000;
+        }
+
+        /* ---- Game container (mirrors index.html) ---- */
+        #gameContainer {
+            position: relative;
+            width: 1024px;
+            height: 576px;
+            margin-top: 20px;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        #score, #version-info {
+            position: absolute;
+            color: #39FF14;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+        }
+
+        #score {
+            left: 10px;
+            top: 10px;
+        }
+
+        #version-info {
+            right: 10px;
+            top: 30px;
+            color: #888;
+        }
+
+        #legend {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Game container — same structure as index.html -->
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1024" height="576"></canvas>
+        <div id="score"></div>
+        <div id="version-info"></div>
+        <!-- Legend hidden — we skip the splash in test mode -->
+        <div id="legend" style="display:none;"></div>
+    </div>
+
+    <!-- WASM status panel -->
+    <div id="wasm-status-panel">
+        <h3>WASM PPO Agent</h3>
+        <div class="row">
+            <span class="label">Module:</span>
+            <span class="val" id="ws-module">loading...</span>
+        </div>
+        <div class="row">
+            <span class="label">Agent:</span>
+            <span class="val" id="ws-agent">--</span>
+        </div>
+        <div class="row">
+            <span class="label">Active:</span>
+            <span class="val" id="ws-active">no</span>
+        </div>
+        <div class="row">
+            <span class="label">Episode:</span>
+            <span class="val" id="ws-episode">0</span>
+        </div>
+        <div class="row">
+            <span class="label">Avg Reward:</span>
+            <span class="val" id="ws-reward">0.0</span>
+        </div>
+        <div class="row">
+            <span class="label">Policy Loss:</span>
+            <span class="val" id="ws-loss">0.000</span>
+        </div>
+        <div class="row">
+            <span class="label">Entropy:</span>
+            <span class="val" id="ws-entropy">0.00</span>
+        </div>
+        <div class="row">
+            <span class="label">Steps:</span>
+            <span class="val" id="ws-steps">0</span>
+        </div>
+        <div class="row">
+            <span class="label">Turbo:</span>
+            <span class="val" id="ws-turbo">off</span>
+        </div>
+        <div style="margin-top: 8px; border-top: 1px solid #39FF1466; padding-top: 6px;">
+            <button id="ws-btn-toggle">F2: Enable PPO</button>
+            <button id="ws-btn-turbo">F3: Turbo</button>
+            <button id="ws-btn-export">F4: Export</button>
+        </div>
+        <div style="margin-top: 6px; font-size: 11px; color: #666;">
+            F2 = toggle PPO | F3 = turbo | F4 = export
+        </div>
+    </div>
+
+    <!-- Load the game engine (same as production) -->
+    <script src="../../game.js"></script>
+
+    <!-- Load the WASM bridge as a module -->
+    <script type="module" src="../../wasm_bridge.js"></script>
+
+    <!-- Status panel updater -->
+    <script type="module">
+        // Wait for both game.js and wasm_bridge.js to be ready
+        function updatePanel() {
+            const bridge = window.wasmBridge;
+            if (!bridge) {
+                document.getElementById('ws-module').textContent = 'bridge not loaded';
+                document.getElementById('ws-module').className = 'val status-err';
+                return;
+            }
+
+            // Module status
+            const modEl = document.getElementById('ws-module');
+            if (bridge.ready) {
+                modEl.textContent = 'loaded';
+                modEl.className = 'val status-ok';
+            } else {
+                modEl.textContent = 'not loaded';
+                modEl.className = 'val status-warn';
+            }
+
+            // Agent status
+            const agentEl = document.getElementById('ws-agent');
+            agentEl.textContent = bridge.ready ? 'ready' : 'pending';
+            agentEl.className = bridge.ready ? 'val status-ok' : 'val status-warn';
+
+            // Active
+            const activeEl = document.getElementById('ws-active');
+            activeEl.textContent = bridge.active ? 'YES' : 'no';
+            activeEl.className = bridge.active ? 'val status-ok' : 'val';
+
+            // Stats
+            const stats = bridge.stats || {};
+            document.getElementById('ws-episode').textContent = stats.episode || 0;
+            document.getElementById('ws-reward').textContent = (stats.avgReward || 0).toFixed(1);
+            document.getElementById('ws-loss').textContent = (stats.policyLoss || 0).toFixed(3);
+            document.getElementById('ws-entropy').textContent = (stats.entropy || 0).toFixed(2);
+            document.getElementById('ws-steps').textContent = stats.totalSteps || 0;
+
+            // Turbo
+            const turboEl = document.getElementById('ws-turbo');
+            turboEl.textContent = bridge.turbo ? 'ON' : 'off';
+            turboEl.className = bridge.turbo ? 'val status-ok' : 'val';
+
+            // Toggle button label
+            const btnToggle = document.getElementById('ws-btn-toggle');
+            if (btnToggle) {
+                btnToggle.textContent = bridge.active ? 'F2: Disable PPO' : 'F2: Enable PPO';
+            }
+        }
+
+        // Wire up panel buttons to simulate key presses
+        document.getElementById('ws-btn-toggle').addEventListener('click', () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { code: 'F2' }));
+        });
+        document.getElementById('ws-btn-turbo').addEventListener('click', () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { code: 'F3' }));
+        });
+        document.getElementById('ws-btn-export').addEventListener('click', () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { code: 'F4' }));
+        });
+
+        // Auto-init: try to load the WASM module on page load
+        async function autoInit() {
+            // Give game.js a moment to set up its globals
+            await new Promise(r => setTimeout(r, 500));
+
+            if (window.wasmBridge) {
+                const ok = await window.wasmBridge.init();
+                if (ok) {
+                    document.getElementById('ws-module').textContent = 'loaded';
+                    document.getElementById('ws-module').className = 'val status-ok';
+                    document.getElementById('ws-agent').textContent = 'ready';
+                    document.getElementById('ws-agent').className = 'val status-ok';
+                } else {
+                    document.getElementById('ws-module').textContent = 'failed';
+                    document.getElementById('ws-module').className = 'val status-err';
+                    document.getElementById('ws-agent').textContent = 'failed';
+                    document.getElementById('ws-agent').className = 'val status-err';
+                }
+            }
+        }
+
+        autoInit();
+
+        // Refresh panel at ~4 Hz
+        setInterval(updatePanel, 250);
+    </script>
+</body>
+</html>

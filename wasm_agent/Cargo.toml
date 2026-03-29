@@ -1,0 +1,26 @@
+[package]
+name = "wasm_agent"
+version = "0.1.0"
+edition = "2021"
+description = "PPO agent for eyeBMinvaders — trains and plays in the browser via WASM"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+getrandom = { version = "0.2", features = ["js"] }
+rand = "0.8"
+rand_chacha = "0.3"
+game_sim_core = { path = "../game_sim_core" }
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["console", "Performance"]
+
+[profile.release]
+opt-level = "s"
+lto = true
