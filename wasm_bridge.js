@@ -152,10 +152,39 @@ function updateWasmAgent() {
   if (!wasmActive) return null;
 
   _ppoFrameCount++;
-  // Throttle recording to 30Hz
+  // Throttle to 30Hz
   if (_ppoFrameCount % 2 !== 0) return true;
 
-  // Read game state
+  // When turbo is on: PPO plays the visible game + trains internally
+  if (turboMode && wasmReady && wasmAgent) {
+    try {
+      // Step the internal sim (trains PPO)
+      const result = wasmAgent.step();
+      const state = (typeof result === 'string') ? JSON.parse(result) : result;
+
+      // Apply PPO's action to the visible game
+      if (state && typeof applyDQNAction === 'function') {
+        applyDQNAction(state.action || 0);
+      }
+
+      // Handle game over in visible game — restart
+      if (typeof gameOverFlag !== 'undefined' && gameOverFlag) {
+        if (typeof restartGame === 'function') restartGame();
+        _ppoEpisodes++;
+      }
+
+      // Update stats from WASM every second
+      if (_ppoFrameCount % 60 === 0) {
+        _refreshStats();
+        _updateHud();
+      }
+    } catch (err) {
+      console.error('[WASM Bridge] turbo step error:', err);
+    }
+    return true;
+  }
+
+  // W without T: just observe and record (no game control)
   const newScore = (typeof score !== 'undefined') ? score : 0;
   const newLives = (typeof player !== 'undefined') ? player.lives : 0;
   const newLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
@@ -165,14 +194,14 @@ function updateWasmAgent() {
   let reward = (newScore - _prevScore) * 0.01;
   if (newLives < _prevLives) reward -= 5.0;
   if (newLevel > _prevLevel) reward += 5.0 + 3.0 * newLevel;
-  reward += 0.01 * newLevel; // survival bonus
+  reward += 0.01 * newLevel;
   _ppoTotalReward += reward;
 
   // Get current state and action
   const curState = (typeof buildDQNState === 'function') ? buildDQNState() : null;
   const action = _getCurrentAction();
 
-  // Record transition: (state, action, reward, done)
+  // Record transition
   if (_prevState && _recordedTransitions.length < _MAX_RECORDED) {
     _recordedTransitions.push({
       s: Array.from(_prevState),
@@ -187,7 +216,6 @@ function updateWasmAgent() {
   _prevLives = newLives;
   _prevLevel = newLevel;
 
-  // Episode ended
   if (isGameOver) {
     _ppoEpisodes++;
     _ppoRewardHistory.push(_ppoTotalReward);
