@@ -1468,7 +1468,35 @@ function _wasmGetEnemyImage(row) {
 }
 
 function getPlayerAction() {
-  // If DQN AI is active, let it pick the action via the model
+  // If online learning is active, use the WASM learner's network (continuously improving)
+  if (autoPlayEnabled && typeof wasmPhysics !== 'undefined' && wasmPhysics.learningActive && wasmPhysics.onlineDQN) {
+    const features = wasmPhysics.getState();
+    if (features) {
+      const nFrames = 4;
+      const rawSize = features.length;
+      // Frame stacking using the existing DQN frame buffer
+      if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
+        dqnInitFrameBuffer(nFrames, rawSize);
+        dqnResetFrameBuffer(features);
+      }
+      const stacked = nFrames > 1 ? dqnPushFrame(features) : features;
+      try {
+        const qValues = wasmPhysics.onlineDQN.get_q_values(Array.from(stacked));
+        if (qValues && qValues.length === 6) {
+          let bestAction = 0, bestQ = -Infinity;
+          for (let i = 0; i < qValues.length; i++) {
+            if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
+          }
+          if (typeof _updateAIOverlay === 'function') {
+            _updateAIOverlay(Array.from(qValues), bestAction);
+          }
+          return bestAction;
+        }
+      } catch (_e) {}
+    }
+  }
+
+  // If DQN AI is active, let it pick the action via the JS model
   if (autoPlayEnabled && typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
     const features = wasmPhysics.getState();
     if (features && dqnModel) {

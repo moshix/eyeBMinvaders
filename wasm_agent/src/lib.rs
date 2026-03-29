@@ -373,6 +373,24 @@ impl WasmOnlineDQN {
     pub fn set_lr(&mut self, lr: f32) {
         self.dqn.config.lr = lr;
     }
+
+    /// Pick the best action for an external state (e.g. from the visible game).
+    /// State should be the raw features (54), will be frame-stacked internally.
+    pub fn pick_action(&self, state: Vec<f32>) -> u8 {
+        // Use the policy network directly on the provided state
+        // For proper frame stacking, caller should provide the full stacked state (216)
+        let q = self.dqn.policy_net.forward(&state);
+        q.iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap()
+            .0 as u8
+    }
+
+    /// Get Q-values for an external state (for overlay display).
+    pub fn get_q_values(&self, state: Vec<f32>) -> Vec<f32> {
+        self.dqn.policy_net.forward(&state)
+    }
 }
 
 impl WasmOnlineDQN {
