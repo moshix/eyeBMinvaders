@@ -1898,6 +1898,12 @@ document.addEventListener("keydown", (e) => {
     // Load DQN model when AI is enabled
     if (autoPlayEnabled) loadDQNModel();
   }
+  if (e.code === "KeyL") {
+    // L = toggle online learning (DQN learns while playing)
+    if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
+      wasmPhysics.toggleLearning();
+    }
+  }
   //if (e.code === "F10") {player.lives++}
   //if (e.code === "F9")  {player.lives--}
                                              
@@ -2946,7 +2952,17 @@ function _updateAIOverlay(qValues, action) {
 
   // WASM physics indicator
   const wasmOn = typeof wasmPhysics !== 'undefined' && wasmPhysics.ready;
-  html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'} physics</span>`;
+  html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'}</span>`;
+
+  // Online learning stats
+  if (wasmOn && wasmPhysics.learningActive) {
+    const ls = wasmPhysics.learningStats;
+    html += `<br><span style="color:#0ff">🧠 LEARNING</span>`;
+    html += ` Ep:${ls.episodes} Avg:${Math.round(ls.avgScore)} Best:${ls.bestScore}`;
+    html += `<br><span style="color:#888">Buf:${ls.bufferSize} Upd:${ls.updates} Loss:${ls.loss.toFixed(4)}</span>`;
+  } else if (wasmOn && wasmPhysics.onlineDQN) {
+    html += ` <span style="color:#888">L=learn</span>`;
+  }
 
   _aiOverlayEl.innerHTML = html;
 }

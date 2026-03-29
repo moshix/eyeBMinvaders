@@ -285,7 +285,97 @@ window.wasmPhysics = {
   processEvents(events) {
     _processEvents(events);
   },
+
+  // --- Online DQN Learning ---
+
+  /** The WasmOnlineDQN instance (null until initialized) */
+  get onlineDQN() { return _onlineDQN; },
+
+  /** True if online learning is active */
+  get learningActive() { return _onlineLearning; },
+
+  /** Get online learning stats */
+  get learningStats() { return _onlineStats; },
+
+  /** Toggle online learning on/off */
+  toggleLearning() {
+    if (!_onlineDQN) {
+      _initOnlineDQN();
+    }
+    _onlineLearning = !_onlineLearning;
+    if (_onlineLearning) {
+      _startOnlineTraining();
+      console.log('[Online DQN] Learning enabled');
+    } else {
+      _stopOnlineTraining();
+      console.log('[Online DQN] Learning paused');
+    }
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Online DQN — learns while playing
+// ---------------------------------------------------------------------------
+
+let _onlineDQN = null;
+let _onlineLearning = false;
+let _onlineStats = { episodes: 0, avgScore: 0, bestScore: 0, updates: 0, bufferSize: 0, loss: 0 };
+let _onlineTrainId = null;
+
+function _initOnlineDQN() {
+  if (!_wasmModule || _onlineDQN) return;
+  try {
+    _onlineDQN = new _wasmModule.WasmOnlineDQN();
+    // Load pretrained weights
+    fetch('models/model_weights.json')
+      .then(r => r.text())
+      .then(json => {
+        if (_onlineDQN.load_weights(json)) {
+          console.log('[Online DQN] Loaded pretrained weights');
+        }
+      })
+      .catch(() => console.log('[Online DQN] No pretrained weights, starting fresh'));
+  } catch (e) {
+    console.error('[Online DQN] Init failed:', e);
+    _onlineDQN = null;
+  }
+}
+
+function _onlineTrainCallback(deadline) {
+  if (!_onlineLearning || !_onlineDQN) return;
+
+  // Run DQN steps during idle time (max 4ms to avoid stutter)
+  const start = performance.now();
+  while (performance.now() - start < 4 && deadline.timeRemaining() > 1) {
+    try {
+      const stats = _onlineDQN.step();
+      if (stats) {
+        _onlineStats.episodes = stats.episodes || 0;
+        _onlineStats.avgScore = stats.avgScore || 0;
+        _onlineStats.bestScore = stats.bestScore || 0;
+        _onlineStats.updates = stats.updates || 0;
+        _onlineStats.bufferSize = stats.bufferSize || 0;
+        _onlineStats.loss = stats.lastLoss || 0;
+        _onlineStats.currentLevel = stats.currentLevel || 0;
+        _onlineStats.totalSteps = stats.totalSteps || 0;
+      }
+    } catch (_e) { break; }
+  }
+
+  _onlineTrainId = requestIdleCallback(_onlineTrainCallback, { timeout: 50 });
+}
+
+function _startOnlineTraining() {
+  if (_onlineTrainId !== null) return;
+  _onlineTrainId = requestIdleCallback(_onlineTrainCallback, { timeout: 50 });
+}
+
+function _stopOnlineTraining() {
+  if (_onlineTrainId !== null) {
+    cancelIdleCallback(_onlineTrainId);
+    _onlineTrainId = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Auto-init on page load
@@ -294,6 +384,8 @@ window.wasmPhysics = {
 _initWasmGame().then((ok) => {
   if (ok) {
     console.log('[WASM Physics] Ready — wasmPhysics.ready =', window.wasmPhysics.ready);
+    // Auto-init online DQN (loads in background)
+    _initOnlineDQN();
   } else {
     console.log('[WASM Physics] Not available — falling back to JS physics.');
   }
