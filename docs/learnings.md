@@ -238,3 +238,89 @@ cfg = TrainingConfig(
 2. C51 distributional DQN — risk-aware decisions at high levels
 3. RND exploration — directed exploration toward novel high-level states
 4. Curriculum learning with separate buffers — needs careful tuning
+
+## Sim-to-Real Gap: Closing the Rust ↔ Browser Divide (March 29, 2025)
+
+### Critical Bugs Found and Fixed
+
+| Bug | Impact | Fix |
+|-----|--------|-----|
+| Bullet velocity: `dy:-5` made JS report bullets going UP | Agent didn't dodge | Check `isMonster2Bullet` for directional bullets |
+| Threat urgency TTI: 1000x scale error in JS | Every bullet appeared infinitely far | Match Rust formula `speed*1000/60` |
+| Frame rate: browser 60Hz vs training 30Hz | Temporal patterns halved | 30Hz throttle via `performance.now()` gate |
+| Frame buffer init: first 3 frames all zeros | Garbage Q-values on game start | Call `dqnResetFrameBuffer()` on init |
+| Level transition: `setTimeout(createEnemies, 1500)` | Enemies never spawned for level 2+ in headless | Mock setTimeout with mock clock |
+| `bIndex`/`bulletIndex` variable mismatch | Crash in Node.js, silent fail in browser | Rename to consistent `bIndex` |
+| Bullet hitbox: Rust 3.4x5.9 vs JS 5x10 | Agent's dodge margins 47% too tight | Changed Rust to 5x10 to match JS |
+| Bullet X-bounds filter missing in JS | Phantom off-screen bullets | Added `bullet.x > 0 && bullet.x < canvas.width` |
+| Monster2 bullets: JS moved all straight down | Spread pattern didn't work | Added `dx/dy` directional movement for Monster2 bullets |
+| Monster2 patterns: JS levels 7+ all 'random' | Teleport/chase never used | Added levels 7-9 to MONSTER2_PATTERNS dict |
+| FIRE_RATE: JS used 0.190 vs Rust 0.16 | Fire cooldown feature misaligned | Changed JS to 0.16 |
+
+### What DID NOT Work
+
+#### Heuristic Safety Layer on DQN Actions
+Added rules to override DQN decisions (wall-fire blocking, empty-space-fire blocking, emergency dodge). Every version caused problems:
+- **Full fire masking** (actions 3,4,5): crippled dodging since model uses fire+move as primary movement
+- **Emergency dodge override**: pinned agent to edges (always dodging left → stuck at left wall)
+- **Center-biased dodge**: better but still interfered with learned Q-value balance
+- **Monster dodge override**: same edge-pinning issue
+- **Lesson**: Don't override a neural network's actions with heuristics. The network's Q-values encode complex tradeoffs that simple rules can't replicate. Fix the training instead.
+
+#### God Mode Training
+Concept: hits penalized but agent never dies. Should learn avoidance from massive hit exposure.
+- **Bug**: initial implementation didn't detect hits (lives never decremented in god mode, so `player_lives < old_lives` was never true). Fixed by checking `PlayerHit` events.
+- **Too-harsh penalty** (-15 base, escalating): agent learned to hide in corners (89% edge time)
+- **Too-mild penalty** (-5): agent learned hits don't matter, played recklessly
+- **Episode length**: 15K steps with 2048 envs = episodes never completed (hours per batch). Reduced to 6K.
+- **Result**: avg level 2.1 in god mode, avg level 1.4 in normal mode. The fundamental problem: god mode teaches "survive hits" not "avoid hits". The agent learns it can absorb damage, which transfers poorly to normal play where 6 hits = game over.
+- **Lesson**: God mode may work with much more careful tuning, but normal training with correct hitbox is simpler and more reliable.
+
+#### Aggressive Reward Shaping (proximity penalties, harsh wall penalty)
+- Wall penalty at -3.0 per hit (was -0.5): made agent too conservative, stopped shooting
+- Bullet proximity penalty (-0.15 within 80px): made agent timid, reduced score
+- Kamikaze/missile proximity penalties: same issue
+- Removing near-miss reward (+0.1): removed a useful learning signal
+- **Combined effect**: avg level dropped from 5.0 to 1.1
+- **Lesson**: The original mild reward function (hit -5, death -20, wall destroy -2, wall hit -0.5, near-miss +0.1, level complete +5+3*level) is the proven winner. Don't over-penalize.
+
+#### JS Headless Fine-Tuning
+- At 1e-7 LR: model slowly forgets (avg drops over 90 episodes)
+- At 5e-8 LR: model stable but doesn't improve (too slow to learn)
+- At 3e-6 LR: catastrophic forgetting in 20 episodes
+- 0.3 ep/s is too slow for meaningful training (~5K episodes/hour)
+- Single-env experience is too correlated for gradient updates
+- **Lesson**: Fine-tuning a 2048-env trained model with single-env JS experience doesn't work well. The experience distribution is too different.
+
+### Best Model: Run 6 ep180K
+
+The best performing model across all experiments:
+- **Training**: Normal mode, old 3.4x5.9 hitbox, mild rewards, RTX 5090
+- **Rust sim**: avg 84K score, avg level 3.9, best level 7
+- **JS headless**: avg level 4.1, best level 5, edge time 16%
+- **Browser**: reaches level 3-4 visually
+
+### Remaining Sim-to-Real Mismatches (to fix in Rust sim)
+
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| Monster2 velocity [27-28] | Always [0,0] for 6/7 movement patterns (spiral, zigzag, figure8, wave, chase, teleport) | HIGH |
+| Monster2 bounce randomness | JS has random 30% direction flips every 1.5-3s, Rust is deterministic | MEDIUM |
+| Monster2 chase prediction | JS leads player by ±100px based on movement keys, Rust uses raw position | MEDIUM |
+| Monster2 teleport | JS instant jump every 2s, Rust smooth slide every 1s | MEDIUM |
+| Monster2 zigzag oscillation | JS has extra `sin(phase*2)*dt*15` vertical bob, Rust doesn't | LOW |
+| Monster missile size | Verify JS monster-spawned missiles match Rust (both should be 44x44) | LOW |
+
+### Key Architectural Insight
+
+The **sim-to-real gap is the #1 bottleneck**, not the RL algorithm. The model trains well in Rust (avg level 7-8) but loses 2-4 levels in the browser. Every constant mismatch, physics difference, and feature computation error compounds. The most impactful work is aligning the Rust sim to exactly match game.js, not improving the DQN architecture.
+
+### Tools Built
+
+| Tool | Purpose |
+|------|---------|
+| `headless/run.js` | Run game.js in Node.js at 30Hz with mock clock, test DQN models |
+| `headless/browser-shim.js` | Canvas/DOM/Image/Audio/timing mocks for Node.js |
+| `headless/env_worker.js` | JSON stdin/stdout game worker for Python fine-tuning |
+| `headless/finetune.py` | DQN fine-tuning against real JS game (with god mode support) |
+| `browser_validate.py` | Playwright browser validation — runs AI in real Chrome |
