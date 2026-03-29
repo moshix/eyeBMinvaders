@@ -827,8 +827,12 @@ async function _toggleWasmAgent() {
   _updateHud();
 }
 
-function _toggleTurbo() {
-  if (!wasmActive) return;
+async function _toggleTurbo() {
+  // Auto-activate WASM agent if not already on
+  if (!wasmActive) {
+    await _toggleWasmAgent();
+    if (!wasmActive) return; // init failed
+  }
   turboMode = !turboMode;
 
   if (turboMode) {
