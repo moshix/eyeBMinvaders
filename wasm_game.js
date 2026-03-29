@@ -70,20 +70,9 @@ function _processEvents(events) {
   for (const evt of events) {
     switch (evt.type) {
       case 'enemy_killed':
-        // Play enemy explosion sound
-        if (typeof createExplosionSound === 'function') {
-          _playSoundFactory(createExplosionSound);
-        }
-        // Add explosion visual at the event position
-        if (typeof explosions !== 'undefined' && typeof explosionImg !== 'undefined') {
-          explosions.push({
-            x: evt.x || 0,
-            y: evt.y || 0,
-            timer: 0,
-            duration: 500,
-            image: Math.random() < 0.3 && typeof explosionAdditionalImg !== 'undefined'
-              ? explosionAdditionalImg : explosionImg,
-          });
+        // Use game.js createExplosion which handles sound + correct image format
+        if (typeof createExplosion === 'function') {
+          createExplosion(evt.x || 0, evt.y || 0);
         }
         break;
 
@@ -131,14 +120,8 @@ function _processEvents(events) {
 
       case 'kamikaze_killed':
         _playSound(typeof kamikazeExplosionSound !== 'undefined' ? kamikazeExplosionSound : null);
-        if (typeof explosions !== 'undefined' && typeof kamikazeExplosionImage !== 'undefined') {
-          explosions.push({
-            x: evt.x || 0,
-            y: evt.y || 0,
-            timer: 0,
-            duration: 500,
-            image: kamikazeExplosionImage,
-          });
+        if (typeof createExplosion === 'function') {
+          createExplosion(evt.x || 0, evt.y || 0);
         }
         break;
 

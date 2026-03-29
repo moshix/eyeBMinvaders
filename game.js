@@ -1505,8 +1505,10 @@ function gameLoop(currentTime) {
   if (!lastTime) {
     lastTime = currentTime;
   }
-  const deltaTime = (currentTime - lastTime) / 1000;
+  const rawDeltaTime = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
+  // Cap deltaTime to prevent physics explosion on tab switch or lag spikes
+  const deltaTime = Math.min(rawDeltaTime, 0.05); // max 50ms = 20fps minimum
 
   // =========================================================================
   // WASM Physics Mode — if available, use WASM for all game logic
