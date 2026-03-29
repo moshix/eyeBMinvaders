@@ -82,8 +82,13 @@ if __name__ == '__main__':
         port = int(sys.argv[sys.argv.index('--port') + 1])
 
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    server = http.server.HTTPServer(('', port), GameHandler)
-    print(f"Serving eyeBMinvaders on http://localhost:{port}")
+    bind_addr = '0.0.0.0'
+    server = http.server.HTTPServer((bind_addr, port), GameHandler)
+    import socket
+    local_ip = socket.gethostbyname(socket.gethostname())
+    print(f"Serving eyeBMinvaders on:")
+    print(f"  http://localhost:{port}")
+    print(f"  http://{local_ip}:{port}")
     print(f"Gameplay recording saves to: {GAMEPLAY_FILE}")
     print(f"Press W in game to start recording, play, data auto-saves every 5000 steps")
     try:
