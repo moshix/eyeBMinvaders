@@ -65,6 +65,7 @@ impl WasmAgent {
         if result.level > self.agent.stats.best_level {
             self.agent.stats.best_level = result.level;
         }
+        self.count_events();
 
         // Store transition for training
         if self.agent.stats.learning_enabled {
@@ -113,6 +114,7 @@ impl WasmAgent {
             if result.level > self.agent.stats.best_level {
                 self.agent.stats.best_level = result.level;
             }
+            self.count_events();
 
             if self.agent.stats.learning_enabled {
                 self.agent.store_transition(
@@ -171,6 +173,20 @@ impl WasmAgent {
 }
 
 impl WasmAgent {
+    fn count_events(&mut self) {
+        use game_sim_core::entities::EventType;
+        for ev in &self.game.events {
+            match ev.event_type {
+                EventType::EnemyKilled => self.agent.stats.enemies_killed += 1,
+                EventType::KamikazeKilled => self.agent.stats.kamikazes_killed += 1,
+                EventType::MissileShotDown => self.agent.stats.missiles_shot += 1,
+                EventType::MonsterKilled => self.agent.stats.monsters_killed += 1,
+                EventType::Monster2Killed => self.agent.stats.monsters2_killed += 1,
+                _ => {}
+            }
+        }
+    }
+
     fn handle_episode_end(&mut self) {
         self.agent.stats.episodes += 1;
         self.reward_history.push(self.episode_reward);

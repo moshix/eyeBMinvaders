@@ -576,6 +576,11 @@ function _refreshStats() {
       agentStats.currentScore = s.currentScore || 0;
       agentStats.currentLevel = s.currentLevel || 0;
       agentStats.currentLives = s.currentLives || 0;
+      agentStats.enemiesKilled = s.enemiesKilled || 0;
+      agentStats.kamikazesKilled = s.kamikazesKilled || 0;
+      agentStats.missilesShot = s.missilesShot || 0;
+      agentStats.monstersKilled = s.monstersKilled || 0;
+      agentStats.monsters2Killed = s.monsters2Killed || 0;
       if (s.lastUpdate) {
         agentStats.policyLoss = s.lastUpdate.policyLoss || 0;
         agentStats.entropy = s.lastUpdate.entropy || 0;
@@ -900,6 +905,28 @@ function _updateDashboard() {
       <div style="color:#fff;">${s.totalSteps.toLocaleString()}</div>
       <div style="text-align:right;color:#888;">Time</div>
       <div style="color:#fff;">${elapsed}s</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0;text-align:center;">
+      <div style="background:#111;border:1px solid #333;border-radius:6px;padding:8px;">
+        <div style="color:#888;font-size:10px;">Enemies</div>
+        <div style="color:#FF4444;font-size:18px;font-weight:bold;">${s.enemiesKilled || 0}</div>
+      </div>
+      <div style="background:#111;border:1px solid #333;border-radius:6px;padding:8px;">
+        <div style="color:#888;font-size:10px;">Kamikazes</div>
+        <div style="color:#FF8800;font-size:18px;font-weight:bold;">${s.kamikazesKilled || 0}</div>
+      </div>
+      <div style="background:#111;border:1px solid #333;border-radius:6px;padding:8px;">
+        <div style="color:#888;font-size:10px;">Missiles</div>
+        <div style="color:#FFDD00;font-size:18px;font-weight:bold;">${s.missilesShot || 0}</div>
+      </div>
+      <div style="background:#111;border:1px solid #333;border-radius:6px;padding:8px;">
+        <div style="color:#888;font-size:10px;">Monster</div>
+        <div style="color:#AA44FF;font-size:18px;font-weight:bold;">${s.monstersKilled || 0}</div>
+      </div>
+      <div style="background:#111;border:1px solid #333;border-radius:6px;padding:8px;">
+        <div style="color:#888;font-size:10px;">Monster2</div>
+        <div style="color:#FF44FF;font-size:18px;font-weight:bold;">${s.monsters2Killed || 0}</div>
+      </div>
     </div>
     <div style="background:#111;border:1px solid #333;border-radius:8px;padding:15px 20px;min-width:350px;">
       <div style="color:#888;font-size:12px;margin-bottom:8px;">Reward Trend</div>

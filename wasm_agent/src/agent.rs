@@ -108,6 +108,11 @@ pub struct AgentStats {
     pub updates: u32,
     pub last_update: Option<UpdateStats>,
     pub learning_enabled: bool,
+    pub enemies_killed: u32,
+    pub kamikazes_killed: u32,
+    pub missiles_shot: u32,
+    pub monsters_killed: u32,
+    pub monsters2_killed: u32,
 }
 
 impl Default for AgentStats {
@@ -125,6 +130,11 @@ impl Default for AgentStats {
             updates: 0,
             last_update: None,
             learning_enabled: true,
+            enemies_killed: 0,
+            kamikazes_killed: 0,
+            missiles_shot: 0,
+            monsters_killed: 0,
+            monsters2_killed: 0,
         }
     }
 }

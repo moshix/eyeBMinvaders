@@ -152,6 +152,11 @@ pub fn stats_to_js(stats: &AgentStats) -> JsValue {
     set_f64(&obj, "avgReward", stats.avg_reward as f64);
     set_i32(&obj, "updates", stats.updates as i32);
     set_bool(&obj, "learningEnabled", stats.learning_enabled);
+    set_i32(&obj, "enemiesKilled", stats.enemies_killed as i32);
+    set_i32(&obj, "kamikazesKilled", stats.kamikazes_killed as i32);
+    set_i32(&obj, "missilesShot", stats.missiles_shot as i32);
+    set_i32(&obj, "monstersKilled", stats.monsters_killed as i32);
+    set_i32(&obj, "monsters2Killed", stats.monsters2_killed as i32);
 
     if let Some(ref upd) = stats.last_update {
         let uobj = js_sys::Object::new();
