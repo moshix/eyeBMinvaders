@@ -134,66 +134,68 @@ async function initWasmAgent(configOverrides) {
 // ---------------------------------------------------------------------------
 
 /**
- * Observes the current game state and player action, feeds it to the PPO
- * for training. Does NOT control the game — the human or DQN still plays.
- * PPO learns by watching.
+ * Lightweight observer — just updates the HUD. Does NOT call wasmAgent.step()
+ * during gameplay to avoid blocking. The heavy PPO training runs only during
+ * idle time (requestIdleCallback) or turbo mode.
  */
 let _ppoFrameCount = 0;
+let _ppoEpisodes = 0;
+let _ppoTotalReward = 0;
+let _ppoRewardHistory = [];
+
 let _prevScore = 0;
 let _prevLives = 0;
 let _prevLevel = 0;
 
 function updateWasmAgent() {
-  if (!wasmReady || !wasmActive || !wasmAgent) return null;
+  if (!wasmReady || !wasmActive) return null;
 
-  try {
-    // Throttle to 30Hz
-    _ppoFrameCount++;
-    if (_ppoFrameCount % 2 !== 0) return true;
+  _ppoFrameCount++;
 
-    // Read current player action from keyboard state
-    const action = _getCurrentAction();
+  // Track game stats for the HUD (zero-cost — just reading globals)
+  const newScore = (typeof score !== 'undefined') ? score : 0;
+  const newLives = (typeof player !== 'undefined') ? player.lives : 0;
+  const newLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
+  const isGameOver = (typeof gameOverFlag !== 'undefined') ? gameOverFlag : false;
 
-    // Read game state for reward computation
-    const newScore = (typeof score !== 'undefined') ? score : 0;
-    const newLives = (typeof player !== 'undefined') ? player.lives : 0;
-    const newLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
-    const isGameOver = (typeof gameOverFlag !== 'undefined') ? gameOverFlag : false;
+  // Accumulate reward
+  let reward = (newScore - _prevScore) * 0.01;
+  if (newLives < _prevLives) reward -= 5.0;
+  if (newLevel > _prevLevel) reward += 5.0 + 3.0 * newLevel;
+  _ppoTotalReward += reward;
 
-    // Compute reward (matching training reward function)
-    let reward = (newScore - _prevScore) * 0.01;
-    if (newLives < _prevLives) reward -= 5.0;
-    if (isGameOver) reward -= 20.0;
-    reward += 0.01 * newLevel;
-    if (newLevel > _prevLevel) reward += 5.0 + 3.0 * newLevel;
+  _prevScore = newScore;
+  _prevLives = newLives;
+  _prevLevel = newLevel;
 
-    _prevScore = newScore;
-    _prevLives = newLives;
-    _prevLevel = newLevel;
-
-    // Feed the internal WASM sim a step (for PPO training)
-    // The WASM agent trains on its own sim but we also log the observation
-    const result = wasmAgent.step();
-
-    // Reset tracking on game over
-    if (isGameOver) {
-      _prevScore = 0;
-      _prevLives = (typeof PLAYER_LIVES !== 'undefined') ? PLAYER_LIVES : 6;
-      _prevLevel = 1;
-    }
-
-    // Refresh stats periodically
-    if (_ppoFrameCount % 60 === 0) {
-      _refreshStats();
-      _updateHud();
-    }
-
-    return result;
-
-  } catch (err) {
-    console.error('[WASM Bridge] observe() error:', err);
-    return null;
+  // Episode ended
+  if (isGameOver) {
+    _ppoEpisodes++;
+    _ppoRewardHistory.push(_ppoTotalReward);
+    if (_ppoRewardHistory.length > 100) _ppoRewardHistory.shift();
+    _ppoTotalReward = 0;
+    _prevScore = 0;
+    _prevLives = 6;
+    _prevLevel = 1;
   }
+
+  // Update HUD stats (cheap — just setting local object)
+  agentStats.episode = _ppoEpisodes;
+  agentStats.avgReward = _ppoRewardHistory.length > 0
+    ? _ppoRewardHistory.reduce((a, b) => a + b, 0) / _ppoRewardHistory.length
+    : 0;
+  agentStats.totalSteps = _ppoFrameCount;
+
+  // Refresh HUD every second
+  if (_ppoFrameCount % 60 === 0) {
+    // Also run WASM training in background if agent exists
+    if (wasmAgent) {
+      try { _refreshStats(); } catch (_e) {}
+    }
+    _updateHud();
+  }
+
+  return true;
 }
 
 /** Read the current player action from keyboard/AI state */
@@ -425,6 +427,37 @@ function _stopTurbo() {
   if (_turboCallbackId !== null) {
     cancelIdleCallback(_turboCallbackId);
     _turboCallbackId = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Background training — gentle idle-time PPO steps (won't block gameplay)
+// ---------------------------------------------------------------------------
+
+let _bgTrainId = null;
+
+function _bgTrainCallback(deadline) {
+  if (!wasmActive || !wasmReady || !wasmAgent) return;
+
+  // Only use leftover idle time — never block a frame
+  while (deadline.timeRemaining() > 2) {
+    try {
+      wasmAgent.step(); // one internal sim step
+    } catch (_e) { break; }
+  }
+
+  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 200 });
+}
+
+function _startBackgroundTraining() {
+  if (_bgTrainId !== null) return;
+  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 200 });
+}
+
+function _stopBackgroundTraining() {
+  if (_bgTrainId !== null) {
+    cancelIdleCallback(_bgTrainId);
+    _bgTrainId = null;
   }
 }
 
@@ -661,14 +694,17 @@ async function _toggleWasmAgent() {
   wasmActive = !wasmActive;
 
   if (wasmActive) {
-    // Disable the heuristic/DQN AI so they don't fight
-    if (typeof autoPlayEnabled !== 'undefined') {
-      try { autoPlayEnabled = false; } catch (_e) { /* ignore */ }
-    }
-    wasmAgent.reset();
-    _showHudMessage('PPO learning: observing your gameplay', 'success');
+    // Don't disable DQN/human — PPO observes, doesn't control
+    _prevScore = (typeof score !== 'undefined') ? score : 0;
+    _prevLives = (typeof player !== 'undefined') ? player.lives : 6;
+    _prevLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
+    _ppoTotalReward = 0;
+    // Start gentle background PPO training via idle callbacks
+    _startBackgroundTraining();
+    _showHudMessage('PPO learning — play normally, AI watches & learns', 'success');
   } else {
     _stopTurbo();
+    _stopBackgroundTraining();
     turboMode = false;
     _showHudMessage('PPO learning stopped', 'info');
   }
