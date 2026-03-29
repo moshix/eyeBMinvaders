@@ -2587,7 +2587,55 @@ function updateDQN() {
   }
 
   applyDQNAction(bestAction);
+
+  // Update AI overlay with decision info
+  if (typeof _updateAIOverlay === 'function') {
+    _updateAIOverlay(qValues, bestAction);
+  }
+
   return true;
+}
+
+// AI decision overlay — shows Q-values and chosen action on screen
+let _aiOverlayEl = null;
+const _actionNames = ['IDLE', 'LEFT', 'RIGHT', 'FIRE', 'FIRE+L', 'FIRE+R'];
+
+function _updateAIOverlay(qValues, action) {
+  if (!autoPlayEnabled) {
+    if (_aiOverlayEl) _aiOverlayEl.style.display = 'none';
+    return;
+  }
+  if (!_aiOverlayEl) {
+    _aiOverlayEl = document.createElement('div');
+    _aiOverlayEl.id = 'ai-overlay';
+    _aiOverlayEl.style.cssText = 'position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.75);' +
+      'color:#0f0;font:11px monospace;padding:6px 10px;border-radius:4px;z-index:9999;' +
+      'pointer-events:none;line-height:1.5;min-width:180px;';
+    document.body.appendChild(_aiOverlayEl);
+  }
+  _aiOverlayEl.style.display = 'block';
+
+  const qMin = Math.min(...qValues);
+  const qMax = Math.max(...qValues);
+  const qRange = qMax - qMin || 1;
+
+  let html = '<span style="color:#0ff">AI DQN</span> ';
+  html += '<span style="color:#ff0">' + _actionNames[action] + '</span><br>';
+  for (let i = 0; i < qValues.length; i++) {
+    const q = qValues[i];
+    const pct = ((q - qMin) / qRange * 100).toFixed(0);
+    const color = i === action ? '#0f0' : '#666';
+    const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+    html += `<span style="color:${color}">${_actionNames[i].padEnd(7)} ${q.toFixed(1).padStart(6)} ${bar}</span><br>`;
+  }
+  // Show threats
+  const nBullets = bullets.filter(b => b.isEnemyBullet).length;
+  const nMissiles = homingMissiles.length;
+  const nKamikazes = kamikazeEnemies.length;
+  html += `<span style="color:#f88">B:${nBullets} M:${nMissiles} K:${nKamikazes}</span>`;
+  html += ` <span style="color:#aaa">E:${enemies.length} L:${currentLevel}</span>`;
+
+  _aiOverlayEl.innerHTML = html;
 }
 
 // for AI logic - offense-first AI with gap navigation
