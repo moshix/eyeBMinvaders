@@ -3,13 +3,18 @@ pub mod network;
 pub mod rollout;
 pub mod agent;
 pub mod bridge;
+pub mod dqn_online;
 
 use wasm_bindgen::prelude::*;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use game_sim_core::game::HeadlessGame;
 use game_sim_core::state;
+use game_sim_core::constants::STATE_SIZE;
 
 use agent::{PPOAgent, PPOConfig};
 use bridge::{game_state_to_js, render_state_to_js, stats_to_js};
+use dqn_online::{OnlineDQN, OnlineDQNConfig};
 
 /// WASM-exported PPO agent that wraps the game simulation and neural network.
 #[wasm_bindgen]
@@ -216,6 +221,210 @@ impl WasmGame {
     /// Reset to a specific level (for curriculum training).
     pub fn reset_at_level(&mut self, level: i32) {
         self.game.reset_at_level(level);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WasmOnlineDQN — online DQN learner that fine-tunes from its own gameplay
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen]
+pub struct WasmOnlineDQN {
+    game: HeadlessGame,
+    dqn: OnlineDQN,
+    frame_buffer: Vec<Vec<f32>>,
+    n_frames: usize,
+    state_size: usize,
+    rng: ChaCha8Rng,
+    episode_count: u32,
+    episode_reward: f32,
+    best_score: i32,
+    avg_score: f32,
+    score_history: Vec<i32>,
+}
+
+#[wasm_bindgen]
+impl WasmOnlineDQN {
+    /// Create a new online DQN learner with default config.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        let state_size = STATE_SIZE;
+        let n_frames = 4;
+        let input_size = state_size * n_frames;
+        let config = OnlineDQNConfig::default();
+        let mut rng = ChaCha8Rng::seed_from_u64(123);
+        let dqn = OnlineDQN::new(input_size, config, &mut rng);
+        let game = HeadlessGame::new(42);
+        let initial_state = state::get_state(&game).to_vec();
+
+        let frame_buffer = vec![initial_state; n_frames];
+
+        Self {
+            game,
+            dqn,
+            frame_buffer,
+            n_frames,
+            state_size,
+            rng,
+            episode_count: 0,
+            episode_reward: 0.0,
+            best_score: 0,
+            avg_score: 0.0,
+            score_history: Vec::new(),
+        }
+    }
+
+    /// Load pretrained weights from JSON (model_weights.json format).
+    /// Initializes both policy and target networks.
+    pub fn load_weights(&mut self, json: &str) -> bool {
+        self.dqn.load_weights_json(json)
+    }
+
+    /// Run one game step: observe, act, store transition, maybe train.
+    pub fn step(&mut self) -> JsValue {
+        let stacked = self.get_stacked_state();
+        let action = self.dqn.select_action(&stacked, &mut self.rng);
+
+        let result = self.game.step(action);
+        self.episode_reward += result.reward;
+
+        // Push new frame into buffer
+        let new_state = state::get_state(&self.game).to_vec();
+        self.push_frame(&new_state);
+        let next_stacked = self.get_stacked_state();
+
+        // Store transition and maybe train
+        self.dqn
+            .store(stacked, action, result.reward, next_stacked, result.done);
+        self.dqn.maybe_train(&mut self.rng);
+
+        // Handle episode end
+        if result.done {
+            self.episode_count += 1;
+            self.score_history.push(result.score);
+            if self.score_history.len() > 100 {
+                self.score_history.remove(0);
+            }
+            self.avg_score = self.score_history.iter().sum::<i32>() as f32
+                / self.score_history.len() as f32;
+            if result.score > self.best_score {
+                self.best_score = result.score;
+            }
+            self.episode_reward = 0.0;
+            let s = self.game.reset();
+            self.reset_frames(&s.to_vec());
+        }
+
+        self.build_stats_js()
+    }
+
+    /// Run N steps in turbo mode (no per-step JS object overhead).
+    pub fn train_steps(&mut self, n: u32) -> JsValue {
+        for _ in 0..n {
+            let stacked = self.get_stacked_state();
+            let action = self.dqn.select_action(&stacked, &mut self.rng);
+
+            let result = self.game.step(action);
+            self.episode_reward += result.reward;
+
+            let new_state = state::get_state(&self.game).to_vec();
+            self.push_frame(&new_state);
+            let next_stacked = self.get_stacked_state();
+
+            self.dqn
+                .store(stacked, action, result.reward, next_stacked, result.done);
+            self.dqn.maybe_train(&mut self.rng);
+
+            if result.done {
+                self.episode_count += 1;
+                self.score_history.push(result.score);
+                if self.score_history.len() > 100 {
+                    self.score_history.remove(0);
+                }
+                self.avg_score = self.score_history.iter().sum::<i32>() as f32
+                    / self.score_history.len() as f32;
+                if result.score > self.best_score {
+                    self.best_score = result.score;
+                }
+                self.episode_reward = 0.0;
+                let s = self.game.reset();
+                self.reset_frames(&s.to_vec());
+            }
+        }
+        self.build_stats_js()
+    }
+
+    /// Get current training statistics.
+    pub fn get_stats(&self) -> JsValue {
+        self.build_stats_js()
+    }
+
+    /// Export current policy network weights as JSON.
+    pub fn export_weights(&self) -> String {
+        self.dqn.export_weights_json()
+    }
+
+    /// Set the exploration epsilon.
+    pub fn set_epsilon(&mut self, eps: f32) {
+        self.dqn.config.epsilon = eps;
+    }
+
+    /// Set the learning rate.
+    pub fn set_lr(&mut self, lr: f32) {
+        self.dqn.config.lr = lr;
+    }
+}
+
+impl WasmOnlineDQN {
+    fn push_frame(&mut self, state: &[f32]) {
+        self.frame_buffer.remove(0);
+        self.frame_buffer.push(state.to_vec());
+    }
+
+    fn reset_frames(&mut self, state: &[f32]) {
+        for f in &mut self.frame_buffer {
+            f.copy_from_slice(state);
+        }
+    }
+
+    fn get_stacked_state(&self) -> Vec<f32> {
+        let mut s = Vec::with_capacity(self.n_frames * self.state_size);
+        for frame in &self.frame_buffer {
+            s.extend_from_slice(frame);
+        }
+        s
+    }
+
+    fn build_stats_js(&self) -> JsValue {
+        let obj = js_sys::Object::new();
+        let set_i32 = |k: &str, v: i32| {
+            js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str(k),
+                &JsValue::from_f64(v as f64),
+            )
+            .ok();
+        };
+        let set_f64 = |k: &str, v: f64| {
+            js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str(k),
+                &JsValue::from_f64(v),
+            )
+            .ok();
+        };
+        set_i32("episodes", self.episode_count as i32);
+        set_f64("avgScore", self.avg_score as f64);
+        set_i32("bestScore", self.best_score);
+        set_i32("currentScore", self.game.score);
+        set_i32("currentLevel", self.game.current_level);
+        set_i32("currentLives", self.game.player_lives);
+        set_f64("lastLoss", self.dqn.last_loss as f64);
+        set_i32("updates", self.dqn.updates as i32);
+        set_i32("bufferSize", self.dqn.buffer.len() as i32);
+        set_i32("totalSteps", self.dqn.steps as i32);
+        set_f64("epsilon", self.dqn.config.epsilon as f64);
+        obj.into()
     }
 }
 
