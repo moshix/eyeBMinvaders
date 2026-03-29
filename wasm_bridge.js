@@ -186,12 +186,8 @@ function updateWasmAgent() {
     : 0;
   agentStats.totalSteps = _ppoFrameCount;
 
-  // Refresh HUD every second
+  // Refresh HUD every second (pure JS, no WASM calls)
   if (_ppoFrameCount % 60 === 0) {
-    // Also run WASM training in background if agent exists
-    if (wasmAgent) {
-      try { _refreshStats(); } catch (_e) {}
-    }
     _updateHud();
   }
 
@@ -431,35 +427,12 @@ function _stopTurbo() {
 }
 
 // ---------------------------------------------------------------------------
-// Background training — gentle idle-time PPO steps (won't block gameplay)
+// Background training — disabled during gameplay to avoid stutter.
+// Use Turbo mode (T key) when NOT playing to run PPO training.
 // ---------------------------------------------------------------------------
 
-let _bgTrainId = null;
-
-function _bgTrainCallback(deadline) {
-  if (!wasmActive || !wasmReady || !wasmAgent) return;
-
-  // Only use leftover idle time — never block a frame
-  while (deadline.timeRemaining() > 2) {
-    try {
-      wasmAgent.step(); // one internal sim step
-    } catch (_e) { break; }
-  }
-
-  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 200 });
-}
-
-function _startBackgroundTraining() {
-  if (_bgTrainId !== null) return;
-  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 200 });
-}
-
-function _stopBackgroundTraining() {
-  if (_bgTrainId !== null) {
-    cancelIdleCallback(_bgTrainId);
-    _bgTrainId = null;
-  }
-}
+function _startBackgroundTraining() { /* no-op during gameplay */ }
+function _stopBackgroundTraining() { /* no-op */ }
 
 // ---------------------------------------------------------------------------
 // Stats
