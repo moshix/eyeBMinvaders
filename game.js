@@ -2640,16 +2640,11 @@ function _updateAIOverlay(qValues, action) {
 
 // for AI logic - offense-first AI with gap navigation
 function updateAutoPlay() {
-  // WASM PPO agent
+  // WASM PPO: observe only, never controls the visible game
   if (typeof wasmBridge !== 'undefined' && wasmBridge.active) {
     if (!gamePaused && !gameOverFlag) {
       wasmBridge.update();
-      // When turbo is on, PPO also controls the visible game
-      if (wasmBridge.turbo) {
-        return; // PPO is playing — skip DQN and heuristic
-      }
     }
-    // W without T: just observe, let DQN or human continue
   }
 
   if (!autoPlayEnabled || gamePaused || gameOverFlag) return;

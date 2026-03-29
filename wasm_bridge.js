@@ -156,44 +156,11 @@ function updateWasmAgent() {
   // Throttle to 30Hz
   if (_ppoFrameCount % 2 !== 0) return true;
 
-  // When turbo is on: PPO plays the visible game + trains internally
-  if (turboMode && wasmReady && wasmAgent) {
-    try {
-      // Step the internal sim (trains PPO)
-      const result = wasmAgent.step();
-      const state = (typeof result === 'string') ? JSON.parse(result) : result;
-
-      // Apply PPO's action to the visible game
-      if (state && typeof applyDQNAction === 'function') {
-        // Don't apply actions during game over or hit animation
-        if (!gameOverFlag && !isPlayerHit) {
-          applyDQNAction(state.action || 0);
-        }
-      }
-
-      // Handle game over in visible game — quick restart
-      if (typeof gameOverFlag !== 'undefined' && gameOverFlag) {
-        _ppoEpisodes++;
-        // Restart after a brief pause so the game over screen shows
-        if (!_restartPending) {
-          _restartPending = true;
-          setTimeout(() => {
-            if (typeof restartGame === 'function') restartGame();
-            // Ensure autoplay stays on so game loop continues
-            if (typeof autoPlayEnabled !== 'undefined') autoPlayEnabled = true;
-            _restartPending = false;
-          }, 500);
-        }
-      }
-
-      // Update stats from WASM every second
-      if (_ppoFrameCount % 60 === 0) {
-        _refreshStats();
-        _updateHud();
-      }
-    } catch (err) {
-      console.error('[WASM Bridge] turbo step error:', err);
-    }
+  // Turbo mode: train PPO internally, update HUD stats only
+  // Does NOT touch the visible game — training runs in idle callbacks
+  if (turboMode && _ppoFrameCount % 60 === 0) {
+    _refreshStats();
+    _updateHud();
     return true;
   }
 
@@ -556,12 +523,39 @@ function _stopTurbo() {
 }
 
 // ---------------------------------------------------------------------------
-// Background training — disabled during gameplay to avoid stutter.
-// Use Turbo mode (T key) when NOT playing to run PPO training.
+// Background training — runs WASM PPO steps during idle time
+// Only active when Turbo (T) is enabled
 // ---------------------------------------------------------------------------
 
-function _startBackgroundTraining() { /* no-op during gameplay */ }
-function _stopBackgroundTraining() { /* no-op */ }
+let _bgTrainId = null;
+
+function _bgTrainCallback(deadline) {
+  if (!turboMode || !wasmReady || !wasmAgent) return;
+
+  // Run WASM steps only during idle time, max 5ms per callback
+  const start = performance.now();
+  let steps = 0;
+  while (performance.now() - start < 5 && deadline.timeRemaining() > 1) {
+    try {
+      wasmAgent.step();
+      steps++;
+    } catch (_e) { break; }
+  }
+
+  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 50 });
+}
+
+function _startBackgroundTraining() {
+  if (_bgTrainId !== null) return;
+  _bgTrainId = requestIdleCallback(_bgTrainCallback, { timeout: 50 });
+}
+
+function _stopBackgroundTraining() {
+  if (_bgTrainId !== null) {
+    cancelIdleCallback(_bgTrainId);
+    _bgTrainId = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Stats
@@ -850,8 +844,12 @@ async function _toggleTurbo() {
 
   if (turboMode) {
     _startTurbo();
+    _startBackgroundTraining();
+    _showHudMessage('PPO training in background — game unaffected', 'success');
   } else {
     _stopTurbo();
+    _stopBackgroundTraining();
+    _showHudMessage('PPO training paused', 'info');
   }
 
   _updateHud();
