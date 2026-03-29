@@ -2566,7 +2566,7 @@ function buildDQNState() {
   const nx = v => v / GAME_WIDTH;
   const ny = v => v / GAME_HEIGHT;
 
-  const f = new Array(50).fill(0.0);
+  const f = new Array(54).fill(0.0);
 
   // [0] Player position
   f[0] = nx(playerCx);
@@ -2778,6 +2778,39 @@ function buildDQNState() {
     if (e.y > bottomHalfY) bottomEnemies++;
   }
   f[49] = Math.min(bottomEnemies / 15.0, 1.0);
+
+  // [50-51] Lateral threat density: bullets/kamikazes/missiles within 80px left/right
+  let leftThreats = 0, rightThreats = 0;
+  for (const b of enemyBullets) {
+    const dx = b.x - playerCx, dy = b.y - playerCy;
+    if (dy > -100 && dy < 20 && Math.abs(dx) < 80) {
+      if (dx < 0) leftThreats += 1; else rightThreats += 1;
+    }
+  }
+  for (const k of kamikazeEnemies) {
+    const dx = k.x + k.width/2 - playerCx, dy = k.y + k.height/2 - playerCy;
+    if (Math.abs(dy) < 100 && Math.abs(dx) < 80) {
+      if (dx < 0) leftThreats += 2; else rightThreats += 2;
+    }
+  }
+  for (const m of homingMissiles) {
+    const dx = m.x - playerCx, dy = m.y - playerCy;
+    if (Math.abs(dy) < 100 && Math.abs(dx) < 80) {
+      if (dx < 0) leftThreats += 3; else rightThreats += 3;
+    }
+  }
+  f[50] = Math.min(leftThreats / 5.0, 1.0);
+  f[51] = Math.min(rightThreats / 5.0, 1.0);
+
+  // [52] Player position bias: -1 at left, 0 at center, +1 at right
+  f[52] = (playerCx / GAME_WIDTH - 0.5) * 2.0;
+
+  // [53] Fire line clear: 1.0 if no wall blocks shot, 0.0 if wall above
+  const fireX = player.x + player.width / 2;
+  const fireBlocked = walls.some(w =>
+    fireX >= w.x && fireX <= w.x + w.width && (w.hitCount || 0) < WALL_MAX_HITS_TOTAL
+  );
+  f[53] = fireBlocked ? 0.0 : 1.0;
 
   return f;
 }

@@ -265,6 +265,43 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
     let bottom_enemies = game.enemies.iter().filter(|e| e.y > bottom_half_y).count();
     f[49] = (bottom_enemies as f32 / 15.0).min(1.0);
 
+    // [50-51] Lateral threat density: bullets within 80px left/right of player
+    let mut left_threats: f32 = 0.0;
+    let mut right_threats: f32 = 0.0;
+    for b in game.bullets.iter().filter(|b| b.is_enemy && !b.removed) {
+        let dx = b.x - player_cx;
+        let dy = b.y - player_cy;
+        if dy > -100.0 && dy < 20.0 && dx.abs() < 80.0 {
+            if dx < 0.0 { left_threats += 1.0; } else { right_threats += 1.0; }
+        }
+    }
+    for k in game.kamikazes.iter().filter(|k| !k.removed) {
+        let dx = k.x + k.width / 2.0 - player_cx;
+        let dy = k.y + k.height / 2.0 - player_cy;
+        if dy.abs() < 100.0 && dx.abs() < 80.0 {
+            if dx < 0.0 { left_threats += 2.0; } else { right_threats += 2.0; }
+        }
+    }
+    for m in game.missiles.iter().filter(|m| !m.removed) {
+        let dx = m.x - player_cx;
+        let dy = m.y - player_cy;
+        if dy.abs() < 100.0 && dx.abs() < 80.0 {
+            if dx < 0.0 { left_threats += 3.0; } else { right_threats += 3.0; }
+        }
+    }
+    f[50] = (left_threats / 5.0).min(1.0);
+    f[51] = (right_threats / 5.0).min(1.0);
+
+    // [52] Player position bias: -1 at left edge, 0 at center, +1 at right edge
+    f[52] = ((player_cx / GAME_WIDTH) as f32 - 0.5) * 2.0;
+
+    // [53] Fire line clear: 1.0 if no wall blocks vertical shot, 0.0 if wall above
+    let fire_x = game.player_x + PLAYER_WIDTH / 2.0;
+    let fire_blocked = game.walls.iter().any(|w| {
+        fire_x >= w.x && fire_x <= w.x + w.width && w.hit_count < WALL_MAX_HITS_TOTAL
+    });
+    f[53] = if fire_blocked { 0.0 } else { 1.0 };
+
     f
 }
 
