@@ -1,0 +1,20 @@
+# Rust build artifacts
+game_sim/target/
+game_sim_core/target/
+wasm_agent/target/
+wasm_agent/pkg/
+
+# Python
+__pycache__/
+*.pyc
+
+# Training artifacts (large binary files)
+models/model_ep*.pt
+models/model_final.pt
+models/meta_learning.json
+models/meta_events.jsonl
+models/training_events.jsonl
+models/*.log
+
+# Cargo lock for libraries (keep for binaries)
+game_sim_core/Cargo.lock
