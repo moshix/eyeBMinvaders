@@ -1657,6 +1657,11 @@ function gameLoop(currentTime) {
       // Process events for sounds and explosions
       wasmPhysics.processEvents(state.events);
 
+      // Run W recording observer (skipped by updateAutoPlay in WASM mode)
+      if (typeof wasmBridge !== 'undefined' && wasmBridge.active) {
+        wasmBridge.update();
+      }
+
       // Handle game over
       if (state.gameOver && !_wasmGameOverHandled) {
         _wasmGameOverHandled = true;

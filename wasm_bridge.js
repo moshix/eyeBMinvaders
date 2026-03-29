@@ -962,8 +962,11 @@ async function _toggleWasmAgent() {
     // Start gentle background PPO training via idle callbacks
     _startBackgroundTraining();
     _createHud();
+    // Force HUD visible
+    if (hudElement) hudElement.style.display = 'block';
     _updateHud();
     _showHudMessage('Recording gameplay — press E to save', 'success');
+    console.log('[WASM Bridge] Recording mode ON. wasmActive=' + wasmActive + ' hudElement=' + !!hudElement);
   } else {
     _stopTurbo();
     _stopBackgroundTraining();
