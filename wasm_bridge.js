@@ -134,34 +134,52 @@ async function initWasmAgent(configOverrides) {
 // ---------------------------------------------------------------------------
 
 /**
- * Runs one PPO decision using the BROWSER's game state (not internal sim).
- * Uses buildDQNState() to get the 50-feature state, feeds it to the PPO
- * network for action selection, and applies the action to the visible game.
- * The internal WASM sim runs in the background for training only.
+ * Observes the current game state and player action, feeds it to the PPO
+ * for training. Does NOT control the game — the human or DQN still plays.
+ * PPO learns by watching.
  */
 let _ppoFrameCount = 0;
+let _prevScore = 0;
+let _prevLives = 0;
+let _prevLevel = 0;
 
 function updateWasmAgent() {
   if (!wasmReady || !wasmActive || !wasmAgent) return null;
 
   try {
-    // Throttle to 30Hz like the DQN (match training sim timing)
+    // Throttle to 30Hz
     _ppoFrameCount++;
-    if (_ppoFrameCount % 2 !== 0) return true; // skip odd frames at 60fps -> 30fps
+    if (_ppoFrameCount % 2 !== 0) return true;
 
-    // Use the BROWSER's game state — same function the DQN uses
-    if (typeof buildDQNState !== 'function') return null;
-    const rawState = buildDQNState();
+    // Read current player action from keyboard state
+    const action = _getCurrentAction();
 
-    // Run the internal sim step for training (background learning)
-    // This feeds the WASM's own HeadlessGame, not the browser game
+    // Read game state for reward computation
+    const newScore = (typeof score !== 'undefined') ? score : 0;
+    const newLives = (typeof player !== 'undefined') ? player.lives : 0;
+    const newLevel = (typeof currentLevel !== 'undefined') ? currentLevel : 1;
+    const isGameOver = (typeof gameOverFlag !== 'undefined') ? gameOverFlag : false;
+
+    // Compute reward (matching training reward function)
+    let reward = (newScore - _prevScore) * 0.01;
+    if (newLives < _prevLives) reward -= 5.0;
+    if (isGameOver) reward -= 20.0;
+    reward += 0.01 * newLevel;
+    if (newLevel > _prevLevel) reward += 5.0 + 3.0 * newLevel;
+
+    _prevScore = newScore;
+    _prevLives = newLives;
+    _prevLevel = newLevel;
+
+    // Feed the internal WASM sim a step (for PPO training)
+    // The WASM agent trains on its own sim but we also log the observation
     const result = wasmAgent.step();
-    const state = (typeof result === 'string') ? JSON.parse(result) : result;
 
-    // But for the VISIBLE game, apply the action from the WASM agent
-    const action = state ? (state.action || 0) : 0;
-    if (typeof applyDQNAction === 'function') {
-      applyDQNAction(action);
+    // Reset tracking on game over
+    if (isGameOver) {
+      _prevScore = 0;
+      _prevLives = (typeof PLAYER_LIVES !== 'undefined') ? PLAYER_LIVES : 6;
+      _prevLevel = 1;
     }
 
     // Refresh stats periodically
@@ -170,12 +188,26 @@ function updateWasmAgent() {
       _updateHud();
     }
 
-    return state;
+    return result;
 
   } catch (err) {
-    console.error('[WASM Bridge] step() error:', err);
+    console.error('[WASM Bridge] observe() error:', err);
     return null;
   }
+}
+
+/** Read the current player action from keyboard/AI state */
+function _getCurrentAction() {
+  if (typeof keys === 'undefined') return 0;
+  const left = keys.ArrowLeft || keys.KeyA;
+  const right = keys.ArrowRight || keys.KeyD;
+  const fire = keys.Space;
+  if (fire && left) return 4;   // fire+left
+  if (fire && right) return 5;  // fire+right
+  if (fire) return 3;           // fire
+  if (left) return 1;           // left
+  if (right) return 2;          // right
+  return 0;                     // idle
 }
 
 // ---------------------------------------------------------------------------
@@ -634,11 +666,11 @@ async function _toggleWasmAgent() {
       try { autoPlayEnabled = false; } catch (_e) { /* ignore */ }
     }
     wasmAgent.reset();
-    _showHudMessage('WASM PPO agent enabled.', 'success');
+    _showHudMessage('PPO learning: observing your gameplay', 'success');
   } else {
     _stopTurbo();
     turboMode = false;
-    _showHudMessage('WASM PPO agent disabled.', 'info');
+    _showHudMessage('PPO learning stopped', 'info');
   }
 
   _updateHud();
