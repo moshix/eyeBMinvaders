@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
-use game_sim_core::game::HeadlessGame;
+use game_sim_core::game::{HeadlessGame, RenderState};
+use game_sim_core::entities::RenderEvent;
 
 use crate::agent::AgentStats;
 
@@ -182,4 +183,222 @@ fn set_i32(obj: &js_sys::Object, key: &str, val: i32) {
 
 fn set_bool(obj: &js_sys::Object, key: &str, val: bool) {
     js_sys::Reflect::set(obj, &JsValue::from_str(key), &JsValue::from_bool(val)).ok();
+}
+
+fn set_str(obj: &js_sys::Object, key: &str, val: &str) {
+    js_sys::Reflect::set(obj, &JsValue::from_str(key), &JsValue::from_str(val)).ok();
+}
+
+// ---------------------------------------------------------------------------
+// render_state_to_js — serializes a full RenderState for the browser renderer
+// ---------------------------------------------------------------------------
+
+pub fn render_state_to_js(state: &RenderState) -> JsValue {
+    let obj = js_sys::Object::new();
+
+    // Player
+    let p = js_sys::Object::new();
+    set_f64(&p, "x", state.player.x);
+    set_f64(&p, "y", state.player.y);
+    set_f64(&p, "width", state.player.width);
+    set_f64(&p, "height", state.player.height);
+    set_bool(&p, "isHit", state.player.is_hit);
+    js_sys::Reflect::set(&obj, &"player".into(), &p).ok();
+
+    // Enemies array
+    let enemies_arr = js_sys::Array::new();
+    for e in &state.enemies {
+        let eo = js_sys::Object::new();
+        set_f64(&eo, "x", e.x);
+        set_f64(&eo, "y", e.y);
+        set_f64(&eo, "width", e.width);
+        set_f64(&eo, "height", e.height);
+        set_i32(&eo, "hits", e.hits);
+        set_i32(&eo, "row", e.row);
+        enemies_arr.push(&eo);
+    }
+    js_sys::Reflect::set(&obj, &"enemies".into(), &enemies_arr).ok();
+
+    // Bullets array
+    let bullets_arr = js_sys::Array::new();
+    for b in &state.bullets {
+        let bo = js_sys::Object::new();
+        set_f64(&bo, "x", b.x);
+        set_f64(&bo, "y", b.y);
+        set_bool(&bo, "isEnemy", b.is_enemy);
+        set_f64(&bo, "dx", b.dx);
+        set_f64(&bo, "dy", b.dy);
+        set_bool(&bo, "isMonster2Bullet", b.is_monster2);
+        bullets_arr.push(&bo);
+    }
+    js_sys::Reflect::set(&obj, &"bullets".into(), &bullets_arr).ok();
+
+    // Kamikazes array
+    let kamikazes_arr = js_sys::Array::new();
+    for k in &state.kamikazes {
+        let ko = js_sys::Object::new();
+        set_f64(&ko, "x", k.x);
+        set_f64(&ko, "y", k.y);
+        set_f64(&ko, "width", k.width);
+        set_f64(&ko, "height", k.height);
+        set_f64(&ko, "angle", k.angle);
+        kamikazes_arr.push(&ko);
+    }
+    js_sys::Reflect::set(&obj, &"kamikazes".into(), &kamikazes_arr).ok();
+
+    // Missiles array
+    let missiles_arr = js_sys::Array::new();
+    for m in &state.missiles {
+        let mo = js_sys::Object::new();
+        set_f64(&mo, "x", m.x);
+        set_f64(&mo, "y", m.y);
+        set_f64(&mo, "width", m.width);
+        set_f64(&mo, "height", m.height);
+        set_f64(&mo, "angle", m.angle);
+        missiles_arr.push(&mo);
+    }
+    js_sys::Reflect::set(&obj, &"missiles".into(), &missiles_arr).ok();
+
+    // Walls array
+    let walls_arr = js_sys::Array::new();
+    for w in &state.walls {
+        let wo = js_sys::Object::new();
+        set_f64(&wo, "x", w.x);
+        set_f64(&wo, "y", w.y);
+        set_f64(&wo, "width", w.width);
+        set_f64(&wo, "height", w.height);
+        set_i32(&wo, "hitCount", w.hit_count);
+        set_i32(&wo, "missileHits", w.missile_hits);
+        walls_arr.push(&wo);
+    }
+    js_sys::Reflect::set(&obj, &"walls".into(), &walls_arr).ok();
+
+    // Monster (optional)
+    if let Some(ref m) = state.monster {
+        let mo = js_sys::Object::new();
+        set_f64(&mo, "x", m.x);
+        set_f64(&mo, "y", m.y);
+        set_f64(&mo, "width", m.width);
+        set_f64(&mo, "height", m.height);
+        set_bool(&mo, "isHit", m.is_hit);
+        set_bool(&mo, "isSlaloming", m.is_slaloming);
+        js_sys::Reflect::set(&obj, &"monster".into(), &mo).ok();
+    }
+
+    // Monster2 (optional)
+    if let Some(ref m) = state.monster2 {
+        let mo = js_sys::Object::new();
+        set_f64(&mo, "x", m.x);
+        set_f64(&mo, "y", m.y);
+        set_f64(&mo, "width", m.width);
+        set_f64(&mo, "height", m.height);
+        set_f64(&mo, "dx", m.dx);
+        set_f64(&mo, "dy", m.dy);
+        set_bool(&mo, "isDisappeared", m.is_disappeared);
+        js_sys::Reflect::set(&obj, &"monster2".into(), &mo).ok();
+    }
+
+    // Scalars
+    set_i32(&obj, "score", state.score);
+    set_i32(&obj, "level", state.level);
+    set_i32(&obj, "lives", state.lives);
+    set_bool(&obj, "gameOver", state.game_over);
+    set_bool(&obj, "done", state.done);
+    set_f64(&obj, "reward", state.reward as f64);
+
+    // Events array
+    let events_arr = js_sys::Array::new();
+    for ev in &state.events {
+        let evo = js_sys::Object::new();
+        match ev {
+            RenderEvent::EnemyHit { x, y } => {
+                set_str(&evo, "type", "enemy_hit");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::EnemyKilled { x, y } => {
+                set_str(&evo, "type", "enemy_killed");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::PlayerHit => {
+                set_str(&evo, "type", "player_hit");
+            }
+            RenderEvent::PlayerFired { x, y } => {
+                set_str(&evo, "type", "player_fired");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::MissileDestroyed { x, y } => {
+                set_str(&evo, "type", "missile_destroyed");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::MissileBonus => {
+                set_str(&evo, "type", "missile_bonus");
+            }
+            RenderEvent::WallHit { wall_index, x, y, from_player } => {
+                set_str(&evo, "type", "wall_hit");
+                set_i32(&evo, "wallIndex", *wall_index as i32);
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+                set_bool(&evo, "fromPlayer", *from_player);
+            }
+            RenderEvent::WallDestroyed { wall_index } => {
+                set_str(&evo, "type", "wall_destroyed");
+                set_i32(&evo, "wallIndex", *wall_index as i32);
+            }
+            RenderEvent::KamikazeSpawned { x, y } => {
+                set_str(&evo, "type", "kamikaze_spawned");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::KamikazeKilled { x, y } => {
+                set_str(&evo, "type", "kamikaze_killed");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::MonsterSpawned => {
+                set_str(&evo, "type", "monster_spawned");
+            }
+            RenderEvent::MonsterHit { x, y } => {
+                set_str(&evo, "type", "monster_hit");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::Monster2Spawned => {
+                set_str(&evo, "type", "monster2_spawned");
+            }
+            RenderEvent::Monster2Disappeared => {
+                set_str(&evo, "type", "monster2_disappeared");
+            }
+            RenderEvent::Monster2Reappeared { x, y } => {
+                set_str(&evo, "type", "monster2_reappeared");
+                set_f64(&evo, "x", *x);
+                set_f64(&evo, "y", *y);
+            }
+            RenderEvent::LevelComplete { level } => {
+                set_str(&evo, "type", "level_complete");
+                set_i32(&evo, "level", *level);
+            }
+            RenderEvent::GameOver => {
+                set_str(&evo, "type", "game_over");
+            }
+            RenderEvent::BonusLife => {
+                set_str(&evo, "type", "bonus_life");
+            }
+            RenderEvent::ScoreChange { delta } => {
+                set_str(&evo, "type", "score_change");
+                set_i32(&evo, "delta", *delta);
+            }
+        }
+        events_arr.push(&evo);
+    }
+    js_sys::Reflect::set(&obj, &"events".into(), &events_arr).ok();
+
+    // Features (Float32Array for AI)
+    let features = js_sys::Float32Array::from(&state.features[..]);
+    js_sys::Reflect::set(&obj, &"features".into(), &features).ok();
+
+    obj.into()
 }

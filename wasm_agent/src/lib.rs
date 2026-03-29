@@ -9,7 +9,7 @@ use game_sim_core::game::HeadlessGame;
 use game_sim_core::state;
 
 use agent::{PPOAgent, PPOConfig};
-use bridge::{game_state_to_js, stats_to_js};
+use bridge::{game_state_to_js, render_state_to_js, stats_to_js};
 
 /// WASM-exported PPO agent that wraps the game simulation and neural network.
 #[wasm_bindgen]
@@ -169,6 +169,53 @@ impl WasmAgent {
     /// Export current PPO weights as JSON.
     pub fn export_weights(&self) -> String {
         self.agent.export_weights()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WasmGame — standalone game engine for browser physics replacement
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen]
+pub struct WasmGame {
+    game: HeadlessGame,
+}
+
+#[wasm_bindgen]
+impl WasmGame {
+    /// Create a new WasmGame instance with a default seed.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmGame {
+        WasmGame {
+            game: HeadlessGame::new(42),
+        }
+    }
+
+    /// Tick the game with an action code (0-5). Returns full render state as a JS object.
+    pub fn tick(&mut self, dt: f64, action: u8) -> JsValue {
+        let state = self.game.tick(dt, action);
+        render_state_to_js(&state)
+    }
+
+    /// Tick with raw keyboard input booleans. Returns full render state as a JS object.
+    pub fn tick_input(&mut self, _dt: f64, left: bool, right: bool, fire: bool) -> JsValue {
+        let state = self.game.step_with_input(left, right, fire);
+        render_state_to_js(&state)
+    }
+
+    /// Get the 50-feature state vector for AI inference.
+    pub fn get_state(&self) -> Vec<f32> {
+        state::get_state(&self.game).to_vec()
+    }
+
+    /// Reset for a new game. Returns the initial state vector.
+    pub fn reset(&mut self) {
+        self.game.reset();
+    }
+
+    /// Reset to a specific level (for curriculum training).
+    pub fn reset_at_level(&mut self, level: i32) {
+        self.game.reset_at_level(level);
     }
 }
 

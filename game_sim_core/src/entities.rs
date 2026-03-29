@@ -223,3 +223,77 @@ pub struct GameEvent {
     pub time: f64,
     pub score: i32,
 }
+
+// ---------------------------------------------------------------------------
+// Render-friendly entity snapshots for JS/WASM rendering
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub struct PlayerRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub is_hit: bool,
+}
+
+#[derive(Clone)]
+pub struct EnemyRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub hits: i32, pub row: i32,
+}
+
+#[derive(Clone)]
+pub struct BulletRender {
+    pub x: f64, pub y: f64, pub is_enemy: bool, pub dx: f64, pub dy: f64, pub is_monster2: bool,
+}
+
+#[derive(Clone)]
+pub struct KamikazeRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub angle: f64,
+}
+
+#[derive(Clone)]
+pub struct MissileRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub angle: f64,
+}
+
+#[derive(Clone)]
+pub struct WallRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64,
+    pub hit_count: i32, pub missile_hits: i32,
+}
+
+#[derive(Clone)]
+pub struct MonsterRender {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64,
+    pub is_hit: bool, pub is_slaloming: bool,
+}
+
+#[derive(Clone)]
+pub struct Monster2Render {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64,
+    pub dx: f64, pub dy: f64, pub is_disappeared: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Detailed render events for browser sound/VFX triggers
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub enum RenderEvent {
+    EnemyHit { x: f64, y: f64 },
+    EnemyKilled { x: f64, y: f64 },
+    PlayerHit,
+    PlayerFired { x: f64, y: f64 },
+    MissileDestroyed { x: f64, y: f64 },
+    MissileBonus,
+    WallHit { wall_index: usize, x: f64, y: f64, from_player: bool },
+    WallDestroyed { wall_index: usize },
+    KamikazeSpawned { x: f64, y: f64 },
+    KamikazeKilled { x: f64, y: f64 },
+    MonsterSpawned,
+    MonsterHit { x: f64, y: f64 },
+    Monster2Spawned,
+    Monster2Disappeared,
+    Monster2Reappeared { x: f64, y: f64 },
+    LevelComplete { level: i32 },
+    GameOver,
+    BonusLife,
+    ScoreChange { delta: i32 },
+}

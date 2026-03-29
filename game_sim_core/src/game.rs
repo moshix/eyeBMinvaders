@@ -84,6 +84,25 @@ pub struct StepResult {
     pub times_hit: u32,
 }
 
+pub struct RenderState {
+    pub player: PlayerRender,
+    pub enemies: Vec<EnemyRender>,
+    pub bullets: Vec<BulletRender>,
+    pub kamikazes: Vec<KamikazeRender>,
+    pub missiles: Vec<MissileRender>,
+    pub walls: Vec<WallRender>,
+    pub monster: Option<MonsterRender>,
+    pub monster2: Option<Monster2Render>,
+    pub score: i32,
+    pub level: i32,
+    pub lives: i32,
+    pub game_over: bool,
+    pub events: Vec<RenderEvent>,
+    pub features: [f32; STATE_SIZE],
+    pub reward: f32,
+    pub done: bool,
+}
+
 impl HeadlessGame {
     pub fn new(seed: u64) -> Self {
         let mut game = Self {
@@ -400,5 +419,126 @@ impl HeadlessGame {
         self.restore_walls();
         self.next_kamikaze_time = self.random_kamikaze_time();
         self.create_enemies();
+    }
+
+    // -------------------------------------------------------------------
+    // Render-state API for WASM browser integration
+    // -------------------------------------------------------------------
+
+    /// Full tick returning render state for browser. Same physics as step().
+    pub fn tick(&mut self, _dt_ms: f64, action: u8) -> RenderState {
+        let result = self.step(action);
+        self.build_render_state(result)
+    }
+
+    /// Step with raw input flags (for human keyboard control via WASM).
+    pub fn step_with_input(&mut self, left: bool, right: bool, fire: bool) -> RenderState {
+        let action = match (left, right, fire) {
+            (true, _, true) => 4,  // fire+left
+            (_, true, true) => 5,  // fire+right
+            (_, _, true) => 3,     // fire
+            (true, _, _) => 1,     // left
+            (_, true, _) => 2,     // right
+            _ => 0,                // idle
+        };
+        self.tick(33.333, action)
+    }
+
+    fn build_render_state(&self, result: StepResult) -> RenderState {
+        let player = PlayerRender {
+            x: self.player_x,
+            y: self.player_y,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
+            is_hit: self.is_player_hit,
+        };
+
+        // Compute column count so we can derive the row index
+        let cols = {
+            let c = ((GAME_WIDTH - 60.0) / (ENEMY_WIDTH + ENEMY_PADDING)) as i32;
+            c.max(4).min(12) as usize
+        };
+
+        let enemies: Vec<EnemyRender> = self.enemies.iter().enumerate().map(|(i, e)| {
+            EnemyRender {
+                x: e.x, y: e.y, width: e.width, height: e.height,
+                hits: e.hits,
+                row: if cols > 0 { (i / cols) as i32 } else { 0 },
+            }
+        }).collect();
+
+        let bullets: Vec<BulletRender> = self.bullets.iter().filter(|b| !b.removed).map(|b| {
+            BulletRender {
+                x: b.x, y: b.y, is_enemy: b.is_enemy,
+                dx: if b.has_direction { b.dx } else { 0.0 },
+                dy: if b.has_direction { b.dy } else { 0.0 },
+                is_monster2: b.has_direction, // Monster2 bullets are the only ones with directional movement
+            }
+        }).collect();
+
+        let kamikazes: Vec<KamikazeRender> = self.kamikazes.iter().filter(|k| !k.removed).map(|k| {
+            KamikazeRender {
+                x: k.x, y: k.y, width: k.width, height: k.height, angle: k.angle,
+            }
+        }).collect();
+
+        let missiles: Vec<MissileRender> = self.missiles.iter().filter(|m| !m.removed).map(|m| {
+            MissileRender {
+                x: m.x, y: m.y, width: m.width, height: m.height, angle: m.angle,
+            }
+        }).collect();
+
+        let walls: Vec<WallRender> = self.walls.iter().map(|w| {
+            WallRender {
+                x: w.x, y: w.y, width: w.width, height: w.height,
+                hit_count: w.hit_count, missile_hits: w.missile_hits,
+            }
+        }).collect();
+
+        let monster = self.monster.as_ref().map(|m| MonsterRender {
+            x: m.x, y: m.y, width: m.width, height: m.height,
+            is_hit: m.hit, is_slaloming: m.is_slaloming,
+        });
+
+        let monster2 = self.monster2.as_ref().map(|m| Monster2Render {
+            x: m.x, y: m.y, width: m.width, height: m.height,
+            dx: m.dx_val, dy: m.dy_val, is_disappeared: m.is_disappeared,
+        });
+
+        // Map existing EventType events to the richer RenderEvent enum
+        let events: Vec<RenderEvent> = self.events.iter().map(|e| {
+            match e.event_type {
+                EventType::EnemyKilled => RenderEvent::EnemyKilled { x: 0.0, y: 0.0 },
+                EventType::PlayerHit => RenderEvent::PlayerHit,
+                EventType::MissileShotDown => RenderEvent::MissileDestroyed { x: 0.0, y: 0.0 },
+                EventType::KamikazeKilled => RenderEvent::KamikazeKilled { x: 0.0, y: 0.0 },
+                EventType::MonsterKilled => RenderEvent::MonsterHit { x: 0.0, y: 0.0 },
+                EventType::Monster2Killed => RenderEvent::MonsterHit { x: 0.0, y: 0.0 },
+                EventType::LevelComplete => RenderEvent::LevelComplete { level: self.current_level },
+                EventType::GameOver => RenderEvent::GameOver,
+                EventType::WallDestroyed => RenderEvent::WallDestroyed { wall_index: 0 },
+                EventType::BonusEarned => RenderEvent::MissileBonus,
+                EventType::LifeGranted => RenderEvent::BonusLife,
+                EventType::PlayerShot => RenderEvent::PlayerFired {
+                    x: self.player_x + PLAYER_WIDTH / 2.0,
+                    y: self.player_y,
+                },
+                EventType::KamikazeSpawned => RenderEvent::KamikazeSpawned { x: 0.0, y: 0.0 },
+                EventType::MonsterSpawned => RenderEvent::MonsterSpawned,
+                EventType::MissileLaunched => RenderEvent::ScoreChange { delta: 0 },
+            }
+        }).collect();
+
+        RenderState {
+            player, enemies, bullets, kamikazes, missiles, walls, monster, monster2,
+            score: result.score,
+            level: result.level,
+            lives: result.lives,
+            game_over: result.done,
+            events,
+            features: result.state,
+            reward: result.reward,
+            done: result.done,
+        }
     }
 }
