@@ -284,8 +284,18 @@ pub fn calculate_reward(
     // Original proven reward function (reached level 7)
     reward += (game.score - old_score) as f32 * 0.01;
 
-    if game.player_lives < old_lives {
-        reward -= 5.0;
+    // Check for player hit this step via events
+    let was_hit = game.events.iter()
+        .any(|e| matches!(e.event_type, EventType::PlayerHit));
+
+    if was_hit {
+        if game.god_mode {
+            // God mode: very harsh penalty to teach zero-hit play
+            // Scales with total hits so each successive hit is worse
+            reward -= 15.0 + 1.0 * game.times_hit as f32;
+        } else {
+            reward -= 5.0;
+        }
     }
 
     if game.game_over {
