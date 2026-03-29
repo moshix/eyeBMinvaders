@@ -228,7 +228,7 @@ function updateWasmAgent() {
 }
 
 /** Auto-flush recorded transitions to backend every N steps */
-const _AUTO_FLUSH_INTERVAL = 5000; // flush every 5000 transitions
+const _AUTO_FLUSH_INTERVAL = 1000; // flush every 1000 transitions (~33 seconds)
 let _totalFlushed = 0;
 
 async function _autoFlushTransitions() {
@@ -961,7 +961,9 @@ async function _toggleWasmAgent() {
     _ppoTotalReward = 0;
     // Start gentle background PPO training via idle callbacks
     _startBackgroundTraining();
-    _showHudMessage('Recording gameplay — play normally', 'success');
+    _createHud();
+    _updateHud();
+    _showHudMessage('Recording gameplay — press E to save', 'success');
   } else {
     _stopTurbo();
     _stopBackgroundTraining();
@@ -1016,9 +1018,9 @@ document.addEventListener('keydown', (e) => {
     _toggleTurbo();
   }
   if (e.code === 'KeyE') {          // E — export recorded gameplay or weights
-    if (wasmActive && _recordedTransitions.length > 0) {
+    if (_recordedTransitions.length > 0) {
       exportRecordedGameplay();
-    } else {
+    } else if (wasmReady) {
       exportWasmWeights();
     }
   }
