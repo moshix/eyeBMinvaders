@@ -206,7 +206,12 @@ function updateWasmAgent() {
   agentStats.avgReward = _ppoRewardHistory.length > 0
     ? _ppoRewardHistory.reduce((a, b) => a + b, 0) / _ppoRewardHistory.length
     : 0;
-  agentStats.totalSteps = _recordedTransitions.length;
+  agentStats.totalSteps = _recordedTransitions.length + _totalFlushed;
+
+  // Auto-flush to backend when buffer is full
+  if (_recordedTransitions.length >= _AUTO_FLUSH_INTERVAL) {
+    _autoFlushTransitions();
+  }
 
   // Refresh HUD every second
   if (_ppoFrameCount % 60 === 0) {
@@ -216,12 +221,42 @@ function updateWasmAgent() {
   return true;
 }
 
-/** Export recorded gameplay as JSON download */
-function exportRecordedGameplay() {
-  if (_recordedTransitions.length === 0) {
-    _showHudMessage('No recorded gameplay yet', 'error');
-    return;
+/** Auto-flush recorded transitions to backend every N steps */
+const _AUTO_FLUSH_INTERVAL = 5000; // flush every 5000 transitions
+let _totalFlushed = 0;
+
+async function _autoFlushTransitions() {
+  if (_recordedTransitions.length < _AUTO_FLUSH_INTERVAL) return;
+
+  const batch = _recordedTransitions.splice(0, _AUTO_FLUSH_INTERVAL);
+  try {
+    const resp = await fetch('/api/gameplay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transitions: batch,
+        episodes: _ppoEpisodes,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+    if (resp.ok) {
+      _totalFlushed += batch.length;
+      _showHudMessage(`Saved ${batch.length} steps (total: ${_totalFlushed})`, 'success');
+    } else {
+      // Backend not available — push back and try file download
+      _recordedTransitions.unshift(...batch);
+      _downloadTransitions();
+    }
+  } catch (_e) {
+    // No backend — push back
+    _recordedTransitions.unshift(...batch);
+    _downloadTransitions();
   }
+}
+
+/** Fallback: download as JSON file */
+function _downloadTransitions() {
+  if (_recordedTransitions.length === 0) return;
   const data = JSON.stringify({
     transitions: _recordedTransitions,
     episodes: _ppoEpisodes,
@@ -234,7 +269,19 @@ function exportRecordedGameplay() {
   a.download = `gameplay_${_recordedTransitions.length}steps.json`;
   a.click();
   URL.revokeObjectURL(url);
-  _showHudMessage(`Exported ${_recordedTransitions.length} transitions`, 'success');
+}
+
+/** Export: tries backend first, falls back to download */
+function exportRecordedGameplay() {
+  if (_recordedTransitions.length === 0 && _totalFlushed === 0) {
+    _showHudMessage('No recorded gameplay yet', 'error');
+    return;
+  }
+  if (_recordedTransitions.length > 0) {
+    _autoFlushTransitions();
+  } else {
+    _showHudMessage(`All ${_totalFlushed} steps already saved`, 'success');
+  }
 }
 
 /** Read the current player action from keyboard/AI state */
@@ -664,7 +711,7 @@ function _updateHud() {
       statsEl.textContent = [
         'Games: ' + _ppoEpisodes,
         'Avg: ' + avgR,
-        'Recorded: ' + _recordedTransitions.length,
+        'Saved: ' + (_recordedTransitions.length + _totalFlushed),
         'T=train E=export',
       ].join(' | ');
     }
