@@ -940,9 +940,15 @@ function _updateDashboard() {
 // ---------------------------------------------------------------------------
 
 async function _toggleWasmAgent() {
+  // W key: toggle recording/observation mode. WASM PPO is optional.
+  // If WASM fails to load, recording still works (pure JS).
   if (!wasmReady) {
-    const ok = await initWasmAgent();
-    if (!ok) return;
+    try {
+      await initWasmAgent();
+    } catch (_e) {
+      // WASM PPO failed — that's OK, recording works without it
+      console.log('[WASM Bridge] PPO not available — recording-only mode');
+    }
   }
 
   wasmActive = !wasmActive;
@@ -955,7 +961,7 @@ async function _toggleWasmAgent() {
     _ppoTotalReward = 0;
     // Start gentle background PPO training via idle callbacks
     _startBackgroundTraining();
-    _showHudMessage('PPO learning — play normally, AI watches & learns', 'success');
+    _showHudMessage('Recording gameplay — play normally', 'success');
   } else {
     _stopTurbo();
     _stopBackgroundTraining();
