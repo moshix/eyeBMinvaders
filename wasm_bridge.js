@@ -177,11 +177,26 @@ function updateWasmAgent() {
   reward += 0.01 * newLevel;
   _ppoTotalReward += reward;
 
-  // Get current state and action
-  const curState = (typeof buildDQNState === 'function') ? buildDQNState() : null;
+  // Get current STACKED state (216 dims = 54 features × 4 frames)
+  // Read from the DQN frame buffer without mutating it
+  let curState = null;
+  if (typeof dqnFrameBuffer !== 'undefined' && dqnFrameBuffer && dqnFrameBuffer.buffer) {
+    // Read the existing frame buffer (already maintained by updateDQN)
+    const fb = dqnFrameBuffer;
+    const stacked = new Array(fb.nFrames * fb.stateSize);
+    for (let f = 0; f < fb.nFrames; f++) {
+      for (let j = 0; j < fb.stateSize; j++) {
+        stacked[f * fb.stateSize + j] = fb.buffer[f][j];
+      }
+    }
+    curState = stacked;
+  } else if (typeof buildDQNState === 'function') {
+    // Fallback: raw features without stacking
+    curState = buildDQNState();
+  }
   const action = _getCurrentAction();
 
-  // Record transition
+  // Record transition with stacked state
   if (_prevState && _recordedTransitions.length < _MAX_RECORDED) {
     _recordedTransitions.push({
       s: Array.from(_prevState),
