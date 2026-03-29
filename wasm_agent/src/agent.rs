@@ -15,15 +15,45 @@ pub struct PPOConfig {
     pub gae_lambda: f32,
     pub entropy_coeff: f32,
     pub value_coeff: f32,
+    #[serde(alias = "learning_rate")]
     pub lr: f32,
     pub n_epochs: u32,
+    #[serde(alias = "batch_size")]
     pub minibatch_size: usize,
     pub rollout_length: usize,
     pub n_frames: usize,
     pub max_grad_norm: f32,
     pub seed: u64,
     pub god_mode: bool,
+    // LR scheduling
+    #[serde(default = "default_lr_warmup_updates")]
+    pub lr_warmup_updates: u32,
+    #[serde(default = "default_lr_decay_updates")]
+    pub lr_decay_updates: u32,
+    #[serde(default = "default_lr_min")]
+    pub lr_min: f32,
+    // Curriculum
+    #[serde(default = "default_curriculum_enabled")]
+    pub curriculum_enabled: bool,
+    #[serde(default = "default_curriculum_start_level")]
+    pub curriculum_start_level: i32,
+    #[serde(default = "default_curriculum_advance_threshold")]
+    pub curriculum_advance_threshold: f32,
+    #[serde(default = "default_curriculum_window")]
+    pub curriculum_window: u32,
+    // Observation normalization
+    #[serde(default = "default_obs_norm_enabled")]
+    pub obs_norm_enabled: bool,
 }
+
+fn default_lr_warmup_updates() -> u32 { 10 }
+fn default_lr_decay_updates() -> u32 { 500 }
+fn default_lr_min() -> f32 { 1e-5 }
+fn default_curriculum_enabled() -> bool { true }
+fn default_curriculum_start_level() -> i32 { 1 }
+fn default_curriculum_advance_threshold() -> f32 { 15.0 }
+fn default_curriculum_window() -> u32 { 50 }
+fn default_obs_norm_enabled() -> bool { true }
 
 impl Default for PPOConfig {
     fn default() -> Self {
@@ -31,16 +61,24 @@ impl Default for PPOConfig {
             clip_epsilon: 0.2,
             gamma: 0.99,
             gae_lambda: 0.95,
-            entropy_coeff: 0.01,
+            entropy_coeff: 0.02,
             value_coeff: 0.5,
             lr: 3e-4,
             n_epochs: 4,
             minibatch_size: 64,
-            rollout_length: 512,
+            rollout_length: 2048,
             n_frames: 4,
-            max_grad_norm: 0.5,
+            max_grad_norm: 1.0,
             seed: 42,
             god_mode: true,
+            lr_warmup_updates: 10,
+            lr_decay_updates: 500,
+            lr_min: 1e-5,
+            curriculum_enabled: true,
+            curriculum_start_level: 1,
+            curriculum_advance_threshold: 15.0,
+            curriculum_window: 50,
+            obs_norm_enabled: true,
         }
     }
 }
@@ -91,6 +129,82 @@ impl Default for AgentStats {
     }
 }
 
+/// Running statistics using Welford's online algorithm for observation normalization.
+pub struct RunningStats {
+    pub mean: Vec<f32>,
+    pub var: Vec<f32>,
+    pub count: f32,
+    size: usize,
+}
+
+impl RunningStats {
+    pub fn new(size: usize) -> Self {
+        Self {
+            mean: vec![0.0; size],
+            var: vec![1.0; size],
+            count: 0.0,
+            size,
+        }
+    }
+
+    pub fn update(&mut self, x: &[f32]) {
+        self.count += 1.0;
+        for i in 0..self.size.min(x.len()) {
+            let delta = x[i] - self.mean[i];
+            self.mean[i] += delta / self.count;
+            let delta2 = x[i] - self.mean[i];
+            self.var[i] += delta * delta2;
+        }
+    }
+
+    pub fn normalize(&self, x: &[f32]) -> Vec<f32> {
+        let n = self.size.min(x.len());
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            let std = if self.count > 1.0 {
+                (self.var[i] / self.count).sqrt().max(1e-8)
+            } else {
+                1.0
+            };
+            let val = (x[i] - self.mean[i]) / std;
+            out.push(val.clamp(-10.0, 10.0));
+        }
+        out
+    }
+}
+
+/// Reward normalizer — divides by running std without subtracting mean.
+pub struct RewardNormalizer {
+    mean: f64,
+    var: f64,
+    count: f64,
+}
+
+impl RewardNormalizer {
+    pub fn new() -> Self {
+        Self {
+            mean: 0.0,
+            var: 1.0,
+            count: 0.0,
+        }
+    }
+
+    pub fn normalize(&mut self, reward: f32) -> f32 {
+        let r = reward as f64;
+        self.count += 1.0;
+        let delta = r - self.mean;
+        self.mean += delta / self.count;
+        let delta2 = r - self.mean;
+        self.var += delta * delta2;
+        let std = if self.count > 1.0 {
+            (self.var / self.count).sqrt().max(1e-8)
+        } else {
+            1.0
+        };
+        (r / std) as f32
+    }
+}
+
 /// PPO Agent with actor-critic network, rollout buffer, and frame stacking.
 pub struct PPOAgent {
     pub network: ActorCriticNet,
@@ -101,6 +215,13 @@ pub struct PPOAgent {
     // Frame stacking
     frame_buffer: Vec<Vec<f32>>,
     adam_step: u32,
+    // Observation normalization
+    obs_stats: RunningStats,
+    // Reward normalization
+    pub reward_norm: RewardNormalizer,
+    // Curriculum learning
+    pub curriculum_level: i32,
+    pub level_rewards: Vec<f32>,
 }
 
 impl PPOAgent {
@@ -109,6 +230,8 @@ impl PPOAgent {
         let rollout = RolloutBuffer::new(config.rollout_length);
         let rng = ChaCha8Rng::seed_from_u64(config.seed.wrapping_add(1));
         let n_frames = config.n_frames;
+        let obs_size = n_frames * 50;
+        let curriculum_level = config.curriculum_start_level;
 
         Self {
             network,
@@ -118,6 +241,10 @@ impl PPOAgent {
             rng,
             frame_buffer: vec![vec![0.0f32; 50]; n_frames],
             adam_step: 0,
+            obs_stats: RunningStats::new(obs_size),
+            reward_norm: RewardNormalizer::new(),
+            curriculum_level,
+            level_rewards: Vec::new(),
         }
     }
 
@@ -134,13 +261,18 @@ impl PPOAgent {
         }
     }
 
-    /// Get the stacked state (n_frames * 50 = 200 features).
-    pub fn stacked_state(&self) -> Vec<f32> {
+    /// Get the stacked state (n_frames * 50 = 200 features), optionally normalized.
+    pub fn stacked_state(&mut self) -> Vec<f32> {
         let mut s = Vec::with_capacity(self.config.n_frames * 50);
         for frame in &self.frame_buffer {
             s.extend_from_slice(frame);
         }
-        s
+        if self.config.obs_norm_enabled {
+            self.obs_stats.update(&s);
+            self.obs_stats.normalize(&s)
+        } else {
+            s
+        }
     }
 
     /// Select an action by sampling from the policy distribution.
@@ -181,6 +313,47 @@ impl PPOAgent {
     /// Store a transition in the rollout buffer.
     pub fn store_transition(&mut self, state: Vec<f32>, action: u8, log_prob: f32, reward: f32, value: f32, done: bool) {
         self.rollout.push(state, action, log_prob, reward, value, done);
+    }
+
+    /// Compute the learning rate with warmup and cosine decay schedule.
+    pub fn scheduled_lr(&self) -> f32 {
+        let t = self.adam_step;
+        let warmup = self.config.lr_warmup_updates;
+        let decay_end = self.config.lr_decay_updates;
+        let lr_max = self.config.lr;
+        let lr_min = self.config.lr_min;
+        if t < warmup {
+            let progress = (t + 1) as f32 / warmup as f32;
+            lr_min + progress * (lr_max - lr_min)
+        } else if t < decay_end {
+            let progress = (t - warmup) as f32 / (decay_end - warmup) as f32;
+            let cosine = (1.0 + (progress * std::f32::consts::PI).cos()) / 2.0;
+            lr_min + cosine * (lr_max - lr_min)
+        } else {
+            lr_min
+        }
+    }
+
+    /// Check if the curriculum level should advance based on recent episode rewards.
+    /// Returns Some(new_level) if advanced, None otherwise.
+    pub fn check_curriculum_advance(&mut self, episode_reward: f32) -> Option<i32> {
+        if !self.config.curriculum_enabled {
+            return None;
+        }
+        self.level_rewards.push(episode_reward);
+        let window = self.config.curriculum_window as usize;
+        if self.level_rewards.len() > window {
+            self.level_rewards.drain(..self.level_rewards.len() - window);
+        }
+        if self.level_rewards.len() >= window {
+            let avg = self.level_rewards.iter().sum::<f32>() / self.level_rewards.len() as f32;
+            if avg >= self.config.curriculum_advance_threshold {
+                self.curriculum_level += 1;
+                self.level_rewards.clear();
+                return Some(self.curriculum_level);
+            }
+        }
+        None
     }
 
     /// Run PPO update when the rollout buffer is full. Returns update stats.
@@ -303,8 +476,8 @@ impl PPOAgent {
                     self.network.backward(&fwd, &policy_grad, value_grad);
                 }
 
-                // Apply gradient clipping and Adam update
-                self.network.update(self.config.lr, self.adam_step, self.config.max_grad_norm);
+                // Apply gradient clipping and Adam update with scheduled LR
+                self.network.update(self.scheduled_lr(), self.adam_step, self.config.max_grad_norm);
 
                 total_policy_loss += batch_policy_loss / batch_size;
                 total_value_loss += batch_value_loss / batch_size;

@@ -18,7 +18,7 @@ pub struct Linear {
 impl Linear {
     /// Create a new Linear layer with Kaiming uniform initialization.
     pub fn new(in_features: usize, out_features: usize, rng: &mut ChaCha8Rng) -> Self {
-        let bound = 1.0 / (in_features as f32).sqrt();
+        let bound = (6.0 / in_features as f32).sqrt();
         let weight: Vec<Vec<f32>> = (0..out_features)
             .map(|_| {
                 (0..in_features)

@@ -43,29 +43,27 @@ let hudElement = null;
 // ---------------------------------------------------------------------------
 
 const DEFAULT_AGENT_CONFIG = {
-  // Game dimensions
-  game_width: 1024,
-  game_height: 576,
-
-  // PPO hyperparameters
-  learning_rate: 3e-4,
+  lr: 3e-4,
   gamma: 0.99,
   gae_lambda: 0.95,
   clip_epsilon: 0.2,
-  entropy_coeff: 0.01,
+  entropy_coeff: 0.02,
   value_coeff: 0.5,
-  max_grad_norm: 0.5,
-
-  // Network architecture
-  hidden_sizes: [256, 256, 128],
-
-  // Training
-  batch_size: 64,
+  max_grad_norm: 1.0,
+  minibatch_size: 64,
   n_epochs: 4,
   rollout_length: 2048,
-
-  // Actions: idle, left, right, fire, fire+left, fire+right
-  n_actions: 6,
+  n_frames: 4,
+  seed: 42,
+  god_mode: false,
+  lr_warmup_updates: 10,
+  lr_decay_updates: 500,
+  lr_min: 1e-5,
+  curriculum_enabled: true,
+  curriculum_start_level: 1,
+  curriculum_advance_threshold: 15.0,
+  curriculum_window: 50,
+  obs_norm_enabled: true,
 };
 
 // ---------------------------------------------------------------------------

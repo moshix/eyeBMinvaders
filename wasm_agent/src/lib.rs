@@ -184,9 +184,19 @@ impl WasmAgent {
         let window = &self.reward_history;
         self.agent.stats.avg_reward = window.iter().sum::<f32>() / window.len() as f32;
 
-        // Reset for next episode
+        // Check curriculum advancement
+        if let Some(new_level) = self.agent.check_curriculum_advance(self.episode_reward) {
+            // Reset at the new curriculum level
+            self.episode_reward = 0.0;
+            let initial_state = self.game.reset_at_level(new_level);
+            self.agent.reset_frames(&initial_state);
+            return;
+        }
+
+        // Reset for next episode using current curriculum level
         self.episode_reward = 0.0;
-        let initial_state = self.game.reset();
+        let level = self.agent.curriculum_level;
+        let initial_state = self.game.reset_at_level(level);
         self.agent.reset_frames(&initial_state);
     }
 }
