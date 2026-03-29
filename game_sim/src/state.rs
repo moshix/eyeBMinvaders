@@ -284,18 +284,8 @@ pub fn calculate_reward(
     // Original proven reward function (reached level 7)
     reward += (game.score - old_score) as f32 * 0.01;
 
-    // Check for player hit this step via events
-    let was_hit = game.events.iter()
-        .any(|e| matches!(e.event_type, EventType::PlayerHit));
-
-    if was_hit {
-        if game.god_mode {
-            // God mode: very harsh penalty to teach zero-hit play
-            // Scales with total hits so each successive hit is worse
-            reward -= 15.0 + 1.0 * game.times_hit as f32;
-        } else {
-            reward -= 5.0;
-        }
+    if game.player_lives < old_lives {
+        reward -= 5.0;
     }
 
     if game.game_over {
@@ -303,13 +293,12 @@ pub fn calculate_reward(
     }
 
     if wall_destroyed_count > 0 {
-        reward -= 3.0 * wall_destroyed_count as f32;
+        reward -= 2.0 * wall_destroyed_count as f32;
     }
 
-    // Penalty for shooting own walls — very harsh to prevent wall destruction
-    // Walls are critical shields; destroying them is always worse than missing a shot
+    // Penalty for shooting own walls
     if player_wall_hits > 0 {
-        reward -= 3.0 * player_wall_hits as f32;
+        reward -= 0.5 * player_wall_hits as f32;
     }
 
     // Progressive survival bonus: scales with level
@@ -319,26 +308,8 @@ pub fn calculate_reward(
     reward += kamikazes_killed_this_step as f32 * 1.5;
     reward += missiles_shot_this_step as f32 * 2.0;
 
-    // Threat proximity penalty: penalize being dangerously close to threats
-    // (replaces near-miss reward which encouraged risky behavior)
-    let player_cx = game.player_x + PLAYER_WIDTH / 2.0;
-    let player_cy = game.player_y + PLAYER_HEIGHT / 2.0;
-    for b in game.bullets.iter().filter(|b| b.is_enemy) {
-        let d = ((b.x - player_cx).powi(2) + (b.y - player_cy).powi(2)).sqrt();
-        if d < 80.0 {
-            reward -= 0.15 * (1.0 - d / 80.0) as f32;
-        }
-    }
-    for k in game.kamikazes.iter() {
-        let d = ((k.x + k.width/2.0 - player_cx).powi(2) + (k.y + k.height/2.0 - player_cy).powi(2)).sqrt();
-        if d < 120.0 {
-            reward -= 0.2 * (1.0 - d / 120.0) as f32;
-        }
-    }
-    for m in game.missiles.iter() {
-        let d = ((m.x - player_cx).powi(2) + (m.y - player_cy).powi(2)).sqrt();
-        if d < 100.0 {
-            reward -= 0.2 * (1.0 - d / 100.0) as f32;
+    // Dodging reward: threats passed close but missed
+    reward += near_misses as f32 * 0.1;
         }
     }
 
