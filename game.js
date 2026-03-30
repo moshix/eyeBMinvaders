@@ -2602,12 +2602,11 @@ function dqnForward(state) {
                         w[`backbone.${layerIdx}.bias`], x, true);
       layerIdx += 2;
     }
-    // Level conditioning: append [1-3, 4-6, 7+] one-hot bucket
+    // Level conditioning: append continuous level value
     if (dqnModel.level_conditioned) {
       const nf = dqnModel.n_frames || 1;
       const levelIdx = (nf - 1) * 54 + 2; // feature 2 of last frame
-      const level = state[levelIdx] * 10; // denormalize
-      x = x.concat([level < 4 ? 1 : 0, level >= 4 && level < 7 ? 1 : 0, level >= 7 ? 1 : 0]);
+      x = x.concat([state[levelIdx]]); // normalized level (0-1)
     }
     // Policy head
     layerIdx = 0;

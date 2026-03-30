@@ -72,10 +72,11 @@ class PPOConfig:
     hidden_sizes: list = None       # backbone sizes
     head_hidden: int = 64           # policy/value head hidden size
     use_curriculum: bool = True     # aggressive curriculum learning
+    entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
 
     def __post_init__(self):
         if self.hidden_sizes is None:
-            self.hidden_sizes = [256, 128]
+            self.hidden_sizes = [512, 256, 128]
 
 
 # =============================================================================
@@ -88,7 +89,7 @@ class AggressiveCurriculum:
     of episodes, advances the minimum start level.
     """
 
-    def __init__(self, threshold=0.90, window=500, warmup=10000, max_level=6):
+    def __init__(self, threshold=0.90, window=500, warmup=10000, max_level=9):
         self.threshold = threshold
         self.window = window
         self.warmup = warmup
@@ -132,16 +133,15 @@ class AggressiveCurriculum:
 # Actor-Critic Network
 # =============================================================================
 class ActorCritic(nn.Module):
-    """Actor-Critic with level-conditioned heads.
+    """Actor-Critic with continuous level conditioning.
 
     The backbone processes the full state. Before the policy/value heads,
-    a 3-dim level bucket one-hot [1-3, 4-6, 7+] is concatenated to the
-    backbone features. This lets the heads learn level-specific strategies
-    while the backbone learns general game understanding.
+    the normalized level (0-1 continuous) is concatenated to the backbone
+    features. This lets the heads learn level-specific strategies while
+    the backbone learns general game understanding.
     """
-    N_LEVEL_BUCKETS = 3  # [1-3], [4-6], [7+]
 
-    def __init__(self, state_size, action_size, hidden_sizes=(256, 128), head_hidden=64):
+    def __init__(self, state_size, action_size, hidden_sizes=(512, 256, 128), head_hidden=64):
         super().__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -157,8 +157,8 @@ class ActorCritic(nn.Module):
             prev = h
         self.backbone = nn.Sequential(*layers)
 
-        # Heads receive backbone features + level bucket one-hot
-        head_in = prev + self.N_LEVEL_BUCKETS
+        # Heads receive backbone features + continuous level value
+        head_in = prev + 1
 
         # Policy head (actor)
         self.policy_head = nn.Sequential(
@@ -183,27 +183,19 @@ class ActorCritic(nn.Module):
         nn.init.orthogonal_(self.policy_head[-1].weight, gain=0.01)
         nn.init.orthogonal_(self.value_head[-1].weight, gain=1.0)
 
-    def _level_bucket(self, x):
-        """Extract level from state and create one-hot bucket [1-3, 4-6, 7+].
+    def _level_feature(self, x):
+        """Extract continuous level from state (feature index 2 of last frame).
 
-        Level is at feature index 2 of each frame (normalized: level/10).
-        With n_frames=4, it's at indices 2, 56, 110, 164 — use last frame.
+        Level is normalized: level/10, so 0.1=level1, 0.5=level5, 1.0=level10.
         """
         n_frames = x.shape[-1] // 54 if x.shape[-1] > 54 else 1
         level_idx = (n_frames - 1) * 54 + 2  # feature 2 of last frame
-        level_norm = x[:, level_idx]  # 0.0 to 1.0 (level/10)
-        level = level_norm * 10.0  # reconstruct actual level
-
-        bucket = torch.zeros(x.shape[0], self.N_LEVEL_BUCKETS, device=x.device)
-        bucket[:, 0] = (level < 4).float()    # levels 1-3
-        bucket[:, 1] = ((level >= 4) & (level < 7)).float()  # levels 4-6
-        bucket[:, 2] = (level >= 7).float()    # levels 7+
-        return bucket
+        return x[:, level_idx:level_idx + 1]  # [batch, 1]
 
     def forward(self, x):
         features = self.backbone(x)
-        bucket = self._level_bucket(x)
-        conditioned = torch.cat([features, bucket], dim=-1)
+        level = self._level_feature(x)
+        conditioned = torch.cat([features, level], dim=-1)
         logits = self.policy_head(conditioned)
         value = self.value_head(conditioned)
         return logits, value
@@ -216,8 +208,8 @@ class ActorCritic(nn.Module):
 
     def get_value(self, x):
         features = self.backbone(x)
-        bucket = self._level_bucket(x)
-        conditioned = torch.cat([features, bucket], dim=-1)
+        level = self._level_feature(x)
+        conditioned = torch.cat([features, level], dim=-1)
         return self.value_head(conditioned).squeeze(-1)
 
     def evaluate_actions(self, x, actions):
@@ -307,8 +299,9 @@ def scheduled_lr(update_step, lr_max, lr_min, warmup, decay_end):
 # PPO Update
 # =============================================================================
 def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
-               returns_flat, advantages_flat, cfg, device):
+               returns_flat, advantages_flat, cfg, device, entropy_coeff_override=None):
     """Run PPO update epochs over collected rollout data."""
+    ent_coeff = entropy_coeff_override if entropy_coeff_override is not None else cfg.entropy_coeff
     n = len(obs_flat)
 
     # Normalize advantages (full rollout)
@@ -350,7 +343,7 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
             entropy_mean = entropy.mean()
 
             # Total loss
-            loss = policy_loss + cfg.value_coeff * value_loss - cfg.entropy_coeff * entropy_mean
+            loss = policy_loss + cfg.value_coeff * value_loss - ent_coeff * entropy_mean
 
             optimizer.zero_grad()
             loss.backward()
@@ -695,8 +688,16 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
         for pg in optimizer.param_groups:
             pg['lr'] = lr
 
+        # Entropy decay: linearly from entropy_coeff → entropy_coeff_end
+        if cfg.entropy_coeff_end < cfg.entropy_coeff and cfg.lr_decay_updates > 0:
+            progress = min(update_count / cfg.lr_decay_updates, 1.0)
+            current_entropy_coeff = cfg.entropy_coeff + progress * (cfg.entropy_coeff_end - cfg.entropy_coeff)
+        else:
+            current_entropy_coeff = cfg.entropy_coeff
+
         losses = ppo_update(agent, optimizer, obs_flat, actions_flat, log_probs_flat,
-                           returns_flat, advantages_flat, cfg, device)
+                           returns_flat, advantages_flat, cfg, device,
+                           entropy_coeff_override=current_entropy_coeff)
 
         # Periodic checkpoint
         if update_count % 100 == 0:
