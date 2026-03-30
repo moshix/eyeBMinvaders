@@ -2658,7 +2658,8 @@ function dqnForward(state) {
   const modelType = dqnModel.type || 'standard';
 
   if (modelType === 'actor_critic') {
-    // PPO actor-critic: backbone → concat level bucket → policy_head
+    // PPO actor-critic: backbone → (optional GRU) → concat level → policy_head
+    // Path A: feedforward backbone
     let x = state;
     let layerIdx = 0;
     while (w[`backbone.${layerIdx}.weight`]) {
@@ -2666,12 +2667,60 @@ function dqnForward(state) {
                         w[`backbone.${layerIdx}.bias`], x, true);
       layerIdx += 2;
     }
+
+    // Path B: GRU side-channel (if model has gru weights)
+    if (w['gru_proj.weight']) {
+      const nf = dqnModel.n_frames || 1;
+      const rawSize = Math.round(state.length / nf);
+      const rawFrame = state.slice((nf - 1) * rawSize, nf * rawSize);
+
+      // Project raw frame → gru input
+      let gruIn = linearForward(w['gru_proj.weight'], w['gru_proj.bias'], rawFrame, true);
+
+      // GRU cell: z = sigmoid(W_iz @ input + W_hz @ hidden + biases)
+      //           r = sigmoid(W_ir @ input + W_hr @ hidden + biases)
+      //           n = tanh(W_in @ input + r * (W_hn @ hidden) + biases)
+      //           h' = (1-z) * n + z * hidden
+      const gruSize = gruIn.length;
+      if (!window._gruHidden) window._gruHidden = new Array(gruSize).fill(0);
+      const hx = window._gruHidden;
+
+      const wih = w['gru.weight_ih']; // [3*hidden, input]
+      const whh = w['gru.weight_hh']; // [3*hidden, hidden]
+      const bih = w['gru.bias_ih'];   // [3*hidden]
+      const bhh = w['gru.bias_hh'];   // [3*hidden]
+
+      // Compute gates: matmul input and hidden separately, then combine
+      const gi = new Array(3 * gruSize).fill(0);
+      const gh = new Array(3 * gruSize).fill(0);
+      for (let i = 0; i < 3 * gruSize; i++) {
+        let si = bih[i], sh = bhh[i];
+        for (let j = 0; j < gruSize; j++) {
+          si += wih[i][j] * gruIn[j];
+          sh += whh[i][j] * hx[j];
+        }
+        gi[i] = si;
+        gh[i] = sh;
+      }
+
+      const sigmoid = v => 1 / (1 + Math.exp(-v));
+      const newH = new Array(gruSize);
+      for (let i = 0; i < gruSize; i++) {
+        const z = sigmoid(gi[i] + gh[i]);
+        const r = sigmoid(gi[gruSize + i] + gh[gruSize + i]);
+        const n = Math.tanh(gi[2 * gruSize + i] + r * gh[2 * gruSize + i]);
+        newH[i] = (1 - z) * n + z * hx[i];
+      }
+      window._gruHidden = newH;
+      x = x.concat(newH);
+    }
+
     // Level conditioning: append continuous level value
     if (dqnModel.level_conditioned) {
       const nf = dqnModel.n_frames || 1;
       const rawSize = Math.round(state.length / nf);
-      const levelIdx = (nf - 1) * rawSize + 2; // feature 2 of last frame
-      x = x.concat([state[levelIdx]]); // normalized level (0-1)
+      const levelIdx = (nf - 1) * rawSize + 2;
+      x = x.concat([state[levelIdx]]);
     }
     // Policy head
     layerIdx = 0;

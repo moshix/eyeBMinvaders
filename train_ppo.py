@@ -71,6 +71,8 @@ class PPOConfig:
     obs_norm: bool = True
     hidden_sizes: list = None       # backbone sizes
     head_hidden: int = 64           # policy/value head hidden size
+    gru_hidden: int = 64            # GRU side-channel hidden size (0 to disable)
+    chunk_length: int = 16          # sequential chunk size for GRU training
     use_curriculum: bool = False    # aggressive curriculum (off by default — hurts PPO)
     entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
     target_kl: float = 0.03          # KL early stop threshold (None to disable)
@@ -134,15 +136,19 @@ class AggressiveCurriculum:
 # Actor-Critic Network
 # =============================================================================
 class ActorCritic(nn.Module):
-    """Actor-Critic with continuous level conditioning.
+    """Dual-path Actor-Critic: feedforward backbone + GRU side-channel.
 
-    The backbone processes the full state. Before the policy/value heads,
-    the normalized level (0-1 continuous) is concatenated to the backbone
-    features. This lets the heads learn level-specific strategies while
-    the backbone learns general game understanding.
+    Path A (proven, fast): [stacked_frames] → backbone [512→256→128] → 128-dim
+    Path B (memory):       [raw_frame 62] → Linear(62→64) → GRU(64→64) → 64-dim
+    Merge: concat([128 backbone, 64 memory, 1 level]) = 193 → heads [193→64→6]
+
+    The feedforward path handles reactive dodging (frame-level precision).
+    The GRU path handles temporal patterns (drift tracking, Monster2 arcs).
+    If gru_hidden=0, falls back to feedforward-only (128+1=129 → heads).
     """
 
-    def __init__(self, state_size, action_size, hidden_sizes=(512, 256, 128), head_hidden=64, n_frames=4):
+    def __init__(self, state_size, action_size, hidden_sizes=(512, 256, 128),
+                 head_hidden=64, n_frames=4, gru_hidden=64):
         super().__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -150,8 +156,9 @@ class ActorCritic(nn.Module):
         self.raw_state_size = state_size // n_frames if n_frames > 1 else state_size
         self.hidden_sizes = list(hidden_sizes)
         self.head_hidden = head_hidden
+        self.gru_hidden = gru_hidden
 
-        # Shared backbone
+        # Path A: Shared feedforward backbone (processes stacked frames)
         layers = []
         prev = state_size
         for h in hidden_sizes:
@@ -159,9 +166,17 @@ class ActorCritic(nn.Module):
             layers.append(nn.ReLU())
             prev = h
         self.backbone = nn.Sequential(*layers)
+        backbone_out = prev  # 128
 
-        # Heads receive backbone features + continuous level value
-        head_in = prev + 1
+        # Path B: GRU side-channel (processes raw single frame)
+        if gru_hidden > 0:
+            self.gru_proj = nn.Linear(self.raw_state_size, gru_hidden)
+            self.gru = nn.GRUCell(gru_hidden, gru_hidden)
+            head_in = backbone_out + gru_hidden + 1  # 128 + 64 + 1 = 193
+        else:
+            self.gru_proj = None
+            self.gru = None
+            head_in = backbone_out + 1  # 128 + 1 = 129
 
         # Policy head (actor)
         self.policy_head = nn.Sequential(
@@ -177,45 +192,103 @@ class ActorCritic(nn.Module):
             nn.Linear(head_hidden, 1),
         )
 
-        # Orthogonal initialization (standard for PPO)
+        # Orthogonal initialization
         for module in self.modules():
             if isinstance(module, nn.Linear):
                 nn.init.orthogonal_(module.weight, gain=math.sqrt(2))
                 nn.init.zeros_(module.bias)
-        # Smaller init for policy and value output layers
         nn.init.orthogonal_(self.policy_head[-1].weight, gain=0.01)
         nn.init.orthogonal_(self.value_head[-1].weight, gain=1.0)
+        # Small init for GRU projection so it starts near-zero (additive, not disruptive)
+        if self.gru_proj is not None:
+            nn.init.orthogonal_(self.gru_proj.weight, gain=0.1)
 
     def _level_feature(self, x):
-        """Extract continuous level from state (feature index 2 of last frame).
-
-        Level is normalized: level/10, so 0.1=level1, 0.5=level5, 1.0=level10.
-        """
-        level_idx = (self.n_frames - 1) * self.raw_state_size + 2  # feature 2 of last frame
+        """Extract continuous level from state (feature index 2 of last frame)."""
+        level_idx = (self.n_frames - 1) * self.raw_state_size + 2
         return x[:, level_idx:level_idx + 1]  # [batch, 1]
 
-    def forward(self, x):
-        features = self.backbone(x)
+    def _raw_frame(self, x):
+        """Extract the last raw frame from stacked input."""
+        start = (self.n_frames - 1) * self.raw_state_size
+        return x[:, start:start + self.raw_state_size]  # [batch, 62]
+
+    def _merge(self, backbone_feat, gru_out, level):
+        """Merge backbone + GRU + level into conditioned features."""
+        if gru_out is not None:
+            return torch.cat([backbone_feat, gru_out, level], dim=-1)
+        return torch.cat([backbone_feat, level], dim=-1)
+
+    def forward(self, x, hx=None):
+        """Forward pass. Returns (logits, value, new_hx)."""
+        backbone_feat = self.backbone(x)
         level = self._level_feature(x)
-        conditioned = torch.cat([features, level], dim=-1)
+
+        gru_out = None
+        new_hx = hx
+        if self.gru is not None:
+            raw = self._raw_frame(x)
+            proj = torch.relu(self.gru_proj(raw))
+            if hx is None:
+                hx = torch.zeros(x.shape[0], self.gru_hidden, device=x.device)
+            new_hx = self.gru(proj, hx)
+            gru_out = new_hx
+
+        conditioned = self._merge(backbone_feat, gru_out, level)
         logits = self.policy_head(conditioned)
         value = self.value_head(conditioned)
-        return logits, value
+        return logits, value, new_hx
 
-    def get_action_and_value(self, x):
-        logits, value = self.forward(x)
+    def get_action_and_value(self, x, hx=None):
+        logits, value, new_hx = self.forward(x, hx)
         dist = Categorical(logits=logits)
         action = dist.sample()
-        return action, dist.log_prob(action), dist.entropy(), value.squeeze(-1)
+        return action, dist.log_prob(action), dist.entropy(), value.squeeze(-1), new_hx
 
-    def get_value(self, x):
-        features = self.backbone(x)
+    def get_value(self, x, hx=None):
+        backbone_feat = self.backbone(x)
         level = self._level_feature(x)
-        conditioned = torch.cat([features, level], dim=-1)
+        gru_out = None
+        if self.gru is not None:
+            raw = self._raw_frame(x)
+            proj = torch.relu(self.gru_proj(raw))
+            if hx is None:
+                hx = torch.zeros(x.shape[0], self.gru_hidden, device=x.device)
+            new_hx = self.gru(proj, hx)
+            gru_out = new_hx
+        conditioned = self._merge(backbone_feat, gru_out, level)
         return self.value_head(conditioned).squeeze(-1)
 
-    def evaluate_actions(self, x, actions):
-        logits, value = self.forward(x)
+    def evaluate_actions_sequential(self, obs_chunks, actions_chunks, init_hx):
+        """Evaluate actions on sequential chunks for GRU training.
+
+        obs_chunks: [n_chunks, chunk_len, features]
+        actions_chunks: [n_chunks, chunk_len]
+        init_hx: [n_chunks, gru_hidden] — GRU state at chunk start
+        Returns: log_probs, entropy, values (all [n_chunks * chunk_len])
+        """
+        n_chunks, chunk_len, _ = obs_chunks.shape
+        all_log_probs = []
+        all_entropy = []
+        all_values = []
+
+        for c in range(n_chunks):
+            hx = init_hx[c:c+1].expand(1, -1).squeeze(0) if init_hx is not None else None
+            for t in range(chunk_len):
+                x = obs_chunks[c, t:t+1]  # [1, features]
+                logits, value, hx = self.forward(x, hx.unsqueeze(0) if hx is not None and hx.dim() == 1 else hx)
+                dist = Categorical(logits=logits)
+                all_log_probs.append(dist.log_prob(actions_chunks[c, t:t+1]))
+                all_entropy.append(dist.entropy())
+                all_values.append(value.squeeze(-1))
+                if hx is not None:
+                    hx = hx.squeeze(0)
+
+        return torch.cat(all_log_probs), torch.cat(all_entropy), torch.cat(all_values)
+
+    def evaluate_actions(self, x, actions, hx=None):
+        """Non-sequential evaluate (for backward compat / no-GRU mode)."""
+        logits, value, _ = self.forward(x, hx)
         dist = Categorical(logits=logits)
         return dist.log_prob(actions), dist.entropy(), value.squeeze(-1)
 
@@ -378,6 +451,137 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
     }
 
 
+def ppo_update_chunked(agent, optimizer, roll_obs, roll_actions, roll_log_probs,
+                       returns, advantages, roll_hx, roll_dones,
+                       cfg, device, entropy_coeff_override=None, chunk_length=16):
+    """PPO update with batched sequential chunks for GRU training.
+
+    Splits each env's rollout into chunks, then processes all chunks' timestep t
+    in parallel before moving to t+1. This keeps the GRU sequential within each
+    chunk while leveraging GPU parallelism across chunks.
+    """
+    ent_coeff = entropy_coeff_override if entropy_coeff_override is not None else cfg.entropy_coeff
+    rollout_len, num_envs, state_size = roll_obs.shape
+
+    # Normalize advantages
+    adv_flat = advantages.reshape(-1)
+    adv_mean = adv_flat.mean()
+    adv_std = adv_flat.std() + 1e-8
+    advantages = (advantages - adv_mean) / adv_std
+
+    # Build chunks: reshape [rollout, envs, ...] → [n_chunks, chunk_len, ...]
+    n_chunks_per_env = rollout_len // chunk_length
+    total_chunks = n_chunks_per_env * num_envs
+
+    # Reshape: for each env, split rollout into consecutive chunks
+    # Result: [total_chunks, chunk_length, ...]
+    chunk_obs = np.zeros((total_chunks, chunk_length, state_size), dtype=np.float32)
+    chunk_actions = np.zeros((total_chunks, chunk_length), dtype=np.int64)
+    chunk_old_lp = np.zeros((total_chunks, chunk_length), dtype=np.float32)
+    chunk_returns = np.zeros((total_chunks, chunk_length), dtype=np.float32)
+    chunk_advantages = np.zeros((total_chunks, chunk_length), dtype=np.float32)
+    chunk_init_hx = np.zeros((total_chunks, cfg.gru_hidden), dtype=np.float32)
+
+    idx = 0
+    for env in range(num_envs):
+        for c in range(n_chunks_per_env):
+            t0 = c * chunk_length
+            t1 = t0 + chunk_length
+            chunk_obs[idx] = roll_obs[t0:t1, env]
+            chunk_actions[idx] = roll_actions[t0:t1, env]
+            chunk_old_lp[idx] = roll_log_probs[t0:t1, env]
+            chunk_returns[idx] = returns[t0:t1, env].astype(np.float32)
+            chunk_advantages[idx] = advantages[t0:t1, env]
+            chunk_init_hx[idx] = roll_hx[t0, env]
+            idx += 1
+
+    # Convert to tensors
+    chunk_obs_t = torch.as_tensor(chunk_obs, dtype=torch.float32, device=device)
+    chunk_actions_t = torch.as_tensor(chunk_actions, dtype=torch.long, device=device)
+    chunk_old_lp_t = torch.as_tensor(chunk_old_lp, dtype=torch.float32, device=device)
+    chunk_returns_t = torch.as_tensor(chunk_returns, dtype=torch.float32, device=device)
+    chunk_adv_t = torch.as_tensor(chunk_advantages, dtype=torch.float32, device=device)
+    chunk_hx_t = torch.as_tensor(chunk_init_hx, dtype=torch.float32, device=device)
+
+    total_policy_loss = 0.0
+    total_value_loss = 0.0
+    total_entropy = 0.0
+    total_kl = 0.0
+    n_updates = 0
+    kl_early_stopped = False
+
+    chunks_per_batch = max(1, cfg.minibatch_size // chunk_length)
+
+    for epoch in range(cfg.n_epochs):
+        if kl_early_stopped:
+            break
+        perm = torch.randperm(total_chunks, device=device)
+
+        for batch_start in range(0, total_chunks, chunks_per_batch):
+            batch_end = min(batch_start + chunks_per_batch, total_chunks)
+            batch_idx = perm[batch_start:batch_end]
+            nb = len(batch_idx)
+
+            # Batched sequential: process all chunks' step t in parallel
+            hx = chunk_hx_t[batch_idx]  # [nb, gru_hidden]
+            step_log_probs = []
+            step_entropy = []
+            step_values = []
+
+            for t in range(chunk_length):
+                x = chunk_obs_t[batch_idx, t]  # [nb, state_size]
+                logits, value, hx = agent.forward(x, hx)
+                dist = Categorical(logits=logits)
+                step_log_probs.append(dist.log_prob(chunk_actions_t[batch_idx, t]))
+                step_entropy.append(dist.entropy())
+                step_values.append(value.squeeze(-1))
+
+            # Stack: [chunk_length, nb] → [nb * chunk_length]
+            new_log_probs = torch.stack(step_log_probs, dim=1).reshape(-1)
+            entropy_all = torch.stack(step_entropy, dim=1).reshape(-1)
+            new_values = torch.stack(step_values, dim=1).reshape(-1)
+
+            old_lp_batch = chunk_old_lp_t[batch_idx].reshape(-1)
+            returns_batch = chunk_returns_t[batch_idx].reshape(-1)
+            adv_batch = chunk_adv_t[batch_idx].reshape(-1)
+
+            # KL early stop
+            with torch.no_grad():
+                approx_kl = (old_lp_batch - new_log_probs).mean().item()
+            if cfg.target_kl and approx_kl > cfg.target_kl:
+                kl_early_stopped = True
+                break
+
+            # Policy loss
+            ratio = (new_log_probs - old_lp_batch).exp()
+            surr1 = ratio * adv_batch
+            surr2 = ratio.clamp(1 - cfg.clip_epsilon, 1 + cfg.clip_epsilon) * adv_batch
+            policy_loss = -torch.min(surr1, surr2).mean()
+
+            value_loss = F.mse_loss(new_values, returns_batch)
+            entropy_mean = entropy_all.mean()
+            loss = policy_loss + cfg.value_coeff * value_loss - ent_coeff * entropy_mean
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
+            optimizer.step()
+
+            total_policy_loss += policy_loss.item()
+            total_value_loss += value_loss.item()
+            total_entropy += entropy_mean.item()
+            total_kl += approx_kl
+            n_updates += 1
+
+    return {
+        'policy_loss': total_policy_loss / max(n_updates, 1),
+        'value_loss': total_value_loss / max(n_updates, 1),
+        'entropy': total_entropy / max(n_updates, 1),
+        'kl': total_kl / max(n_updates, 1),
+        'kl_stopped': kl_early_stopped,
+    }
+
+
 # =============================================================================
 # GPU Auto-Scaling for PPO
 # =============================================================================
@@ -463,7 +667,8 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
     agent = ActorCritic(state_size, action_size,
                         hidden_sizes=cfg.hidden_sizes,
                         head_hidden=cfg.head_hidden,
-                        n_frames=cfg.n_frames).to(device)
+                        n_frames=cfg.n_frames,
+                        gru_hidden=cfg.gru_hidden).to(device)
 
     # torch.compile for PyTorch 2.x+
     try:
@@ -508,8 +713,9 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
     print(f"Episodes target: {episodes:,}")
     print(f"PPO: rollout={cfg.rollout_length} steps × {num_envs} envs = "
           f"{cfg.rollout_length * num_envs:,} transitions/update")
+    gru_str = f", GRU={cfg.gru_hidden} (chunks={cfg.chunk_length})" if cfg.gru_hidden > 0 else ""
     print(f"Network: backbone={cfg.hidden_sizes}, heads={cfg.head_hidden}, "
-          f"frames={cfg.n_frames}")
+          f"frames={cfg.n_frames}{gru_str}")
     print(f"LR: {cfg.lr} → {cfg.lr_min} (warmup={cfg.lr_warmup_updates}, "
           f"decay={cfg.lr_decay_updates})")
     print(f"Clip={cfg.clip_epsilon}, Entropy={cfg.entropy_coeff}, "
@@ -524,6 +730,14 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
     roll_rewards = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
     roll_dones = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
     roll_values = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
+    # GRU hidden states per step (for chunk-based training)
+    use_gru = cfg.gru_hidden > 0
+    if use_gru:
+        roll_hx = np.zeros((cfg.rollout_length, num_envs, cfg.gru_hidden), dtype=np.float32)
+        gru_hx = torch.zeros(num_envs, cfg.gru_hidden, device=device)  # current hidden state
+    else:
+        roll_hx = None
+        gru_hx = None
 
     # Stats
     scores = deque(maxlen=1000)
@@ -553,7 +767,7 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
             states_t = torch.as_tensor(states, dtype=torch.float32, device=device)
 
             with torch.no_grad():
-                actions, log_probs, _, values = agent.get_action_and_value(states_t)
+                actions, log_probs, _, values, new_hx = agent.get_action_and_value(states_t, gru_hx)
 
             actions_np = actions.cpu().numpy()
             log_probs_np = log_probs.cpu().numpy()
@@ -563,6 +777,9 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
             roll_obs[step] = states if not isinstance(states, np.ndarray) else states
             roll_actions[step] = actions_np
             roll_log_probs[step] = log_probs_np
+            if use_gru:
+                roll_hx[step] = gru_hx.cpu().numpy()  # store hidden state BEFORE this step
+                gru_hx = new_hx.detach()
             roll_values[step] = values_np
 
             # Step environments
@@ -666,6 +883,9 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                     next_states[i] = frame_stack.reset(i, raw_state)
                 else:
                     next_states[i] = raw_state
+                # Reset GRU hidden state for this env on episode end
+                if use_gru:
+                    gru_hx[i] = 0.0
 
             # Update observation normalization
             if obs_rms:
@@ -683,21 +903,13 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
         # === Compute GAE ===
         with torch.no_grad():
             states_t = torch.as_tensor(states, dtype=torch.float32, device=device)
-            next_value = agent.get_value(states_t).cpu().numpy()
+            next_value = agent.get_value(states_t, gru_hx).cpu().numpy()
 
         advantages, returns = compute_gae(
             roll_rewards, roll_values, roll_dones, next_value,
             gamma=cfg.gamma, lam=cfg.gae_lambda)
 
         # === PPO Update ===
-        # Flatten [steps, envs, ...] → [steps*envs, ...]
-        n_transitions = cfg.rollout_length * num_envs
-        obs_flat = roll_obs.reshape(n_transitions, state_size)
-        actions_flat = roll_actions.reshape(n_transitions)
-        log_probs_flat = roll_log_probs.reshape(n_transitions)
-        returns_flat = returns.reshape(n_transitions).astype(np.float32)
-        advantages_flat = advantages.reshape(n_transitions).astype(np.float32)
-
         # Update learning rate
         update_count += 1
         lr = scheduled_lr(update_count, cfg.lr, cfg.lr_min,
@@ -712,9 +924,24 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
         else:
             current_entropy_coeff = cfg.entropy_coeff
 
-        losses = ppo_update(agent, optimizer, obs_flat, actions_flat, log_probs_flat,
-                           returns_flat, advantages_flat, cfg, device,
-                           entropy_coeff_override=current_entropy_coeff)
+        if use_gru:
+            # Chunk-based PPO update for GRU: sequential chunks within each env
+            losses = ppo_update_chunked(
+                agent, optimizer, roll_obs, roll_actions, roll_log_probs,
+                returns, advantages, roll_hx, roll_dones,
+                cfg, device, entropy_coeff_override=current_entropy_coeff,
+                chunk_length=cfg.chunk_length)
+        else:
+            # Standard flat PPO update (no GRU)
+            n_transitions = cfg.rollout_length * num_envs
+            obs_flat = roll_obs.reshape(n_transitions, state_size)
+            actions_flat = roll_actions.reshape(n_transitions)
+            log_probs_flat = roll_log_probs.reshape(n_transitions)
+            returns_flat = returns.reshape(n_transitions).astype(np.float32)
+            advantages_flat = advantages.reshape(n_transitions).astype(np.float32)
+            losses = ppo_update(agent, optimizer, obs_flat, actions_flat, log_probs_flat,
+                               returns_flat, advantages_flat, cfg, device,
+                               entropy_coeff_override=current_entropy_coeff)
 
         # Periodic checkpoint
         if update_count % 100 == 0:
@@ -767,6 +994,7 @@ def save_checkpoint(agent, optimizer, obs_rms, update_count, episode_count,
             'hidden_sizes': cfg.hidden_sizes,
             'head_hidden': cfg.head_hidden,
             'n_frames': cfg.n_frames,
+            'gru_hidden': cfg.gru_hidden,
             'lr': cfg.lr,
             'lr_min': cfg.lr_min,
             'lr_decay_updates': cfg.lr_decay_updates,
