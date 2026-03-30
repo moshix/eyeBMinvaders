@@ -1557,7 +1557,54 @@ function getPlayerAction() {
 
 // ---------------------------------------------------------------------------
 
+// Performance profiler — toggle with F2
+let _perfEnabled = false;
+let _perfFrameTimes = [];
+let _perfPhysicsTime = 0;
+let _perfDrawTime = 0;
+let _perfAITime = 0;
+let _perfOverlayEl = null;
+const _PERF_WINDOW = 60; // average over 60 frames
+
+function _perfUpdate(frameMs, physicsMs, drawMs, aiMs) {
+  _perfFrameTimes.push({ frame: frameMs, physics: physicsMs, draw: drawMs, ai: aiMs });
+  if (_perfFrameTimes.length > _PERF_WINDOW) _perfFrameTimes.shift();
+
+  if (!_perfOverlayEl) {
+    _perfOverlayEl = document.createElement('div');
+    _perfOverlayEl.id = 'perf-overlay';
+    _perfOverlayEl.style.cssText = 'position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.8);' +
+      'color:#0f0;font:11px monospace;padding:6px 10px;border-radius:4px;z-index:9999;' +
+      'pointer-events:none;line-height:1.4;';
+    document.body.appendChild(_perfOverlayEl);
+  }
+
+  const n = _perfFrameTimes.length;
+  const avg = (arr, key) => arr.reduce((s, v) => s + v[key], 0) / n;
+  const max = (arr, key) => arr.reduce((m, v) => Math.max(m, v[key]), 0);
+  const avgFrame = avg(_perfFrameTimes, 'frame');
+  const avgPhys = avg(_perfFrameTimes, 'physics');
+  const avgDraw = avg(_perfFrameTimes, 'draw');
+  const avgAI = avg(_perfFrameTimes, 'ai');
+  const fps = avgFrame > 0 ? (1000 / avgFrame).toFixed(0) : '?';
+  const maxFrame = max(_perfFrameTimes, 'frame');
+
+  const bar = (ms, total) => {
+    const pct = total > 0 ? Math.round(ms / total * 20) : 0;
+    return '\u2588'.repeat(pct) + '\u2591'.repeat(20 - pct);
+  };
+
+  _perfOverlayEl.innerHTML =
+    `<span style="color:#0ff;font-weight:bold">PERF</span> <span style="color:#ff0">${fps} FPS</span> ` +
+    `<span style="color:#888">${avgFrame.toFixed(1)}ms avg / ${maxFrame.toFixed(1)}ms max</span><br>` +
+    `<span style="color:#8f8">Physics: ${avgPhys.toFixed(2)}ms ${bar(avgPhys, avgFrame)}</span><br>` +
+    `<span style="color:#88f">AI:      ${avgAI.toFixed(2)}ms ${bar(avgAI, avgFrame)}</span><br>` +
+    `<span style="color:#f88">Draw:    ${avgDraw.toFixed(2)}ms ${bar(avgDraw, avgFrame)}</span><br>` +
+    `<span style="color:#888">Idle:    ${(avgFrame - avgPhys - avgDraw - avgAI).toFixed(2)}ms</span>`;
+}
+
 function gameLoop(currentTime) {
+  const _frameStart = performance.now();
   // Calculate deltaTime first
   if (!lastTime) {
     lastTime = currentTime;
@@ -1571,7 +1618,9 @@ function gameLoop(currentTime) {
   // WASM Physics Mode — if available, use WASM for all game logic
   // =========================================================================
   if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready && !gamePaused && !gameOverFlag) {
+    const _aiStart = performance.now();
     const action = getPlayerAction();
+    _perfAITime = performance.now() - _aiStart;
 
     // Fixed-timestep accumulator: WASM ticks at 33.333ms internally,
     // so only call tick when enough real time has accumulated.
@@ -1579,6 +1628,7 @@ function gameLoop(currentTime) {
     window._wasmTimeAccum += deltaTime * 1000; // convert to ms
     const TICK_MS = 33.333;
     let state = null;
+    const _physStart = performance.now();
     // Only step when we've accumulated enough time for a physics tick
     if (window._wasmTimeAccum >= TICK_MS) {
         state = wasmPhysics.tick(TICK_MS, action);
@@ -1586,6 +1636,7 @@ function gameLoop(currentTime) {
         // Prevent spiral of death if tab was backgrounded
         if (window._wasmTimeAccum > TICK_MS * 3) window._wasmTimeAccum = 0;
     }
+    _perfPhysicsTime = performance.now() - _physStart;
 
     if (state) {
       // Update global state from WASM (for rendering functions that read globals)
@@ -1727,6 +1778,7 @@ function gameLoop(currentTime) {
     drawMissileExplosions();
     // Threats drawn LAST so always visible on top of monsters/explosions
     drawKamikazeEnemies();
+    const _drawStart = performance.now();
     drawMissiles();
     drawBullets();
     drawScore();
@@ -1739,6 +1791,13 @@ function gameLoop(currentTime) {
     drawAIStatus();
     drawBonusAnimation();
     drawHotStreakMessage();
+    _perfDrawTime = performance.now() - _drawStart;
+
+    if (_perfEnabled) {
+      _perfUpdate(performance.now() - _frameStart, _perfPhysicsTime, _perfDrawTime, _perfAITime);
+    } else if (_perfOverlayEl) {
+      _perfOverlayEl.style.display = 'none';
+    }
 
     requestAnimationFrame(gameLoop);
     return; // Skip all JS physics below
@@ -1933,6 +1992,11 @@ document.addEventListener("keydown", (e) => {
     isMuted = !isMuted;
     playerExplosionSound.muted = isMuted;
     gameOverSound.muted = isMuted;
+  }
+  if (e.code === "F2") {
+    e.preventDefault();
+    _perfEnabled = !_perfEnabled;
+    if (!_perfEnabled && _perfOverlayEl) _perfOverlayEl.style.display = 'none';
   }
   if (e.code === "Digit0" || e.code === "Numpad0") {
     autoPlayEnabled = !autoPlayEnabled;
@@ -2605,7 +2669,8 @@ function dqnForward(state) {
     // Level conditioning: append continuous level value
     if (dqnModel.level_conditioned) {
       const nf = dqnModel.n_frames || 1;
-      const levelIdx = (nf - 1) * 54 + 2; // feature 2 of last frame
+      const rawSize = Math.round(state.length / nf);
+      const levelIdx = (nf - 1) * rawSize + 2; // feature 2 of last frame
       x = x.concat([state[levelIdx]]); // normalized level (0-1)
     }
     // Policy head
@@ -3122,40 +3187,78 @@ function _updateAIOverlay(qValues, action) {
   const confidence = sorted.length > 1 ? (sorted[0] - sorted[1]).toFixed(2) : '0';
   html += `<span style="color:#888">conf:${confidence}</span> `;
 
-  // AI reasoning — event stream log (only notable events)
-  const [reasonColor, reasonText, notable] = _getAIReasoning(action, qValues);
-  if (notable && reasonText !== _aiLastReason) {
-    _aiLastReason = reasonText;
-    _aiReasonLog.unshift({ color: reasonColor, text: reasonText });
-    if (_aiReasonLog.length > 16) _aiReasonLog.length = 16;
-  }
-  html += '<br>';
-  for (let ri = 0; ri < _aiReasonLog.length; ri++) {
-    const r = _aiReasonLog[ri];
-    const opacity = ri === 0 ? 1.0 : Math.max(0.25, 1.0 - ri * 0.05);
-    html += `<span style="color:${r.color};opacity:${opacity}">${ri === 0 ? '▸ ' : '  '}${r.text}</span><br>`;
-  }
-
   // Threats + game state
   const nBullets = bullets.filter(b => b.isEnemyBullet).length;
   const nMissiles = homingMissiles.length;
   const nKamikazes = kamikazeEnemies.length;
+  const totalThreats = nBullets + nMissiles + nKamikazes;
   html += `<span style="color:#f88">B:${nBullets} M:${nMissiles} K:${nKamikazes}</span>`;
   html += ` <span style="color:#aaa">E:${enemies.length} L:${currentLevel}</span><br>`;
 
-  // WASM physics indicator
+  // --- Threat Predictions ---
+  const playerCx = player.x + player.width / 2;
+  const playerCy = player.y + player.height / 2;
+
+  // Bullet convergence: count arriving within ±50px in 0.5s
+  let convergence = 0;
+  for (const b of bullets) {
+    if (!b.isEnemyBullet) continue;
+    const speed = BULLET_SPEED / 3; // enemy bullet speed
+    const futureY = b.y + speed * 0.5;
+    if (Math.abs(b.x - playerCx) < 50 && futureY >= playerCy - 30 && futureY <= playerCy + 30) {
+      convergence++;
+    }
+  }
+  // Lowest enemy danger
+  let lowestPct = 0;
+  if (enemies.length > 0) {
+    let lowestY = 0;
+    for (const e of enemies) { if (e.y + e.height > lowestY) lowestY = e.y + e.height; }
+    lowestPct = Math.round(lowestY / (GAME_HEIGHT - 75) * 100);
+  }
+  // Safest side
+  let leftDanger = 0, rightDanger = 0;
+  for (const b of bullets) {
+    if (!b.isEnemyBullet) continue;
+    const speed = BULLET_SPEED / 3;
+    const futureX = b.x, futureY = b.y + speed * 0.3;
+    const dx = futureX - playerCx;
+    if (futureY > playerCy - 60 && futureY < playerCy + 30 && Math.abs(dx) < 80) {
+      if (dx < 0) leftDanger++; else rightDanger++;
+    }
+  }
+  const saferSide = leftDanger < rightDanger ? 'LEFT' : leftDanger > rightDanger ? 'RIGHT' : 'EVEN';
+
+  html += `<span style="color:#fa0;font-size:10px">PREDICTIONS</span><br>`;
+  const convColor = convergence >= 3 ? '#f44' : convergence >= 1 ? '#fa0' : '#4f4';
+  html += `<span style="color:${convColor}">Incoming: ${convergence} bullets in 0.5s</span><br>`;
+  const descColor = lowestPct >= 80 ? '#f44' : lowestPct >= 60 ? '#fa0' : '#4f4';
+  html += `<span style="color:${descColor}">Descent: ${lowestPct}% to wall</span><br>`;
+  html += `<span style="color:#88f">Safer: ${saferSide} (L:${leftDanger} R:${rightDanger})</span><br>`;
+  if (totalThreats >= 5) {
+    html += `<span style="color:#f44">HEAVY FIRE: ${totalThreats} threats</span><br>`;
+  }
+
+  // --- Activity Log (reduced to 8, major decisions only) ---
+  const [reasonColor, reasonText, notable] = _getAIReasoning(action, qValues);
+  if (notable && reasonText !== _aiLastReason) {
+    _aiLastReason = reasonText;
+    _aiReasonLog.unshift({ color: reasonColor, text: reasonText });
+    if (_aiReasonLog.length > 8) _aiReasonLog.length = 8;
+  }
+  if (_aiReasonLog.length > 0) {
+    html += `<span style="color:#888;font-size:10px">ACTIVITY</span><br>`;
+    for (let ri = 0; ri < _aiReasonLog.length; ri++) {
+      const r = _aiReasonLog[ri];
+      const opacity = ri === 0 ? 1.0 : Math.max(0.3, 1.0 - ri * 0.1);
+      html += `<span style="color:${r.color};opacity:${opacity}">${ri === 0 ? '▸ ' : '  '}${r.text}</span><br>`;
+    }
+  }
+
+  // WASM indicator
   const wasmOn = typeof wasmPhysics !== 'undefined' && wasmPhysics.ready;
   html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'}</span>`;
-
-  // Online learning stats
-  if (wasmOn && wasmPhysics.learningActive) {
-    const ls = wasmPhysics.learningStats;
-    html += `<br><span style="color:#0ff">🧠 LEARNING</span>`;
-    html += ` Ep:${ls.episodes} Avg:${Math.round(ls.avgScore)} Best:${ls.bestScore}`;
-    html += `<br><span style="color:#888">Buf:${ls.bufferSize} Upd:${ls.updates} Loss:${ls.loss.toFixed(4)}</span>`;
-  } else if (wasmOn && wasmPhysics.onlineDQN) {
-    html += ` <span style="color:#888">L=learn</span>`;
-  }
+  html += ` <span style="color:#888">F2=perf</span>`;
 
   _aiOverlayEl.innerHTML = html;
 }

@@ -406,3 +406,88 @@ With zero gap: avg 74K in Rust AND in browser — model transfers perfectly.
 4. **Browser fine-tuning needs zero gap to work.** Earlier attempts at JS headless fine-tuning degraded the model because the JS game was subtly different from training. With WASM physics, the PPO trains on identical code.
 
 5. **Fixed-timestep matters.** Variable deltaTime causes training/inference divergence. The accumulator pattern (only tick at 33ms intervals) was essential.
+
+## PPO Training: Breaking the DQN Plateau (March 2025)
+
+### Why PPO > DQN for This Game
+
+DQN plateaued at avg level 4.4-4.6 despite 500K+ episodes. The fundamental limitation: DQN is off-policy — the replay buffer mixes stale transitions from easy early levels with fresh high-level experience, diluting gradient signal. Curriculum learning made it worse because the replay buffer still contained mismatched experiences.
+
+PPO is on-policy — every gradient update uses only fresh experience from the current policy. This naturally solves the stale-experience problem for difficulty-scaling games.
+
+### PPO Evolution
+
+| Version | Avg Level | Avg Score | Best Level | Best Score | Key Changes |
+|---------|-----------|-----------|------------|------------|-------------|
+| DQN best | 4.6 | 85K | 8 | 155K | Dueling+NoisyNet+4frames, 500K eps |
+| PPO v1 | 5.3 | 107K | 8 | 166K | Basic actor-critic [256,128], obs norm, 90K eps |
+| PPO v2 (curriculum) | 3.3 | 34K | 5 | 85K | Aggressive curriculum — too fast advancement |
+| PPO v3 (tuned curriculum) | 3.3 | 39K | 5 | 92K | 90% threshold, 500-ep window — still hurt |
+| PPO v4 (no curriculum) | 4.0 | 80K | 8 | 139K | Level-conditioned heads, no curriculum |
+| **PPO v5** | **5.8** | **116K** | **9** | **170K** | Bigger backbone [512,256,128], continuous level conditioning, entropy decay |
+
+### Key Learnings
+
+1. **PPO throughput is 4-5x DQN** on the same hardware (80+ ep/s vs 18 ep/s) due to no replay buffer overhead and simpler update logic.
+
+2. **Curriculum learning failed again** — even with PPO. The AggressiveCurriculum (advance when 80-90% clear rate) caused the agent to be thrown into levels it wasn't ready for. Plain training from level 1 every episode consistently outperformed curriculum variants. **The learnings doc was right: "duration matters more than complexity."**
+
+3. **Bigger backbone matters at high levels.** [256,128] plateaued at avg 5.3; [512,256,128] pushed to 5.8 and reached level 9. The extra capacity handles the complexity of simultaneous fast enemies, kamikazes, missiles, and Monster2 chase patterns at levels 7+.
+
+4. **Entropy decay is critical for PPO.** Starting at 0.02 and decaying to 0.005 over training gives exploration early on and decisive action selection (tight policy) at high levels where split-second dodging matters. Without decay, the policy stays too stochastic.
+
+5. **Continuous level conditioning > bucket one-hot.** A single continuous level/10 value appended to backbone features before the policy/value heads scales to any level without bucket boundary artifacts. The 3-bucket approach [1-3, 4-6, 7+] made levels 7-10 indistinguishable.
+
+6. **Observation normalization (RunningMeanStd) is essential for PPO.** Without it, different feature scales cause unstable training. Welford's online algorithm with [-10, 10] clamping works well.
+
+### Remaining Failure Modes (Level 8+)
+
+1. **Enemies reaching the bottom** — at high levels enemies move fast (1.33^N speed multiplier) and step down frequently. The agent doesn't prioritize clearing enemies urgently enough. Fixed with enemy descent pressure reward (v6).
+
+2. **Dense threat death** — too many bullets + kamikazes converging simultaneously overwhelm the agent. Fixed with dense threat survival bonus (v6).
+
+3. **Red diagonal bullets (Monster2)** — Monster2 chase pattern at level 8+ fires directional bullets that are harder to dodge than straight-down fire. The state vector tracks these but the agent may need more training time at these levels.
+
+### PPO Architecture (v5)
+
+```
+Input: 216 features (4 frames × 54 features)
+
+Shared Backbone:
+  Linear(216 → 512) + ReLU
+  Linear(512 → 256) + ReLU
+  Linear(256 → 128) + ReLU
+
+[concat continuous level value → 129 features]
+
+Policy Head:
+  Linear(129 → 64) + ReLU
+  Linear(64 → 6) → action logits
+
+Value Head:
+  Linear(129 → 64) + ReLU
+  Linear(64 → 1) → state value
+```
+
+### PPO Hyperparameters (v5)
+
+| Parameter | Value |
+|-----------|-------|
+| lr | 3e-4 → 1e-5 (cosine decay over 5000 updates) |
+| clip_epsilon | 0.2 |
+| gamma | 0.99 |
+| gae_lambda | 0.95 |
+| entropy_coeff | 0.02 → 0.005 (linear decay) |
+| value_coeff | 0.5 |
+| n_epochs | 4 |
+| minibatch_size | 4096 (GPU auto-scaled) |
+| rollout_length | 128 steps × 2048 envs = 262K transitions/update |
+| n_frames | 4 |
+| obs_norm | ON (RunningMeanStd, clamp [-10, 10]) |
+
+### Reward Shaping (v6 additions)
+
+| Signal | Value | Purpose |
+|--------|-------|---------|
+| Enemy descent pressure | -0.03 * danger (0 to 1 scale) | Gradient warning as enemies approach walls |
+| Dense threat survival | +0.02 * (threats - 3), capped at +0.10 | Reward surviving under 4+ simultaneous threats |

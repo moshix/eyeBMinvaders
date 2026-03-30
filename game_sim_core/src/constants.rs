@@ -78,5 +78,5 @@ pub fn initial_wall_xs() -> [f64; 4] {
     ]
 }
 
-pub const STATE_SIZE: usize = 54;
+pub const STATE_SIZE: usize = 62;
 pub const ACTION_SIZE: usize = 6;

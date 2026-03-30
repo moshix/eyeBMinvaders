@@ -205,47 +205,44 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
         f[39] = 0.0;
     }
 
-    // [40-44] Danger heatmap: 5 columns — NEW
+    // [40-49] Danger heatmap: 10 columns (102px each) — higher resolution for dodging
     // Weighted threat density per column: bullets=1.0, missiles=2.0, kamikazes=3.0
-    let col_width = GAME_WIDTH / 5.0;
+    let col_width = GAME_WIDTH / 10.0;
     for b in enemy_bullets.iter() {
-        let col = ((b.x / col_width) as usize).min(4);
+        let col = ((b.x / col_width) as usize).min(9);
         f[40 + col] += 1.0;
     }
     for m in game.missiles.iter() {
-        let col = ((m.x / col_width) as usize).min(4);
+        let col = ((m.x / col_width) as usize).min(9);
         f[40 + col] += 2.0;
     }
     for k in game.kamikazes.iter() {
-        let col = (((k.x + k.width / 2.0) / col_width) as usize).min(4);
+        let col = (((k.x + k.width / 2.0) / col_width) as usize).min(9);
         f[40 + col] += 3.0;
     }
-    // Normalize: divide by 10, clamp to [0, 1]
-    for j in 40..45 {
+    for j in 40..50 {
         f[j] = (f[j] / 10.0).min(1.0);
     }
 
-    // [45] Enemy speed (normalized) — critical for high-level play
-    // Speed starts at 0.54 and multiplies by 1.33 each level. At level 10 ~= 8.6
-    f[45] = (game.enemy_speed / 10.0).min(1.0) as f32;
+    // [50] Enemy speed (normalized)
+    f[50] = (game.enemy_speed / 10.0).min(1.0) as f32;
 
-    // [46] Enemy direction (-1 left, +1 right) -> normalized to [0, 1]
-    f[46] = (game.enemy_direction as f32 + 1.0) / 2.0;
+    // [51] Enemy direction (-1 left, +1 right) -> normalized to [0, 1]
+    f[51] = (game.enemy_direction as f32 + 1.0) / 2.0;
 
-    // [47] Fire cooldown (0 = can fire now, 1 = just fired)
+    // [52] Fire cooldown (0 = can fire now, 1 = just fired)
     let fire_elapsed = game.game_time - game.last_fire_time;
     let fire_ready = (fire_elapsed / (FIRE_RATE * 1000.0)).min(1.0) as f32;
-    f[47] = fire_ready;
+    f[52] = fire_ready;
 
-    // [48] Threat urgency: closest threat time-to-impact (lower = more dangerous)
-    // Combines bullets, missiles, kamikazes — picks the most imminent
+    // [53] Threat urgency: closest threat time-to-impact (lower = more dangerous)
     let player_y = game.player_y + PLAYER_HEIGHT / 2.0;
-    let mut min_tti: f64 = 1.0; // normalized, 1.0 = no immediate threat
+    let mut min_tti: f64 = 1.0;
     for b in game.bullets.iter().filter(|b| b.is_enemy) {
         if b.y < player_y {
             let dy = player_y - b.y;
-            let tti = dy / (ENEMY_BULLET_SPEED * 1000.0 / 60.0); // frames to impact
-            let tti_norm = (tti / 60.0).min(1.0); // normalize to ~1 second
+            let tti = dy / (ENEMY_BULLET_SPEED * 1000.0 / 60.0);
+            let tti_norm = (tti / 60.0).min(1.0);
             if tti_norm < min_tti { min_tti = tti_norm; }
         }
     }
@@ -258,49 +255,81 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
             if tti_norm < min_tti { min_tti = tti_norm; }
         }
     }
-    f[48] = min_tti as f32;
+    f[53] = min_tti as f32;
 
-    // [49] Enemies in bottom half (danger level — enemies close to walls/player)
-    let bottom_half_y = GAME_HEIGHT / 2.0;
-    let bottom_enemies = game.enemies.iter().filter(|e| e.y > bottom_half_y).count();
-    f[49] = (bottom_enemies as f32 / 15.0).min(1.0);
+    // [54] Lowest enemy proximity to wall (0=far, 1=at wall=game over imminent)
+    if !game.enemies.is_empty() {
+        let lowest_y = game.enemies.iter()
+            .map(|e| e.y + e.height)
+            .fold(0.0f64, f64::max);
+        f[54] = (lowest_y / WALL_Y).min(1.0) as f32;
+    }
 
-    // [50-51] Lateral threat density: bullets within 80px left/right of player
-    let mut left_threats: f32 = 0.0;
-    let mut right_threats: f32 = 0.0;
+    // [55-56] Predictive lateral threat: project bullets 0.3s ahead, check ±60px
+    let lookahead_frames: f64 = 9.0; // 0.3s at 30Hz
+    let mut left_future: f32 = 0.0;
+    let mut right_future: f32 = 0.0;
     for b in game.bullets.iter().filter(|b| b.is_enemy && !b.removed) {
-        let dx = b.x - player_cx;
-        let dy = b.y - player_cy;
-        if dy > -100.0 && dy < 20.0 && dx.abs() < 80.0 {
-            if dx < 0.0 { left_threats += 1.0; } else { right_threats += 1.0; }
+        let future_x = if b.has_direction { b.x + b.dx * lookahead_frames } else { b.x };
+        let future_y = if b.has_direction { b.y + b.dy * lookahead_frames } else { b.y + ENEMY_BULLET_SPEED * 1000.0 / 60.0 * lookahead_frames };
+        let dx = future_x - player_cx;
+        if future_y > player_y - 60.0 && future_y < player_y + 30.0 && dx.abs() < 60.0 {
+            if dx < 0.0 { left_future += 1.0; } else { right_future += 1.0; }
         }
     }
     for k in game.kamikazes.iter().filter(|k| !k.removed) {
-        let dx = k.x + k.width / 2.0 - player_cx;
-        let dy = k.y + k.height / 2.0 - player_cy;
-        if dy.abs() < 100.0 && dx.abs() < 80.0 {
-            if dx < 0.0 { left_threats += 2.0; } else { right_threats += 2.0; }
+        let kx = k.x + k.width / 2.0;
+        let ky = k.y + k.height / 2.0;
+        let future_x = kx + k.angle.cos() * KAMIKAZE_SPEED * 1000.0 / 60.0 * lookahead_frames;
+        let future_y = ky + k.angle.sin() * KAMIKAZE_SPEED * 1000.0 / 60.0 * lookahead_frames;
+        let dx = future_x - player_cx;
+        if future_y > player_y - 80.0 && future_y < player_y + 30.0 && dx.abs() < 60.0 {
+            if dx < 0.0 { left_future += 2.0; } else { right_future += 2.0; }
         }
     }
-    for m in game.missiles.iter().filter(|m| !m.removed) {
-        let dx = m.x - player_cx;
-        let dy = m.y - player_cy;
-        if dy.abs() < 100.0 && dx.abs() < 80.0 {
-            if dx < 0.0 { left_threats += 3.0; } else { right_threats += 3.0; }
+    f[55] = (left_future / 5.0).min(1.0);
+    f[56] = (right_future / 5.0).min(1.0);
+
+    // [57] Bullet convergence: count of enemy bullets arriving within ±50px of player in next 0.5s
+    let lookahead_05s: f64 = 15.0; // 0.5s at 30Hz
+    let mut convergence_count: f32 = 0.0;
+    for b in game.bullets.iter().filter(|b| b.is_enemy && !b.removed) {
+        let future_x = if b.has_direction { b.x + b.dx * lookahead_05s } else { b.x };
+        let future_y = if b.has_direction { b.y + b.dy * lookahead_05s } else { b.y + ENEMY_BULLET_SPEED * 1000.0 / 60.0 * lookahead_05s };
+        if (future_x - player_cx).abs() < 50.0 && future_y >= player_y - 30.0 && future_y <= player_y + 30.0 {
+            convergence_count += 1.0;
         }
     }
-    f[50] = (left_threats / 5.0).min(1.0);
-    f[51] = (right_threats / 5.0).min(1.0);
+    f[57] = (convergence_count / 8.0).min(1.0);
 
-    // [52] Player position bias: -1 at left edge, 0 at center, +1 at right edge
-    f[52] = ((player_cx / GAME_WIDTH) as f32 - 0.5) * 2.0;
+    // [58] Monster2 predicted X at player Y (where will Monster2 cross player's row?)
+    if let Some(ref m2) = game.monster2 {
+        if !m2.hit && !m2.is_disappeared && m2.dy_val.abs() > 0.01 {
+            let frames_to_player = (player_y - m2.y) / (m2.dy_val * 1000.0 / 60.0);
+            if frames_to_player > 0.0 && frames_to_player < 60.0 {
+                let predicted_x = m2.x + m2.width / 2.0 + m2.dx_val * 1000.0 / 60.0 * frames_to_player;
+                f[58] = ((predicted_x - player_cx) / GAME_WIDTH).max(-0.5).min(0.5) as f32 + 0.5;
+            } else {
+                f[58] = 0.5; // neutral — not heading toward player row
+            }
+        } else {
+            f[58] = 0.5;
+        }
+    }
 
-    // [53] Fire line clear: 1.0 if no wall blocks vertical shot, 0.0 if wall above
+    // [59] Player position bias: -1 at left edge, 0 at center, +1 at right edge
+    f[59] = ((player_cx / GAME_WIDTH) as f32 - 0.5) * 2.0;
+
+    // [60] Fire line clear: 1.0 if no wall blocks vertical shot, 0.0 if wall above
     let fire_x = game.player_x + PLAYER_WIDTH / 2.0;
     let fire_blocked = game.walls.iter().any(|w| {
         fire_x >= w.x && fire_x <= w.x + w.width && w.hit_count < WALL_MAX_HITS_TOTAL
     });
-    f[53] = if fire_blocked { 0.0 } else { 1.0 };
+    f[60] = if fire_blocked { 0.0 } else { 1.0 };
+
+    // [61] Total active threats (bullets + kamikazes + missiles, normalized)
+    let total_threats = enemy_bullets.len() + game.kamikazes.len() + game.missiles.len();
+    f[61] = (total_threats as f32 / 15.0).min(1.0);
 
     f
 }

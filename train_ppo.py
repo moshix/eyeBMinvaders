@@ -62,7 +62,7 @@ class PPOConfig:
     value_coeff: float = 0.5
     n_epochs: int = 4
     minibatch_size: int = 4096
-    rollout_length: int = 128       # steps per env per rollout
+    rollout_length: int = 256       # steps per env per rollout
     max_grad_norm: float = 1.0
     n_frames: int = 4
     lr_min: float = 1e-5
@@ -71,8 +71,9 @@ class PPOConfig:
     obs_norm: bool = True
     hidden_sizes: list = None       # backbone sizes
     head_hidden: int = 64           # policy/value head hidden size
-    use_curriculum: bool = True     # aggressive curriculum learning
+    use_curriculum: bool = False    # aggressive curriculum (off by default — hurts PPO)
     entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
+    target_kl: float = 0.03          # KL early stop threshold (None to disable)
 
     def __post_init__(self):
         if self.hidden_sizes is None:
@@ -141,10 +142,12 @@ class ActorCritic(nn.Module):
     the backbone learns general game understanding.
     """
 
-    def __init__(self, state_size, action_size, hidden_sizes=(512, 256, 128), head_hidden=64):
+    def __init__(self, state_size, action_size, hidden_sizes=(512, 256, 128), head_hidden=64, n_frames=4):
         super().__init__()
         self.state_size = state_size
         self.action_size = action_size
+        self.n_frames = n_frames
+        self.raw_state_size = state_size // n_frames if n_frames > 1 else state_size
         self.hidden_sizes = list(hidden_sizes)
         self.head_hidden = head_hidden
 
@@ -188,8 +191,7 @@ class ActorCritic(nn.Module):
 
         Level is normalized: level/10, so 0.1=level1, 0.5=level5, 1.0=level10.
         """
-        n_frames = x.shape[-1] // 54 if x.shape[-1] > 54 else 1
-        level_idx = (n_frames - 1) * 54 + 2  # feature 2 of last frame
+        level_idx = (self.n_frames - 1) * self.raw_state_size + 2  # feature 2 of last frame
         return x[:, level_idx:level_idx + 1]  # [batch, 1]
 
     def forward(self, x):
@@ -319,9 +321,13 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
     total_policy_loss = 0.0
     total_value_loss = 0.0
     total_entropy = 0.0
+    total_kl = 0.0
     n_updates = 0
+    kl_early_stopped = False
 
     for epoch in range(cfg.n_epochs):
+        if kl_early_stopped:
+            break
         indices = np.random.permutation(n)
         for start in range(0, n, cfg.minibatch_size):
             end = min(start + cfg.minibatch_size, n)
@@ -329,6 +335,13 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
 
             new_log_probs, entropy, new_values = agent.evaluate_actions(
                 obs_t[mb], actions_t[mb])
+
+            # KL early stop: if policy drifted too far, abort remaining epochs
+            with torch.no_grad():
+                approx_kl = (old_lp_t[mb] - new_log_probs).mean().item()
+            if cfg.target_kl and approx_kl > cfg.target_kl:
+                kl_early_stopped = True
+                break
 
             # Policy loss (clipped surrogate)
             ratio = (new_log_probs - old_lp_t[mb]).exp()
@@ -353,12 +366,15 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
             total_policy_loss += policy_loss.item()
             total_value_loss += value_loss.item()
             total_entropy += entropy_mean.item()
+            total_kl += approx_kl
             n_updates += 1
 
     return {
         'policy_loss': total_policy_loss / max(n_updates, 1),
         'value_loss': total_value_loss / max(n_updates, 1),
         'entropy': total_entropy / max(n_updates, 1),
+        'kl': total_kl / max(n_updates, 1),
+        'kl_stopped': kl_early_stopped,
     }
 
 
@@ -446,7 +462,8 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
     # Actor-Critic network
     agent = ActorCritic(state_size, action_size,
                         hidden_sizes=cfg.hidden_sizes,
-                        head_hidden=cfg.head_hidden).to(device)
+                        head_hidden=cfg.head_hidden,
+                        n_frames=cfg.n_frames).to(device)
 
     # torch.compile for PyTorch 2.x+
     try:
@@ -471,7 +488,7 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
     best_avg_episode = 0
 
     if resume_path:
-        checkpoint = torch.load(resume_path, map_location=device)
+        checkpoint = torch.load(resume_path, map_location=device, weights_only=False)
         agent_mod = agent._orig_mod if hasattr(agent, '_orig_mod') else agent
         agent_mod.load_state_dict(checkpoint['agent'])
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -705,9 +722,10 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                           episode_count, best_avg_score, best_avg_episode, cfg,
                           os.path.join(save_dir, f"model_ppo_ep{episode_count}.pt"), curriculum)
             cur_min = curriculum.min_level if curriculum else 1
+            kl_str = f", kl={losses['kl']:.4f}{'!' if losses['kl_stopped'] else ''}"
             print(f"  -> Checkpoint: update={update_count}, lr={lr:.2e}, "
                   f"ploss={losses['policy_loss']:.4f}, vloss={losses['value_loss']:.4f}, "
-                  f"entropy={losses['entropy']:.4f}, min_lvl={cur_min}")
+                  f"entropy={losses['entropy']:.4f}{kl_str}, min_lvl={cur_min}")
 
     # Final save
     save_checkpoint(agent, optimizer, obs_rms, update_count,
@@ -749,6 +767,17 @@ def save_checkpoint(agent, optimizer, obs_rms, update_count, episode_count,
             'hidden_sizes': cfg.hidden_sizes,
             'head_hidden': cfg.head_hidden,
             'n_frames': cfg.n_frames,
+            'lr': cfg.lr,
+            'lr_min': cfg.lr_min,
+            'lr_decay_updates': cfg.lr_decay_updates,
+            'clip_epsilon': cfg.clip_epsilon,
+            'entropy_coeff': cfg.entropy_coeff,
+            'entropy_coeff_end': cfg.entropy_coeff_end,
+            'rollout_length': cfg.rollout_length,
+            'gamma': cfg.gamma,
+            'gae_lambda': cfg.gae_lambda,
+            'value_coeff': cfg.value_coeff,
+            'target_kl': cfg.target_kl,
         },
     }
     if obs_rms:
