@@ -10,7 +10,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use game_sim_core::game::HeadlessGame;
 use game_sim_core::state;
-use game_sim_core::constants::STATE_SIZE;
+use game_sim_core::constants::{STATE_SIZE, GAME_WIDTH, PLAYER_WIDTH};
 
 use agent::{PPOAgent, PPOConfig};
 use bridge::{game_state_to_js, render_state_to_js, stats_to_js};
@@ -221,6 +221,32 @@ impl WasmGame {
     /// Reset to a specific level (for curriculum training).
     pub fn reset_at_level(&mut self, level: i32) {
         self.game.reset_at_level(level);
+    }
+
+    /// Lookahead: simulate each action forward n_steps.
+    /// Returns 0 for safe actions, -50 for life loss, -100 for game over.
+    /// Only overrides policy when an action leads to death.
+    pub fn evaluate_actions(&self, actions: Vec<u8>, n_steps: u32) -> Vec<f32> {
+        actions.iter().map(|&action| {
+            let mut clone = self.game.clone();
+            let old_lives = clone.player_lives;
+            let mut lost_life = false;
+
+            for _ in 0..n_steps {
+                clone.step(action);
+                if clone.game_over {
+                    return -100.0;
+                }
+                if clone.player_lives < old_lives && !lost_life {
+                    lost_life = true;
+                }
+            }
+
+            // Survival is primary — but reward score gain to encourage firing
+            let mut score: f32 = if lost_life { -50.0 } else { 0.0 };
+            score += (clone.score - self.game.score) as f32 * 0.01;
+            score
+        }).collect()
     }
 }
 

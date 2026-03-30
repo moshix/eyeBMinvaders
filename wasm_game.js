@@ -286,6 +286,22 @@ window.wasmPhysics = {
     _processEvents(events);
   },
 
+  /**
+   * Lookahead: simulate top actions forward n_steps, return scores.
+   * @param {number[]} actions — action codes to evaluate
+   * @param {number} nSteps — ticks to simulate forward
+   * @returns {Float32Array|null} — score per action
+   */
+  evaluate_actions(actions, nSteps) {
+    if (!_wasmReady || !_wasmGame) return null;
+    try {
+      return _wasmGame.evaluate_actions(actions, nSteps);
+    } catch (err) {
+      console.error('[WASM Physics] evaluate_actions() error:', err);
+      return null;
+    }
+  },
+
   // --- Online DQN Learning ---
 
   /** The WasmOnlineDQN instance (null until initialized) */

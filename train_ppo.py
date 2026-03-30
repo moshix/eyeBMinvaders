@@ -76,6 +76,10 @@ class PPOConfig:
     use_curriculum: bool = False    # aggressive curriculum (off by default — hurts PPO)
     entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
     target_kl: float = 0.03          # KL early stop threshold (None to disable)
+    sil_capacity: int = 500          # self-imitation buffer: top-K episodes
+    sil_min_level: int = 5           # only store episodes reaching this level
+    sil_weight: float = 0.1          # SIL loss weight relative to PPO loss
+    sil_batch_size: int = 256        # transitions sampled from SIL buffer per update
 
     def __post_init__(self):
         if self.hidden_sizes is None:
@@ -130,6 +134,76 @@ class AggressiveCurriculum:
 
     def load_state_dict(self, d):
         self.min_level = d.get('min_level', 1)
+
+
+# =============================================================================
+# Self-Imitation Learning Buffer
+# =============================================================================
+class SILBuffer:
+    """Stores top-K episodes by reward for self-imitation learning.
+
+    When the agent reaches a high level, the full episode trajectory is stored.
+    During PPO updates, transitions from these successful episodes are sampled
+    and an auxiliary loss encourages the policy to imitate them.
+    """
+
+    def __init__(self, capacity=500, min_level=5):
+        self.capacity = capacity
+        self.min_level = min_level
+        self.episodes = []  # sorted by reward ascending (worst first, best last)
+        self.total_transitions = 0
+
+    def maybe_add(self, obs_list, actions_list, returns_list, total_reward, max_level):
+        """Add an episode if it reached min_level and is good enough."""
+        if max_level < self.min_level:
+            return False
+        if len(self.episodes) >= self.capacity and total_reward <= self.episodes[0]['reward']:
+            return False
+
+        # Store as numpy arrays
+        ep = {
+            'obs': np.array(obs_list, dtype=np.float32),
+            'actions': np.array(actions_list, dtype=np.int64),
+            'returns': np.array(returns_list, dtype=np.float32),
+            'reward': total_reward,
+            'level': max_level,
+            'n': len(obs_list),
+        }
+        self.episodes.append(ep)
+        self.episodes.sort(key=lambda e: e['reward'])
+        if len(self.episodes) > self.capacity:
+            removed = self.episodes.pop(0)
+            self.total_transitions -= removed['n']
+        self.total_transitions += ep['n']
+        return True
+
+    def sample(self, batch_size):
+        """Sample random transitions from stored episodes."""
+        if self.total_transitions == 0:
+            return None, None, None
+
+        obs_all = []
+        act_all = []
+        ret_all = []
+        for _ in range(batch_size):
+            ep = self.episodes[random.randint(0, len(self.episodes) - 1)]
+            idx = random.randint(0, ep['n'] - 1)
+            obs_all.append(ep['obs'][idx])
+            act_all.append(ep['actions'][idx])
+            ret_all.append(ep['returns'][idx])
+
+        return (np.array(obs_all, dtype=np.float32),
+                np.array(act_all, dtype=np.int64),
+                np.array(ret_all, dtype=np.float32))
+
+    def __len__(self):
+        return len(self.episodes)
+
+    def stats(self):
+        if not self.episodes:
+            return "empty"
+        best = self.episodes[-1]
+        return f"{len(self.episodes)} eps, {self.total_transitions} trans, best lvl {best['level']} score {best['reward']:.0f}"
 
 
 # =============================================================================
@@ -374,7 +448,8 @@ def scheduled_lr(update_step, lr_max, lr_min, warmup, decay_end):
 # PPO Update
 # =============================================================================
 def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
-               returns_flat, advantages_flat, cfg, device, entropy_coeff_override=None):
+               returns_flat, advantages_flat, cfg, device, entropy_coeff_override=None,
+               sil_buffer=None):
     """Run PPO update epochs over collected rollout data."""
     ent_coeff = entropy_coeff_override if entropy_coeff_override is not None else cfg.entropy_coeff
     n = len(obs_flat)
@@ -430,6 +505,21 @@ def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
 
             # Total loss
             loss = policy_loss + cfg.value_coeff * value_loss - ent_coeff * entropy_mean
+
+            # Self-Imitation Learning: auxiliary loss from successful episodes
+            if sil_buffer and len(sil_buffer) > 0:
+                sil_data = sil_buffer.sample(cfg.sil_batch_size)
+                if sil_data[0] is not None:
+                    sil_obs = torch.as_tensor(sil_data[0], dtype=torch.float32, device=device)
+                    sil_acts = torch.as_tensor(sil_data[1], dtype=torch.long, device=device)
+                    sil_rets = torch.as_tensor(sil_data[2], dtype=torch.float32, device=device)
+                    sil_logits, sil_vals, _ = agent.forward(sil_obs)
+                    sil_dist = Categorical(logits=sil_logits)
+                    # Only imitate when stored return > current value (clipped positive advantage)
+                    sil_adv = (sil_rets - sil_vals.squeeze(-1).detach()).clamp(min=0)
+                    sil_lp = sil_dist.log_prob(sil_acts)
+                    sil_loss = -(sil_lp * sil_adv).mean()
+                    loss = loss + cfg.sil_weight * sil_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -759,6 +849,16 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
         states = obs_rms.normalize(states)
     env_start_levels = np.ones(num_envs, dtype=np.int32)  # track start level per env
 
+    # Self-Imitation Learning buffer
+    sil_buffer = SILBuffer(cfg.sil_capacity, cfg.sil_min_level) if cfg.sil_weight > 0 else None
+    # Per-env episode trajectory tracking for SIL
+    env_ep_obs = [[] for _ in range(num_envs)]
+    env_ep_actions = [[] for _ in range(num_envs)]
+    env_ep_rewards = [[] for _ in range(num_envs)]
+    if sil_buffer:
+        print(f"Self-Imitation Learning: ON (min_level={cfg.sil_min_level}, "
+              f"capacity={cfg.sil_capacity}, weight={cfg.sil_weight})")
+
     episode_count = total_episodes
 
     while episode_count < episodes:
@@ -789,6 +889,14 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
             roll_rewards[step] = np.asarray(rewards, dtype=np.float32)
             roll_dones[step] = np.asarray(dones, dtype=np.float32)
 
+            # Track per-env trajectories for SIL
+            if sil_buffer:
+                rewards_np = roll_rewards[step]
+                for ei in range(num_envs):
+                    env_ep_obs[ei].append(states[ei].copy() if isinstance(states, np.ndarray) else list(states[ei]))
+                    env_ep_actions[ei].append(int(actions_np[ei]))
+                    env_ep_rewards[ei].append(float(rewards_np[ei]))
+
             # Handle done environments
             done_mask = np.asarray(dones)
             done_idxs = np.where(done_mask)[0]
@@ -812,6 +920,21 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                     if new_min is not None:
                         print(f"  >> Curriculum advanced: min_level={new_min} "
                               f"(mastered level {new_min - 1})")
+
+                # Self-Imitation Learning: store successful episode trajectories
+                if sil_buffer and len(env_ep_obs[i]) > 0:
+                    # Compute discounted returns for the episode
+                    ep_returns = []
+                    G = 0.0
+                    for r in reversed(env_ep_rewards[i]):
+                        G = r + cfg.gamma * G
+                        ep_returns.insert(0, G)
+                    added = sil_buffer.maybe_add(
+                        env_ep_obs[i], env_ep_actions[i], ep_returns,
+                        float(episode_rewards[i]), ep_level)
+                    env_ep_obs[i] = []
+                    env_ep_actions[i] = []
+                    env_ep_rewards[i] = []
 
                 log_file.write(json.dumps({
                     "episode": episode_count,
@@ -941,7 +1064,8 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
             advantages_flat = advantages.reshape(n_transitions).astype(np.float32)
             losses = ppo_update(agent, optimizer, obs_flat, actions_flat, log_probs_flat,
                                returns_flat, advantages_flat, cfg, device,
-                               entropy_coeff_override=current_entropy_coeff)
+                               entropy_coeff_override=current_entropy_coeff,
+                               sil_buffer=sil_buffer)
 
         # Periodic checkpoint
         if update_count % 100 == 0:
@@ -950,9 +1074,10 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                           os.path.join(save_dir, f"model_ppo_ep{episode_count}.pt"), curriculum)
             cur_min = curriculum.min_level if curriculum else 1
             kl_str = f", kl={losses['kl']:.4f}{'!' if losses['kl_stopped'] else ''}"
+            sil_str = f", sil={sil_buffer.stats()}" if sil_buffer else ""
             print(f"  -> Checkpoint: update={update_count}, lr={lr:.2e}, "
                   f"ploss={losses['policy_loss']:.4f}, vloss={losses['value_loss']:.4f}, "
-                  f"entropy={losses['entropy']:.4f}{kl_str}, min_lvl={cur_min}")
+                  f"entropy={losses['entropy']:.4f}{kl_str}{sil_str}")
 
     # Final save
     save_checkpoint(agent, optimizer, obs_rms, update_count,
@@ -1072,6 +1197,10 @@ if __name__ == "__main__":
     parser.add_argument("--no-obs-norm", action="store_true")
     parser.add_argument("--no-curriculum", action="store_true",
                         help="Disable aggressive curriculum learning")
+    parser.add_argument("--no-sil", action="store_true",
+                        help="Disable self-imitation learning")
+    parser.add_argument("--sil-min-level", type=int, default=None,
+                        help="Minimum level for SIL episode storage (default: 5)")
     args = parser.parse_args()
 
     cfg = PPOConfig()
@@ -1089,6 +1218,10 @@ if __name__ == "__main__":
         cfg.obs_norm = False
     if args.no_curriculum:
         cfg.use_curriculum = False
+    if args.no_sil:
+        cfg.sil_weight = 0
+    if args.sil_min_level is not None:
+        cfg.sil_min_level = args.sil_min_level
 
     train_ppo(
         episodes=args.episodes,

@@ -1509,13 +1509,18 @@ function getPlayerAction() {
 
   // If DQN AI is active, let it pick the action via the JS model
   if (autoPlayEnabled && typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
-    const features = wasmPhysics.getState();
-    if (features && dqnModel) {
+    const rawFeatures = wasmPhysics.getState();
+    if (rawFeatures && dqnModel) {
       const nFrames = dqnModel.n_frames || 1;
+      const rawStateSize = dqnModel.architecture[0] / nFrames;
+
+      // Trim WASM features to match model's expected input size
+      // (WASM may output 62 features but model trained on 54)
+      const features = rawFeatures.length > rawStateSize
+        ? Array.from(rawFeatures).slice(0, rawStateSize) : Array.from(rawFeatures);
 
       // Initialize frame buffer if needed (for frame stacking)
       if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
-        const rawStateSize = dqnModel.architecture[0] / nFrames;
         dqnInitFrameBuffer(nFrames, rawStateSize);
         dqnResetFrameBuffer(features);
       }
@@ -1528,10 +1533,37 @@ function getPlayerAction() {
       }
       const qValues = dqnForward(state);
       if (qValues) {
-        let bestAction = 0, bestQ = -Infinity;
-        for (let i = 0; i < qValues.length; i++) {
-          if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
+        // Get top 3 actions by policy logit
+        const ranked = qValues.map((q, i) => [i, q]).sort((a, b) => b[1] - a[1]);
+        let bestAction = ranked[0][0];
+        let policyAction = bestAction;
+        _lookaheadOverride = null;
+
+        // Lookahead verification: only override when policy's choice leads to death
+        if (typeof wasmPhysics !== 'undefined' && wasmPhysics.evaluate_actions && _lookaheadEnabled) {
+          try {
+            // First: check if policy's #1 choice is safe
+            const policyScore = wasmPhysics.evaluate_actions([policyAction], 8);
+            if (policyScore[0] < -10) {
+              // Policy choice is dangerous — evaluate ALL 6 actions to find best safe option
+              const allActions = [0, 1, 2, 3, 4, 5];
+              const allScores = wasmPhysics.evaluate_actions(allActions, 8);
+              let bestScore = -Infinity, bestIdx = 0;
+              for (let i = 0; i < 6; i++) {
+                // Prefer safe actions, tiebreak by policy logit
+                const safetyScore = allScores[i] + qValues[i] * 0.01;
+                if (safetyScore > bestScore) { bestScore = safetyScore; bestIdx = i; }
+              }
+              bestAction = bestIdx;
+              _lookaheadScores = allActions.map((a, i) => ({ action: a, score: allScores[i] }));
+              _lookaheadOverride = { from: policyAction, to: bestAction, scores: _lookaheadScores };
+            } else {
+              // Policy choice is safe — trust it completely
+              _lookaheadScores = [{ action: policyAction, score: policyScore[0] }];
+            }
+          } catch (e) { /* fallback to policy choice */ }
         }
+
         // Update AI overlay if available
         if (typeof _updateAIOverlay === 'function') {
           _updateAIOverlay(qValues, bestAction);
@@ -1556,6 +1588,11 @@ function getPlayerAction() {
 }
 
 // ---------------------------------------------------------------------------
+
+// Lookahead verification — toggle with F3
+let _lookaheadEnabled = true;
+let _lookaheadOverride = null;   // {from, to, scores} when lookahead overrides policy
+let _lookaheadScores = [];       // latest scores for display
 
 // Performance profiler — toggle with F2
 let _perfEnabled = false;
@@ -1589,18 +1626,16 @@ function _perfUpdate(frameMs, physicsMs, drawMs, aiMs) {
   const fps = avgFrame > 0 ? (1000 / avgFrame).toFixed(0) : '?';
   const maxFrame = max(_perfFrameTimes, 'frame');
 
-  const bar = (ms, total) => {
-    const pct = total > 0 ? Math.round(ms / total * 20) : 0;
-    return '\u2588'.repeat(pct) + '\u2591'.repeat(20 - pct);
-  };
+  const pct = (ms, total) => total > 0 ? Math.round(ms / total * 100) : 0;
+  const idle = Math.max(0, avgFrame - avgPhys - avgDraw - avgAI);
 
   _perfOverlayEl.innerHTML =
     `<span style="color:#0ff;font-weight:bold">PERF</span> <span style="color:#ff0">${fps} FPS</span> ` +
     `<span style="color:#888">${avgFrame.toFixed(1)}ms avg / ${maxFrame.toFixed(1)}ms max</span><br>` +
-    `<span style="color:#8f8">Physics: ${avgPhys.toFixed(2)}ms ${bar(avgPhys, avgFrame)}</span><br>` +
-    `<span style="color:#88f">AI:      ${avgAI.toFixed(2)}ms ${bar(avgAI, avgFrame)}</span><br>` +
-    `<span style="color:#f88">Draw:    ${avgDraw.toFixed(2)}ms ${bar(avgDraw, avgFrame)}</span><br>` +
-    `<span style="color:#888">Idle:    ${(avgFrame - avgPhys - avgDraw - avgAI).toFixed(2)}ms</span>`;
+    `<span style="color:#8f8">Physics ${avgPhys.toFixed(2).padStart(6)}ms  ${String(pct(avgPhys, avgFrame)).padStart(3)}%</span><br>` +
+    `<span style="color:#88f">AI      ${avgAI.toFixed(2).padStart(6)}ms  ${String(pct(avgAI, avgFrame)).padStart(3)}%</span><br>` +
+    `<span style="color:#f88">Draw    ${avgDraw.toFixed(2).padStart(6)}ms  ${String(pct(avgDraw, avgFrame)).padStart(3)}%</span><br>` +
+    `<span style="color:#888">Idle    ${idle.toFixed(2).padStart(6)}ms  ${String(pct(idle, avgFrame)).padStart(3)}%</span>`;
 }
 
 function gameLoop(currentTime) {
@@ -1997,6 +2032,11 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     _perfEnabled = !_perfEnabled;
     if (!_perfEnabled && _perfOverlayEl) _perfOverlayEl.style.display = 'none';
+  }
+  if (e.code === "F3") {
+    e.preventDefault();
+    _lookaheadEnabled = !_lookaheadEnabled;
+    console.log('Lookahead:', _lookaheadEnabled ? 'ON' : 'OFF');
   }
   if (e.code === "Digit0" || e.code === "Numpad0") {
     autoPlayEnabled = !autoPlayEnabled;
@@ -3288,6 +3328,19 @@ function _updateAIOverlay(qValues, action) {
     html += `<span style="color:#f44">HEAVY FIRE: ${totalThreats} threats</span><br>`;
   }
 
+  // --- Lookahead Status ---
+  if (_lookaheadEnabled && _lookaheadScores.length > 0) {
+    html += `<span style="color:#fa0;font-size:10px">LOOKAHEAD (8 ticks)</span><br>`;
+    for (const ls of _lookaheadScores) {
+      const isChosen = ls.action === action;
+      const c = isChosen ? '#0f0' : '#888';
+      html += `<span style="color:${c}">${isChosen ? '>' : ' '} ${_actionNames[ls.action].padEnd(7)} ${ls.score.toFixed(1)}</span><br>`;
+    }
+    if (_lookaheadOverride) {
+      html += `<span style="color:#f44">OVERRIDE: ${_actionNames[_lookaheadOverride.from]} -> ${_actionNames[_lookaheadOverride.to]}</span><br>`;
+    }
+  }
+
   // --- Activity Log (reduced to 8, major decisions only) ---
   const [reasonColor, reasonText, notable] = _getAIReasoning(action, qValues);
   if (notable && reasonText !== _aiLastReason) {
@@ -3304,10 +3357,12 @@ function _updateAIOverlay(qValues, action) {
     }
   }
 
-  // WASM indicator
+  // WASM indicator + controls
   const wasmOn = typeof wasmPhysics !== 'undefined' && wasmPhysics.ready;
   html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'}</span>`;
-  html += ` <span style="color:#888">F2=perf</span>`;
+  const laColor = _lookaheadEnabled ? '#39FF14' : '#666';
+  html += ` <span style="color:${laColor}">LA:${_lookaheadEnabled ? 'ON' : 'OFF'}</span>`;
+  html += ` <span style="color:#888">F2=perf F3=lookahead</span>`;
 
   _aiOverlayEl.innerHTML = html;
 }

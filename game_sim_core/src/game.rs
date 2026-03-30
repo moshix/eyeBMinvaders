@@ -9,6 +9,7 @@ use crate::collision;
 use crate::spawning;
 use crate::state;
 
+#[derive(Clone)]
 pub struct HeadlessGame {
     pub rng: ChaCha8Rng,
     pub god_mode: bool, // hits penalized but don't lose lives or end game
