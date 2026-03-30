@@ -606,38 +606,49 @@ function drawBullets() {
 
 function drawWalls() {
   walls.forEach((wall, index) => {
-    // Save the current context state
     ctx.save();
-    
-    // First draw the wall
+
+    // Draw the wall image
     ctx.drawImage(wall.image, wall.x, wall.y, wall.width, wall.height);
-    
-    // Set up compositing to "cut out" the damage spots
-    ctx.globalCompositeOperation = 'destination-out';
-    
-    // Draw the damage holes (they will create transparent areas)
-    if (wallHits[index]) {
-      wallHits[index].forEach(hit => {
-        ctx.save();
-        ctx.translate(wall.x + hit.x + 10, wall.y + hit.y);
-        ctx.rotate(hit.rotation);
-        
-        // Create circular/oval holes instead of drawing chunk images
-        ctx.beginPath();
-        if (hit.fromEnemy) {
-          // Elongated oval for enemy hits
-          ctx.ellipse(0, 0, 10, 7, 0, 0, Math.PI * 2);
-        } else {
-          // Circular hole for player hits
-          ctx.arc(0, 0, 10, 0, Math.PI * 2);
+
+    // Damage overlay: wall gets progressively redder as it takes damage
+    // but stays visually SOLID so player knows bullets can't pass through
+    const hitCount = wall.hitCount || 0;
+    const maxHits = WALL_MAX_HITS_TOTAL || 11;
+    const damage = Math.min(hitCount / maxHits, 1.0);
+
+    if (damage > 0) {
+      // Red damage tint — more damage = more red + transparent
+      ctx.globalAlpha = damage * 0.6;
+      ctx.fillStyle = '#ff2200';
+      ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+      ctx.globalAlpha = 1.0;
+
+      // Show small cracks (cosmetic only, wall still clearly solid)
+      if (damage > 0.3 && wallHits[index]) {
+        ctx.globalCompositeOperation = 'destination-out';
+        const maxHoles = Math.min(wallHits[index].length, 3); // max 3 small holes
+        for (let i = 0; i < maxHoles; i++) {
+          const hit = wallHits[index][i];
+          ctx.save();
+          ctx.translate(wall.x + hit.x + 10, wall.y + hit.y);
+          ctx.beginPath();
+          ctx.arc(0, 0, 3 + damage * 4, 0, Math.PI * 2); // small holes, grow with damage
+          ctx.fill();
+          ctx.restore();
         }
-        ctx.fill();
-        
-        ctx.restore();
-      });
+      }
+
+      // Health bar below wall
+      const barY = wall.y + wall.height + 2;
+      const barW = wall.width;
+      const barH = 3;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(wall.x, barY, barW, barH);
+      ctx.fillStyle = damage < 0.5 ? '#0f0' : damage < 0.8 ? '#ff0' : '#f00';
+      ctx.fillRect(wall.x, barY, barW * (1 - damage), barH);
     }
-    
-    // Restore the original context state
+
     ctx.restore();
   });
 }
