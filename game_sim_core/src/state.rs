@@ -346,7 +346,7 @@ pub fn calculate_reward(
     reward += missiles_shot_this_step as f32 * 2.0;
 
     // Dodging reward: threats passed close but missed
-    reward += near_misses as f32 * 0.1;
+    reward += near_misses as f32 * 0.15;
 
     // Level completion bonus — increased and scaling to push past level 7
     if level_completed {

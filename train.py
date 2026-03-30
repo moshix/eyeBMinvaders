@@ -1594,7 +1594,7 @@ class TrainingConfig:
     gamma: float = 0.99
     tau: float = 0.005
     epsilon_start: float = 1.0
-    epsilon_min: float = 0.05
+    epsilon_min: float = 0.02
     epsilon_decay: float = 0.99995
     buffer_capacity: int = 500_000
     train_every: int = 4
@@ -1603,11 +1603,11 @@ class TrainingConfig:
     n_step: int = 5  # N-step returns (1 = standard TD, 3-5 = faster learning)
     use_layer_norm: bool = False
     use_dual_buffer: bool = True  # dual-buffer PER
-    important_buffer_capacity: int = 50_000
+    important_buffer_capacity: int = 200_000
     important_ratio: float = 0.30
     important_reward_threshold: float = 0.5
     use_cosine_lr: bool = True  # cosine annealing LR schedule
-    cosine_cycle_episodes: int = 50_000  # episodes per LR cycle
+    cosine_cycle_episodes: int = 150_000  # episodes per LR cycle
     lr_min: float = 1e-5
     use_dueling: bool = True    # dueling architecture (V + A streams)
     use_noisy: bool = True      # NoisyNet (replaces epsilon-greedy)
@@ -1702,6 +1702,37 @@ class PlateauDetector:
             "best_score": self.best_score_ever,
             "total_episodes": self.total_episodes,
         }
+
+
+# =============================================================================
+# Curriculum Learning
+# =============================================================================
+class CurriculumScheduler:
+    """Samples starting levels based on agent performance.
+
+    Distribution (after warmup):
+      50% level 1, 30% practice zone (avg_level-1), 20% challenge zone (avg_level).
+    """
+
+    def __init__(self, warmup_episodes=10_000):
+        self.warmup = warmup_episodes
+
+    def sample(self, levels_deque, episode_count):
+        """Return a starting level for the next episode."""
+        if episode_count < self.warmup or len(levels_deque) < 100:
+            return 1
+
+        avg_level = float(np.mean(levels_deque))
+        challenge = max(1, int(avg_level))
+        practice = max(1, challenge - 1)
+
+        r = random.random()
+        if r < 0.50:
+            return 1            # 50%: always practice fundamentals
+        elif r < 0.80:
+            return practice     # 30%: practice zone
+        else:
+            return challenge    # 20%: challenge zone
 
 
 # =============================================================================
@@ -2018,7 +2049,8 @@ NUM_ENVS = 256  # Number of parallel game instances
 
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
           num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
-          flush_buffer=False, cosine_reset=False, auto_scale=True, god_mode=False):
+          flush_buffer=False, cosine_reset=False, auto_scale=True, god_mode=False,
+          use_curriculum=True, auto_stop=False):
     os.makedirs(save_dir, exist_ok=True)
 
     if device_override:
@@ -2121,6 +2153,10 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     levels = deque(maxlen=1000)
     best_score = 0
     best_level = 0
+    best_avg_score = 0.0
+    best_avg_level = 0.0
+    best_avg_episode = 0
+    peak_detected = False
     total_events = {t: 0 for t in dir(EventType) if not t.startswith('_')}
     start_time = time.time()
 
@@ -2143,6 +2179,11 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     episode_count = 0
     tick_count = 0
     plateau_detected = False
+    # Curriculum learning: sample starting levels based on agent performance
+    curriculum = CurriculumScheduler() if use_curriculum and use_rust else None
+    env_start_levels = np.ones(num_envs, dtype=np.int32)  # track start level per env
+    if curriculum:
+        print("Curriculum learning: enabled (activates after 10K episodes)")
     # God mode: track per-env steps for forced episode reset
     god_mode_max_steps = 6000  # ~200 seconds of game time at 30Hz (reaches level 3-5)
     env_step_counts = np.zeros(num_envs, dtype=np.int32) if god_mode else None
@@ -2211,6 +2252,7 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                     "times_hit": ep_hits,
                     "epsilon": agent.epsilon if agent else 0,
                     "reward": round(float(episode_rewards[i]), 2),
+                    "start_level": int(env_start_levels[i]),
                 }
                 if cycle > 0:
                     episode_summary["cycle"] = cycle
@@ -2238,6 +2280,33 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                           f"{eps_per_sec:.0f} ep/s | "
                           f"{elapsed:.0f}s")
 
+                    # Best-average model saving (more reliable than best single episode)
+                    if agent and episode_count > 1000 and episode_count % 1000 == 0:
+                        current_avg = float(np.mean(scores))
+                        current_avg_lvl = float(np.mean(levels))
+                        if current_avg > best_avg_score:
+                            best_avg_score = current_avg
+                            best_avg_level = current_avg_lvl
+                            best_avg_episode = episode_count
+                            agent.save(os.path.join(save_dir, "model_best_avg.pt"))
+                            print(f"  -> New best avg: score={current_avg:.0f}, level={current_avg_lvl:.1f}")
+
+                    # Peak detection: no avg improvement in 30K episodes
+                    if agent and episode_count > 50_000 and episode_count % 1000 == 0 and not peak_detected:
+                        episodes_since_best = episode_count - best_avg_episode
+                        if episodes_since_best >= 30_000:
+                            current_avg = float(np.mean(scores))
+                            if current_avg >= best_avg_score * 0.95:
+                                peak_detected = True
+                                print(f"\n{'='*70}")
+                                print(f"PEAK DETECTED at episode {episode_count}")
+                                print(f"  Best avg score: {best_avg_score:.0f} (at ep {best_avg_episode})")
+                                print(f"  Current avg: {current_avg:.0f} ({episodes_since_best} eps without improvement)")
+                                print(f"  Best avg model saved as: model_best_avg.pt")
+                                print(f"{'='*70}\n")
+                                if auto_stop:
+                                    break
+
                     # Check for plateau every 1000 episodes
                     if plateau_detector and plateau_detector.check():
                         print(f"\n{'='*70}")
@@ -2259,7 +2328,13 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
                 if episode_count % 100 == 0:
                     log_file.flush()
 
-                raw_state = envs.reset_one(i)
+                if curriculum:
+                    sl = curriculum.sample(levels, episode_count)
+                    raw_state = envs.reset_one_at_level(i, sl)
+                    env_start_levels[i] = sl
+                else:
+                    raw_state = envs.reset_one(i)
+                    env_start_levels[i] = 1
                 states[i] = frame_stack.reset(i, raw_state) if frame_stack else raw_state
                 if god_mode:
                     env_step_counts[i] = 0
@@ -2493,6 +2568,12 @@ if __name__ == "__main__":
                         help="Minimum epsilon for exploration (default: 0.05)")
     parser.add_argument("--epsilon-decay", type=float, default=None,
                         help="Epsilon decay per episode (default: 0.99995)")
+    parser.add_argument("--no-curriculum", action="store_true",
+                        help="Disable curriculum learning (always start at level 1)")
+    parser.add_argument("--long-run", action="store_true",
+                        help="Long training run: 1M episodes with tuned hyperparameters")
+    parser.add_argument("--auto-stop", action="store_true",
+                        help="Auto-stop training when peak is detected (no avg improvement in 30K episodes)")
     args = parser.parse_args()
 
     cfg = TrainingConfig()
@@ -2517,8 +2598,14 @@ if __name__ == "__main__":
     if args.epsilon_decay is not None:
         cfg.epsilon_decay = args.epsilon_decay
 
+    if args.long_run:
+        args.episodes = max(args.episodes, 1_000_000)
+        print("Long run mode: 1M episodes with tuned hyperparameters")
+
     train(episodes=args.episodes, resume_path=args.resume, save_dir=args.save_dir,
           device_override=args.device,
           num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS,
           config=cfg, auto_scale=not args.no_auto_scale,
-          god_mode=args.god_mode)
+          god_mode=args.god_mode,
+          use_curriculum=not args.no_curriculum,
+          auto_stop=args.auto_stop)
