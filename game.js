@@ -1520,7 +1520,12 @@ function getPlayerAction() {
         dqnResetFrameBuffer(features);
       }
 
-      const state = nFrames > 1 ? dqnPushFrame(features) : features;
+      let state = nFrames > 1 ? dqnPushFrame(features) : features;
+      // Apply observation normalization if PPO model includes it
+      if (dqnModel.obs_norm) {
+        const m = dqnModel.obs_norm.mean, s = dqnModel.obs_norm.std;
+        state = state.map((v, i) => Math.max(-10, Math.min(10, (v - m[i]) / s[i])));
+      }
       const qValues = dqnForward(state);
       if (qValues) {
         let bestAction = 0, bestQ = -Infinity;
@@ -2582,13 +2587,38 @@ function linearForward(weight, bias, x, relu) {
   return out;
 }
 
-// Forward pass — auto-detects dueling vs standard architecture
+// Forward pass — auto-detects dueling vs standard vs actor_critic architecture
 function dqnForward(state) {
   if (!dqnModel) return null;
   const w = dqnModel.weights;
-  const isDueling = dqnModel.type === 'dueling';
+  const modelType = dqnModel.type || 'standard';
 
-  if (isDueling) {
+  if (modelType === 'actor_critic') {
+    // PPO actor-critic: backbone → concat level bucket → policy_head
+    let x = state;
+    let layerIdx = 0;
+    while (w[`backbone.${layerIdx}.weight`]) {
+      x = linearForward(w[`backbone.${layerIdx}.weight`],
+                        w[`backbone.${layerIdx}.bias`], x, true);
+      layerIdx += 2;
+    }
+    // Level conditioning: append [1-3, 4-6, 7+] one-hot bucket
+    if (dqnModel.level_conditioned) {
+      const nf = dqnModel.n_frames || 1;
+      const levelIdx = (nf - 1) * 54 + 2; // feature 2 of last frame
+      const level = state[levelIdx] * 10; // denormalize
+      x = x.concat([level < 4 ? 1 : 0, level >= 4 && level < 7 ? 1 : 0, level >= 7 ? 1 : 0]);
+    }
+    // Policy head
+    layerIdx = 0;
+    while (w[`policy_head.${layerIdx}.weight`]) {
+      const isLast = !w[`policy_head.${layerIdx + 2}.weight`];
+      x = linearForward(w[`policy_head.${layerIdx}.weight`],
+                        w[`policy_head.${layerIdx}.bias`], x, !isLast);
+      layerIdx += 2;
+    }
+    return x; // logits — argmax works same as Q-values
+  } else if (modelType === 'dueling') {
     // Feature extractor: features.0, features.2, ...
     let x = state;
     let layerIdx = 0;
@@ -2914,11 +2944,16 @@ function updateDQN() {
   }
 
   const rawState = buildDQNState();
-  const state = nFrames > 1 ? dqnPushFrame(rawState) : rawState;
+  let state = nFrames > 1 ? dqnPushFrame(rawState) : rawState;
+  // Apply observation normalization if PPO model includes it
+  if (dqnModel.obs_norm) {
+    const m = dqnModel.obs_norm.mean, s = dqnModel.obs_norm.std;
+    state = state.map((v, i) => Math.max(-10, Math.min(10, (v - m[i]) / s[i])));
+  }
   const qValues = dqnForward(state);
   if (!qValues) return false;
 
-  // Pick action with highest Q-value (greedy)
+  // Pick action with highest Q-value / logit (greedy)
   let bestAction = 0, bestQ = -Infinity;
   for (let i = 0; i < qValues.length; i++) {
     if (qValues[i] > bestQ) { bestQ = qValues[i]; bestAction = i; }
@@ -2934,9 +2969,114 @@ function updateDQN() {
   return true;
 }
 
+// AI reasoning — explains why the AI chose its action
+function _getAIReasoning(action, qValues) {
+  const playerCx = player.x + player.width / 2;
+  const playerCy = player.y + player.height / 2;
+  const isFiring = action >= 3; // FIRE, FIRE+L, FIRE+R
+  const isMovingLeft = action === 1 || action === 4;
+  const isMovingRight = action === 2 || action === 5;
+
+  // Find nearest threats with distances
+  let nearBullet = null, nearBulletDist = Infinity;
+  for (const b of bullets) {
+    if (!b.isEnemyBullet) continue;
+    const dx = b.x - playerCx, dy = b.y - playerCy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < nearBulletDist) { nearBulletDist = d; nearBullet = { x: b.x, y: b.y, dx, dy, dist: d }; }
+  }
+  let nearKamikaze = null, nearKamikazeDist = Infinity;
+  for (const k of kamikazeEnemies) {
+    const kx = k.x + k.width / 2, ky = k.y + k.height / 2;
+    const dx = kx - playerCx, dy = ky - playerCy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < nearKamikazeDist) { nearKamikazeDist = d; nearKamikaze = { dx, dy, dist: d }; }
+  }
+  let nearMissile = null, nearMissileDist = Infinity;
+  for (const m of homingMissiles) {
+    const dx = m.x - playerCx, dy = m.y - playerCy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < nearMissileDist) { nearMissileDist = d; nearMissile = { dx, dy, dist: d }; }
+  }
+
+  // Confidence
+  const sorted = [...qValues].sort((a, b) => b - a);
+  const conf = sorted.length > 1 ? sorted[0] - sorted[1] : 0;
+  const uncertain = conf < 0.3;
+
+  // Check lowest enemy position
+  let lowestEnemyY = 0;
+  for (const e of enemies) { if (e.y > lowestEnemyY) lowestEnemyY = e.y; }
+  const enemiesLow = lowestEnemyY > GAME_HEIGHT * 0.55;
+
+  const dir = isMovingLeft ? 'left' : isMovingRight ? 'right' : '';
+
+  // Count active threats
+  const nBul = bullets.filter(b => b.isEnemyBullet).length;
+  const nKam = kamikazeEnemies.length;
+  const nMis = homingMissiles.length;
+  const totalThreats = nBul + nKam + nMis;
+
+  // 1. Immediate dodge (threat within 100px) — NOTABLE
+  if (nearKamikaze && nearKamikazeDist < 100) {
+    return ['#f88', 'Evading kamikaze!', true];
+  }
+  if (nearMissile && nearMissileDist < 100) {
+    return ['#f88', 'Dodging homing missile!', true];
+  }
+  if (nearBullet && nearBulletDist < 80 && nearBullet.dy > -50) {
+    return ['#f88', 'Dodging incoming fire', true];
+  }
+
+  // 2. Active evasion — NOTABLE
+  if (nearKamikaze && nearKamikazeDist < 200) {
+    return ['#fa0', 'Kamikaze approaching — evading', true];
+  }
+  if (nearMissile && nearMissileDist < 200) {
+    return ['#fa0', 'Missile tracking — evading', true];
+  }
+
+  // 3. Enemies getting dangerously low — NOTABLE
+  if (enemiesLow && isFiring) {
+    return ['#f88', 'Enemies low! Clearing fast', true];
+  }
+
+  // 4. Multiple threats — NOTABLE
+  if (totalThreats >= 5) {
+    return ['#fa0', `Heavy fire — ${totalThreats} threats active`, true];
+  }
+
+  // 5. Offensive — only notable for special targets
+  if (isFiring && nKam > 0 && nearKamikazeDist < 250) {
+    return ['#ff0', 'Targeting kamikaze', true];
+  }
+  if (isFiring && nMis > 0 && nearMissileDist < 300) {
+    return ['#ff0', 'Shooting down missile', true];
+  }
+  if (isFiring && enemies.length > 0) {
+    return ['#ff0', `Firing (${enemies.length} enemies left)`, false];
+  }
+
+  // 6. Level clear — NOTABLE
+  if (enemies.length === 0) {
+    return ['#0ff', 'Level clear — waiting', true];
+  }
+
+  // 7. Edge escape — NOTABLE
+  const atEdge = playerCx < 80 || playerCx > GAME_WIDTH - 80;
+  if (atEdge && (isMovingLeft || isMovingRight)) {
+    return ['#0ff', 'Escaping edge trap', true];
+  }
+
+  // 8. Routine actions — NOT notable
+  return ['#aaa', 'Patrolling', false];
+}
+
 // AI decision overlay — shows Q-values and chosen action on screen
 let _aiOverlayEl = null;
 const _actionNames = ['IDLE', 'LEFT', 'RIGHT', 'FIRE', 'FIRE+L', 'FIRE+R'];
+const _aiReasonLog = []; // event stream of reasoning, newest first
+let _aiLastReason = ''; // dedup consecutive identical reasons
 
 function _updateAIOverlay(qValues, action) {
   if (!autoPlayEnabled) {
@@ -2982,6 +3122,20 @@ function _updateAIOverlay(qValues, action) {
   const sorted = [...qValues].sort((a, b) => b - a);
   const confidence = sorted.length > 1 ? (sorted[0] - sorted[1]).toFixed(2) : '0';
   html += `<span style="color:#888">conf:${confidence}</span> `;
+
+  // AI reasoning — event stream log (only notable events)
+  const [reasonColor, reasonText, notable] = _getAIReasoning(action, qValues);
+  if (notable && reasonText !== _aiLastReason) {
+    _aiLastReason = reasonText;
+    _aiReasonLog.unshift({ color: reasonColor, text: reasonText });
+    if (_aiReasonLog.length > 16) _aiReasonLog.length = 16;
+  }
+  html += '<br>';
+  for (let ri = 0; ri < _aiReasonLog.length; ri++) {
+    const r = _aiReasonLog[ri];
+    const opacity = ri === 0 ? 1.0 : Math.max(0.25, 1.0 - ri * 0.05);
+    html += `<span style="color:${r.color};opacity:${opacity}">${ri === 0 ? '▸ ' : '  '}${r.text}</span><br>`;
+  }
 
   // Threats + game state
   const nBullets = bullets.filter(b => b.isEnemyBullet).length;

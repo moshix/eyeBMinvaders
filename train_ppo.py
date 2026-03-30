@@ -1,0 +1,844 @@
+#!/usr/bin/env python3
+"""
+eyeBMinvaders PPO Training Script
+==================================
+Proximal Policy Optimization with parallel Rust game environments.
+On-policy learning — every update uses fresh experience from the current policy.
+
+Usage:
+    python train_ppo.py                         # Train from scratch
+    python train_ppo.py --resume model_ppo.pt   # Resume from checkpoint
+    python train_ppo.py --auto-stop             # Stop when peaked
+
+Requirements:
+    pip install torch numpy
+    Rust game_sim must be compiled: cd game_sim && maturin develop --release
+"""
+
+import math
+import random
+import time
+import json
+import argparse
+import os
+from collections import deque
+from dataclasses import dataclass
+
+import numpy as np
+
+try:
+    from game_sim import BatchedGames as RustBatchedGames
+    HAS_RUST_SIM = True
+except ImportError:
+    HAS_RUST_SIM = False
+    print("ERROR: Rust game_sim not found. PPO requires it.")
+    print("Build with: cd game_sim && maturin develop --release")
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from torch.distributions import Categorical
+
+torch.set_float32_matmul_precision('high')
+
+
+# =============================================================================
+# Reuse shared infrastructure from train.py
+# =============================================================================
+from train import FrameStack, auto_scale_for_gpu, TrainingConfig
+
+
+# =============================================================================
+# PPO Configuration
+# =============================================================================
+@dataclass
+class PPOConfig:
+    lr: float = 3e-4
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    clip_epsilon: float = 0.2
+    entropy_coeff: float = 0.02
+    value_coeff: float = 0.5
+    n_epochs: int = 4
+    minibatch_size: int = 4096
+    rollout_length: int = 128       # steps per env per rollout
+    max_grad_norm: float = 1.0
+    n_frames: int = 4
+    lr_min: float = 1e-5
+    lr_warmup_updates: int = 10
+    lr_decay_updates: int = 5000
+    obs_norm: bool = True
+    hidden_sizes: list = None       # backbone sizes
+    head_hidden: int = 64           # policy/value head hidden size
+    use_curriculum: bool = True     # aggressive curriculum learning
+
+    def __post_init__(self):
+        if self.hidden_sizes is None:
+            self.hidden_sizes = [256, 128]
+
+
+# =============================================================================
+# Aggressive Curriculum — stop training on mastered levels
+# =============================================================================
+class AggressiveCurriculum:
+    """Once the agent reliably clears level N, never train below N again.
+
+    Tracks clear rate per level. When clear_rate >= threshold over a window
+    of episodes, advances the minimum start level.
+    """
+
+    def __init__(self, threshold=0.90, window=500, warmup=10000, max_level=6):
+        self.threshold = threshold
+        self.window = window
+        self.warmup = warmup
+        self.max_level = max_level  # don't advance past this start level
+        self.min_level = 1
+        self.level_clears = {}  # level -> deque of bools (cleared or not)
+
+    def record(self, start_level, reached_level):
+        """Record whether the agent cleared start_level (reached start_level+1)."""
+        if start_level not in self.level_clears:
+            self.level_clears[start_level] = deque(maxlen=self.window)
+        self.level_clears[start_level].append(reached_level > start_level)
+
+    def maybe_advance(self, episode_count):
+        """Check if we should advance min_level. Returns new min_level or None."""
+        if episode_count < self.warmup:
+            return None
+        lvl = self.min_level
+        if lvl not in self.level_clears or len(self.level_clears[lvl]) < self.window // 2:
+            return None
+        clear_rate = sum(self.level_clears[lvl]) / len(self.level_clears[lvl])
+        if clear_rate >= self.threshold and lvl < self.max_level:
+            self.min_level = lvl + 1
+            return self.min_level
+        return None
+
+    def sample_level(self):
+        """Sample a starting level. 70% at min_level, 30% at min_level+1 (challenge)."""
+        if random.random() < 0.70:
+            return self.min_level
+        return self.min_level + 1
+
+    def state_dict(self):
+        return {'min_level': self.min_level}
+
+    def load_state_dict(self, d):
+        self.min_level = d.get('min_level', 1)
+
+
+# =============================================================================
+# Actor-Critic Network
+# =============================================================================
+class ActorCritic(nn.Module):
+    """Actor-Critic with level-conditioned heads.
+
+    The backbone processes the full state. Before the policy/value heads,
+    a 3-dim level bucket one-hot [1-3, 4-6, 7+] is concatenated to the
+    backbone features. This lets the heads learn level-specific strategies
+    while the backbone learns general game understanding.
+    """
+    N_LEVEL_BUCKETS = 3  # [1-3], [4-6], [7+]
+
+    def __init__(self, state_size, action_size, hidden_sizes=(256, 128), head_hidden=64):
+        super().__init__()
+        self.state_size = state_size
+        self.action_size = action_size
+        self.hidden_sizes = list(hidden_sizes)
+        self.head_hidden = head_hidden
+
+        # Shared backbone
+        layers = []
+        prev = state_size
+        for h in hidden_sizes:
+            layers.append(nn.Linear(prev, h))
+            layers.append(nn.ReLU())
+            prev = h
+        self.backbone = nn.Sequential(*layers)
+
+        # Heads receive backbone features + level bucket one-hot
+        head_in = prev + self.N_LEVEL_BUCKETS
+
+        # Policy head (actor)
+        self.policy_head = nn.Sequential(
+            nn.Linear(head_in, head_hidden),
+            nn.ReLU(),
+            nn.Linear(head_hidden, action_size),
+        )
+
+        # Value head (critic)
+        self.value_head = nn.Sequential(
+            nn.Linear(head_in, head_hidden),
+            nn.ReLU(),
+            nn.Linear(head_hidden, 1),
+        )
+
+        # Orthogonal initialization (standard for PPO)
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.orthogonal_(module.weight, gain=math.sqrt(2))
+                nn.init.zeros_(module.bias)
+        # Smaller init for policy and value output layers
+        nn.init.orthogonal_(self.policy_head[-1].weight, gain=0.01)
+        nn.init.orthogonal_(self.value_head[-1].weight, gain=1.0)
+
+    def _level_bucket(self, x):
+        """Extract level from state and create one-hot bucket [1-3, 4-6, 7+].
+
+        Level is at feature index 2 of each frame (normalized: level/10).
+        With n_frames=4, it's at indices 2, 56, 110, 164 — use last frame.
+        """
+        n_frames = x.shape[-1] // 54 if x.shape[-1] > 54 else 1
+        level_idx = (n_frames - 1) * 54 + 2  # feature 2 of last frame
+        level_norm = x[:, level_idx]  # 0.0 to 1.0 (level/10)
+        level = level_norm * 10.0  # reconstruct actual level
+
+        bucket = torch.zeros(x.shape[0], self.N_LEVEL_BUCKETS, device=x.device)
+        bucket[:, 0] = (level < 4).float()    # levels 1-3
+        bucket[:, 1] = ((level >= 4) & (level < 7)).float()  # levels 4-6
+        bucket[:, 2] = (level >= 7).float()    # levels 7+
+        return bucket
+
+    def forward(self, x):
+        features = self.backbone(x)
+        bucket = self._level_bucket(x)
+        conditioned = torch.cat([features, bucket], dim=-1)
+        logits = self.policy_head(conditioned)
+        value = self.value_head(conditioned)
+        return logits, value
+
+    def get_action_and_value(self, x):
+        logits, value = self.forward(x)
+        dist = Categorical(logits=logits)
+        action = dist.sample()
+        return action, dist.log_prob(action), dist.entropy(), value.squeeze(-1)
+
+    def get_value(self, x):
+        features = self.backbone(x)
+        bucket = self._level_bucket(x)
+        conditioned = torch.cat([features, bucket], dim=-1)
+        return self.value_head(conditioned).squeeze(-1)
+
+    def evaluate_actions(self, x, actions):
+        logits, value = self.forward(x)
+        dist = Categorical(logits=logits)
+        return dist.log_prob(actions), dist.entropy(), value.squeeze(-1)
+
+
+# =============================================================================
+# Running Mean/Std for Observation Normalization
+# =============================================================================
+class RunningMeanStd:
+    """Welford's online algorithm for running mean and variance."""
+    def __init__(self, shape, device='cpu'):
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.var = np.ones(shape, dtype=np.float64)
+        self.count = 1e-4
+        self.device = device
+
+    def update(self, x):
+        """Update with a batch of observations [batch, features]."""
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
+        batch_count = x.shape[0]
+
+        delta = batch_mean - self.mean
+        total = self.count + batch_count
+        self.mean = self.mean + delta * batch_count / total
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        m2 = m_a + m_b + delta**2 * self.count * batch_count / total
+        self.var = m2 / total
+        self.count = total
+
+    def normalize(self, x):
+        """Normalize observation, clamp to [-10, 10]."""
+        std = np.sqrt(self.var + 1e-8)
+        return np.clip((x - self.mean) / std, -10.0, 10.0).astype(np.float32)
+
+    def state_dict(self):
+        return {'mean': self.mean, 'var': self.var, 'count': self.count}
+
+    def load_state_dict(self, d):
+        self.mean = d['mean']
+        self.var = d['var']
+        self.count = d['count']
+
+
+# =============================================================================
+# GAE Computation
+# =============================================================================
+def compute_gae(rewards, values, dones, next_value, gamma=0.99, lam=0.95):
+    """Compute Generalized Advantage Estimation."""
+    steps, num_envs = rewards.shape
+    advantages = np.zeros_like(rewards)
+    gae = np.zeros(num_envs, dtype=np.float32)
+
+    for t in reversed(range(steps)):
+        if t == steps - 1:
+            next_val = next_value
+        else:
+            next_val = values[t + 1]
+        delta = rewards[t] + gamma * next_val * (1 - dones[t]) - values[t]
+        gae = delta + gamma * lam * (1 - dones[t]) * gae
+        advantages[t] = gae
+
+    returns = advantages + values
+    return advantages, returns
+
+
+# =============================================================================
+# LR Schedule
+# =============================================================================
+def scheduled_lr(update_step, lr_max, lr_min, warmup, decay_end):
+    """Linear warmup → cosine decay → flat minimum."""
+    if update_step < warmup:
+        return lr_min + (update_step / max(warmup, 1)) * (lr_max - lr_min)
+    elif update_step < decay_end:
+        progress = (update_step - warmup) / max(decay_end - warmup, 1)
+        cosine = (1 + math.cos(math.pi * progress)) / 2
+        return lr_min + cosine * (lr_max - lr_min)
+    else:
+        return lr_min
+
+
+# =============================================================================
+# PPO Update
+# =============================================================================
+def ppo_update(agent, optimizer, obs_flat, actions_flat, old_log_probs_flat,
+               returns_flat, advantages_flat, cfg, device):
+    """Run PPO update epochs over collected rollout data."""
+    n = len(obs_flat)
+
+    # Normalize advantages (full rollout)
+    adv_mean = advantages_flat.mean()
+    adv_std = advantages_flat.std() + 1e-8
+    advantages_norm = (advantages_flat - adv_mean) / adv_std
+
+    # Convert to tensors
+    obs_t = torch.as_tensor(obs_flat, dtype=torch.float32, device=device)
+    actions_t = torch.as_tensor(actions_flat, dtype=torch.long, device=device)
+    old_lp_t = torch.as_tensor(old_log_probs_flat, dtype=torch.float32, device=device)
+    returns_t = torch.as_tensor(returns_flat, dtype=torch.float32, device=device)
+    adv_t = torch.as_tensor(advantages_norm, dtype=torch.float32, device=device)
+
+    total_policy_loss = 0.0
+    total_value_loss = 0.0
+    total_entropy = 0.0
+    n_updates = 0
+
+    for epoch in range(cfg.n_epochs):
+        indices = np.random.permutation(n)
+        for start in range(0, n, cfg.minibatch_size):
+            end = min(start + cfg.minibatch_size, n)
+            mb = indices[start:end]
+
+            new_log_probs, entropy, new_values = agent.evaluate_actions(
+                obs_t[mb], actions_t[mb])
+
+            # Policy loss (clipped surrogate)
+            ratio = (new_log_probs - old_lp_t[mb]).exp()
+            surr1 = ratio * adv_t[mb]
+            surr2 = ratio.clamp(1 - cfg.clip_epsilon, 1 + cfg.clip_epsilon) * adv_t[mb]
+            policy_loss = -torch.min(surr1, surr2).mean()
+
+            # Value loss
+            value_loss = F.mse_loss(new_values, returns_t[mb])
+
+            # Entropy bonus
+            entropy_mean = entropy.mean()
+
+            # Total loss
+            loss = policy_loss + cfg.value_coeff * value_loss - cfg.entropy_coeff * entropy_mean
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
+            optimizer.step()
+
+            total_policy_loss += policy_loss.item()
+            total_value_loss += value_loss.item()
+            total_entropy += entropy_mean.item()
+            n_updates += 1
+
+    return {
+        'policy_loss': total_policy_loss / max(n_updates, 1),
+        'value_loss': total_value_loss / max(n_updates, 1),
+        'entropy': total_entropy / max(n_updates, 1),
+    }
+
+
+# =============================================================================
+# GPU Auto-Scaling for PPO
+# =============================================================================
+def auto_scale_ppo(cfg, device, num_envs):
+    """Scale PPO parameters based on GPU memory."""
+    if device == 'cpu':
+        return cfg, num_envs
+
+    try:
+        if device == 'cuda' and torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            gpu_mem_gb = getattr(props, 'total_memory', getattr(props, 'total_mem', 0)) / (1024**3)
+            gpu_name = props.name
+        elif device == 'mps':
+            gpu_mem_gb = 8
+            gpu_name = "Apple MPS"
+        else:
+            return cfg, num_envs
+
+        print(f"GPU: {gpu_name} ({gpu_mem_gb:.1f} GB)")
+
+        if gpu_mem_gb >= 24:
+            cfg.minibatch_size = max(cfg.minibatch_size, 4096)
+            num_envs = max(num_envs, 2048)
+        elif gpu_mem_gb >= 16:
+            cfg.minibatch_size = max(cfg.minibatch_size, 2048)
+            num_envs = max(num_envs, 1024)
+        elif gpu_mem_gb >= 8:
+            cfg.minibatch_size = max(cfg.minibatch_size, 1024)
+            num_envs = max(num_envs, 512)
+
+        print(f"Auto-scaled: minibatch_size={cfg.minibatch_size}, num_envs={num_envs}")
+
+    except Exception as e:
+        print(f"Auto-scale skipped: {e}")
+
+    return cfg, num_envs
+
+
+# =============================================================================
+# Training Loop
+# =============================================================================
+NUM_ENVS = 256
+
+
+def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
+              device_override=None, num_envs=NUM_ENVS, config=None,
+              auto_scale=True, auto_stop=False):
+    os.makedirs(save_dir, exist_ok=True)
+
+    if device_override:
+        device = device_override
+    else:
+        device = 'cpu'
+        if torch.cuda.is_available():
+            device = 'cuda'
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            device = 'mps'
+
+    cfg = config or PPOConfig()
+
+    if auto_scale:
+        cfg, num_envs = auto_scale_ppo(cfg, device, num_envs)
+
+    if not HAS_RUST_SIM:
+        print("ERROR: Rust game_sim required for PPO training")
+        return
+
+    envs = RustBatchedGames(num_envs, seed=42)
+    raw_state_size = envs.state_size
+    action_size = envs.action_size
+    print("Using Rust game simulation")
+
+    # Frame stacking
+    frame_stack = None
+    if cfg.n_frames > 1:
+        frame_stack = FrameStack(num_envs, raw_state_size, cfg.n_frames)
+        state_size = frame_stack.stacked_size
+    else:
+        state_size = raw_state_size
+
+    # Actor-Critic network
+    agent = ActorCritic(state_size, action_size,
+                        hidden_sizes=cfg.hidden_sizes,
+                        head_hidden=cfg.head_hidden).to(device)
+
+    # torch.compile for PyTorch 2.x+
+    try:
+        agent = torch.compile(agent)
+    except Exception:
+        pass
+
+    optimizer = optim.Adam(agent.parameters(), lr=cfg.lr, eps=1e-5)
+
+    # Observation normalization
+    obs_rms = RunningMeanStd(state_size, device) if cfg.obs_norm else None
+
+    # Aggressive curriculum
+    curriculum = AggressiveCurriculum() if cfg.use_curriculum else None
+    if curriculum:
+        print("Aggressive curriculum: enabled (advances when 80% clear rate)")
+
+    # Resume from checkpoint
+    update_count = 0
+    total_episodes = 0
+    best_avg_score = 0.0
+    best_avg_episode = 0
+
+    if resume_path:
+        checkpoint = torch.load(resume_path, map_location=device)
+        agent_mod = agent._orig_mod if hasattr(agent, '_orig_mod') else agent
+        agent_mod.load_state_dict(checkpoint['agent'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        update_count = checkpoint.get('update_count', 0)
+        total_episodes = checkpoint.get('total_episodes', 0)
+        best_avg_score = checkpoint.get('best_avg_score', 0.0)
+        best_avg_episode = checkpoint.get('best_avg_episode', 0)
+        if obs_rms and 'obs_rms' in checkpoint:
+            obs_rms.load_state_dict(checkpoint['obs_rms'])
+        if curriculum and 'curriculum' in checkpoint:
+            curriculum.load_state_dict(checkpoint['curriculum'])
+        print(f"Resumed from {resume_path} (updates={update_count}, episodes={total_episodes})")
+
+    print(f"Training on device: {device}")
+    print(f"Parallel environments: {num_envs}")
+    print(f"State size: {state_size}, Action size: {action_size}")
+    print(f"Episodes target: {episodes:,}")
+    print(f"PPO: rollout={cfg.rollout_length} steps × {num_envs} envs = "
+          f"{cfg.rollout_length * num_envs:,} transitions/update")
+    print(f"Network: backbone={cfg.hidden_sizes}, heads={cfg.head_hidden}, "
+          f"frames={cfg.n_frames}")
+    print(f"LR: {cfg.lr} → {cfg.lr_min} (warmup={cfg.lr_warmup_updates}, "
+          f"decay={cfg.lr_decay_updates})")
+    print(f"Clip={cfg.clip_epsilon}, Entropy={cfg.entropy_coeff}, "
+          f"Value={cfg.value_coeff}, GAE λ={cfg.gae_lambda}")
+    print(f"Obs normalization: {'ON' if cfg.obs_norm else 'OFF'}")
+    print("-" * 70)
+
+    # Pre-allocate rollout buffers
+    roll_obs = np.zeros((cfg.rollout_length, num_envs, state_size), dtype=np.float32)
+    roll_actions = np.zeros((cfg.rollout_length, num_envs), dtype=np.int64)
+    roll_log_probs = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
+    roll_rewards = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
+    roll_dones = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
+    roll_values = np.zeros((cfg.rollout_length, num_envs), dtype=np.float32)
+
+    # Stats
+    scores = deque(maxlen=1000)
+    levels = deque(maxlen=1000)
+    best_score = 0
+    best_level = 0
+    peak_detected = False
+    start_time = time.time()
+
+    # Event log
+    log_path = os.path.join(save_dir, "training_events_ppo.jsonl")
+    log_file = open(log_path, "a")
+
+    # Initialize environments
+    raw_states = envs.reset_all()
+    states = frame_stack.reset_all(raw_states) if frame_stack else raw_states
+    if obs_rms:
+        obs_rms.update(states)
+        states = obs_rms.normalize(states)
+    env_start_levels = np.ones(num_envs, dtype=np.int32)  # track start level per env
+
+    episode_count = total_episodes
+
+    while episode_count < episodes:
+        # === Collect rollout ===
+        for step in range(cfg.rollout_length):
+            states_t = torch.as_tensor(states, dtype=torch.float32, device=device)
+
+            with torch.no_grad():
+                actions, log_probs, _, values = agent.get_action_and_value(states_t)
+
+            actions_np = actions.cpu().numpy()
+            log_probs_np = log_probs.cpu().numpy()
+            values_np = values.cpu().numpy()
+
+            # Store in rollout buffer
+            roll_obs[step] = states if not isinstance(states, np.ndarray) else states
+            roll_actions[step] = actions_np
+            roll_log_probs[step] = log_probs_np
+            roll_values[step] = values_np
+
+            # Step environments
+            raw_next_states, rewards, dones = envs.step_all_fast(actions_np.tolist())
+            next_states = frame_stack.push(raw_next_states) if frame_stack else raw_next_states
+
+            roll_rewards[step] = np.asarray(rewards, dtype=np.float32)
+            roll_dones[step] = np.asarray(dones, dtype=np.float32)
+
+            # Handle done environments
+            done_mask = np.asarray(dones)
+            done_idxs = np.where(done_mask)[0]
+            for i in done_idxs:
+                i = int(i)
+                episode_count += 1
+                ep_score, ep_level, ep_lives, ep_steps, ep_ekills, ep_kkills, ep_mshots, ep_hits = envs.get_stats(i)
+                scores.append(ep_score)
+                levels.append(ep_level)
+                if ep_score > best_score:
+                    best_score = ep_score
+                if ep_level > best_level:
+                    best_level = ep_level
+
+                start_lvl = int(env_start_levels[i])
+
+                # Record curriculum result
+                if curriculum:
+                    curriculum.record(start_lvl, ep_level)
+                    new_min = curriculum.maybe_advance(episode_count)
+                    if new_min is not None:
+                        print(f"  >> Curriculum advanced: min_level={new_min} "
+                              f"(mastered level {new_min - 1})")
+
+                log_file.write(json.dumps({
+                    "episode": episode_count,
+                    "score": ep_score,
+                    "level": ep_level,
+                    "start_level": start_lvl,
+                    "lives_left": ep_lives,
+                    "steps": ep_steps,
+                    "enemies_killed": ep_ekills,
+                    "kamikazes_killed": ep_kkills,
+                    "missiles_shot": ep_mshots,
+                    "times_hit": ep_hits,
+                    "update": update_count,
+                }) + "\n")
+
+                if episode_count % 1000 == 0 or episode_count <= 5:
+                    elapsed = time.time() - start_time
+                    eps_per_sec = episode_count / elapsed if elapsed > 0 else 0
+                    avg_score = np.mean(scores) if scores else 0
+                    avg_level = np.mean(levels) if levels else 0
+                    print(f"Ep {episode_count:>8,} | "
+                          f"Avg Score: {avg_score:>8.0f} | "
+                          f"Best: {best_score:>8,} | "
+                          f"Avg Lvl: {avg_level:.1f} | "
+                          f"Best Lvl: {best_level} | "
+                          f"Updates: {update_count} | "
+                          f"{eps_per_sec:.0f} ep/s | "
+                          f"{elapsed:.0f}s")
+
+                    # Best-average model saving
+                    if episode_count > 1000:
+                        current_avg = float(np.mean(scores))
+                        if current_avg > best_avg_score:
+                            best_avg_score = current_avg
+                            best_avg_episode = episode_count
+                            save_checkpoint(agent, optimizer, obs_rms, update_count,
+                                          episode_count, best_avg_score, best_avg_episode, cfg,
+                                          os.path.join(save_dir, "model_ppo_best_avg.pt"), curriculum)
+                            print(f"  -> New best avg: score={current_avg:.0f}, "
+                                  f"level={float(np.mean(levels)):.1f}")
+
+                    # Peak detection
+                    if episode_count > 50_000 and not peak_detected:
+                        eps_since_best = episode_count - best_avg_episode
+                        if eps_since_best >= 30_000:
+                            current_avg = float(np.mean(scores))
+                            if current_avg >= best_avg_score * 0.95:
+                                peak_detected = True
+                                print(f"\n{'='*70}")
+                                print(f"PEAK DETECTED at episode {episode_count}")
+                                print(f"  Best avg: {best_avg_score:.0f} (ep {best_avg_episode})")
+                                print(f"  Current avg: {current_avg:.0f}")
+                                print(f"{'='*70}\n")
+                                if auto_stop:
+                                    break
+
+                if episode_count % 100 == 0:
+                    log_file.flush()
+
+                # Reset done env (with curriculum)
+                if curriculum:
+                    sl = curriculum.sample_level()
+                    raw_state = envs.reset_one_at_level(i, sl)
+                    env_start_levels[i] = sl
+                else:
+                    raw_state = envs.reset_one(i)
+                    env_start_levels[i] = 1
+                if frame_stack:
+                    next_states[i] = frame_stack.reset(i, raw_state)
+                else:
+                    next_states[i] = raw_state
+
+            # Update observation normalization
+            if obs_rms:
+                obs_rms.update(next_states)
+                states = obs_rms.normalize(next_states)
+            else:
+                states = next_states
+
+            if peak_detected and auto_stop:
+                break
+
+        if peak_detected and auto_stop:
+            break
+
+        # === Compute GAE ===
+        with torch.no_grad():
+            states_t = torch.as_tensor(states, dtype=torch.float32, device=device)
+            next_value = agent.get_value(states_t).cpu().numpy()
+
+        advantages, returns = compute_gae(
+            roll_rewards, roll_values, roll_dones, next_value,
+            gamma=cfg.gamma, lam=cfg.gae_lambda)
+
+        # === PPO Update ===
+        # Flatten [steps, envs, ...] → [steps*envs, ...]
+        n_transitions = cfg.rollout_length * num_envs
+        obs_flat = roll_obs.reshape(n_transitions, state_size)
+        actions_flat = roll_actions.reshape(n_transitions)
+        log_probs_flat = roll_log_probs.reshape(n_transitions)
+        returns_flat = returns.reshape(n_transitions).astype(np.float32)
+        advantages_flat = advantages.reshape(n_transitions).astype(np.float32)
+
+        # Update learning rate
+        update_count += 1
+        lr = scheduled_lr(update_count, cfg.lr, cfg.lr_min,
+                         cfg.lr_warmup_updates, cfg.lr_decay_updates)
+        for pg in optimizer.param_groups:
+            pg['lr'] = lr
+
+        losses = ppo_update(agent, optimizer, obs_flat, actions_flat, log_probs_flat,
+                           returns_flat, advantages_flat, cfg, device)
+
+        # Periodic checkpoint
+        if update_count % 100 == 0:
+            save_checkpoint(agent, optimizer, obs_rms, update_count,
+                          episode_count, best_avg_score, best_avg_episode, cfg,
+                          os.path.join(save_dir, f"model_ppo_ep{episode_count}.pt"), curriculum)
+            cur_min = curriculum.min_level if curriculum else 1
+            print(f"  -> Checkpoint: update={update_count}, lr={lr:.2e}, "
+                  f"ploss={losses['policy_loss']:.4f}, vloss={losses['value_loss']:.4f}, "
+                  f"entropy={losses['entropy']:.4f}, min_lvl={cur_min}")
+
+    # Final save
+    save_checkpoint(agent, optimizer, obs_rms, update_count,
+                  episode_count, best_avg_score, best_avg_episode, cfg,
+                  os.path.join(save_dir, "model_ppo_final.pt"), curriculum)
+
+    # Export JSON weights for browser
+    export_ppo_to_json(agent, cfg, os.path.join(save_dir, "model_weights.json"), obs_rms)
+
+    log_file.close()
+
+    elapsed = time.time() - start_time
+    avg_score_final = float(np.mean(scores)) if scores else 0
+    print("\n" + "=" * 70)
+    print(f"TRAINING {'PEAKED' if peak_detected else 'COMPLETE'}")
+    print("=" * 70)
+    print(f"Episodes:    {episode_count:,}")
+    print(f"Updates:     {update_count}")
+    print(f"Time:        {elapsed:.0f}s ({elapsed / 3600:.1f}h)")
+    print(f"Best Score:  {best_score:,}")
+    print(f"Best Level:  {best_level}")
+    print(f"Best Avg:    {best_avg_score:.0f} (ep {best_avg_episode})")
+    print(f"Avg Score (last 1k): {avg_score_final:.0f}")
+    print(f"\nModel saved to: {save_dir}/model_ppo_final.pt")
+    print(f"JSON weights:    {save_dir}/model_weights.json")
+
+
+def save_checkpoint(agent, optimizer, obs_rms, update_count, episode_count,
+                   best_avg_score, best_avg_episode, cfg, path, curriculum=None):
+    agent_mod = agent._orig_mod if hasattr(agent, '_orig_mod') else agent
+    data = {
+        'agent': agent_mod.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'update_count': update_count,
+        'total_episodes': episode_count,
+        'best_avg_score': best_avg_score,
+        'best_avg_episode': best_avg_episode,
+        'config': {
+            'hidden_sizes': cfg.hidden_sizes,
+            'head_hidden': cfg.head_hidden,
+            'n_frames': cfg.n_frames,
+        },
+    }
+    if obs_rms:
+        data['obs_rms'] = obs_rms.state_dict()
+    if curriculum:
+        data['curriculum'] = curriculum.state_dict()
+    torch.save(data, path)
+
+
+def export_ppo_to_json(agent, cfg, path, obs_rms=None):
+    """Export PPO policy network to JSON for browser inference."""
+    net = agent._orig_mod if hasattr(agent, '_orig_mod') else agent
+
+    weights = {}
+    for name, param in net.named_parameters():
+        # Only export backbone + policy_head (skip value_head)
+        if 'value_head' in name:
+            continue
+        weights[name] = param.detach().cpu().numpy().tolist()
+
+    # Architecture: input → backbone layers → policy head → output
+    arch = [net.state_size] + net.hidden_sizes + [net.head_hidden, net.action_size]
+
+    data = {
+        "architecture": arch,
+        "activation": "relu",
+        "type": "actor_critic",
+        "level_conditioned": True,
+        "n_frames": cfg.n_frames,
+        "weights": weights,
+    }
+
+    # Export observation normalization stats for browser inference
+    if obs_rms:
+        data["obs_norm"] = {
+            "mean": obs_rms.mean.tolist(),
+            "std": np.sqrt(obs_rms.var + 1e-8).tolist(),
+        }
+
+    with open(path, 'w') as f:
+        json.dump(data, f)
+
+    size_kb = os.path.getsize(path) // 1024
+    print(f"Exported PPO policy → {path} ({size_kb} KB)")
+
+
+# =============================================================================
+# Main
+# =============================================================================
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train PPO for eyeBMinvaders")
+    parser.add_argument("--episodes", type=int, default=1_000_000)
+    parser.add_argument("--resume", type=str, default=None)
+    parser.add_argument("--save-dir", type=str, default="models")
+    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--num-envs", type=int, default=None)
+    parser.add_argument("--no-auto-scale", action="store_true")
+    parser.add_argument("--auto-stop", action="store_true")
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--rollout-length", type=int, default=None)
+    parser.add_argument("--n-epochs", type=int, default=None)
+    parser.add_argument("--clip-epsilon", type=float, default=None)
+    parser.add_argument("--entropy-coeff", type=float, default=None)
+    parser.add_argument("--no-obs-norm", action="store_true")
+    parser.add_argument("--no-curriculum", action="store_true",
+                        help="Disable aggressive curriculum learning")
+    args = parser.parse_args()
+
+    cfg = PPOConfig()
+    if args.lr is not None:
+        cfg.lr = args.lr
+    if args.rollout_length is not None:
+        cfg.rollout_length = args.rollout_length
+    if args.n_epochs is not None:
+        cfg.n_epochs = args.n_epochs
+    if args.clip_epsilon is not None:
+        cfg.clip_epsilon = args.clip_epsilon
+    if args.entropy_coeff is not None:
+        cfg.entropy_coeff = args.entropy_coeff
+    if args.no_obs_norm:
+        cfg.obs_norm = False
+    if args.no_curriculum:
+        cfg.use_curriculum = False
+
+    train_ppo(
+        episodes=args.episodes,
+        resume_path=args.resume,
+        save_dir=args.save_dir,
+        device_override=args.device,
+        num_envs=args.num_envs if args.num_envs is not None else NUM_ENVS,
+        config=cfg,
+        auto_scale=not args.no_auto_scale,
+        auto_stop=args.auto_stop,
+    )
