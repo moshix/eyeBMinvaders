@@ -179,6 +179,12 @@ def train_bc(model_path=None, epochs=30, lr=1e-4, batch_size=256, export_after=F
                 'val_acc': val_acc,
                 'steps': 0,
                 'epsilon': 0.05,
+                'arch': {
+                    'use_dueling': is_dueling,
+                    'use_noisy': is_noisy,
+                    'n_frames': input_size // state_size if state_size > 0 else 4,
+                    'hidden_sizes': cfg.hidden_sizes,
+                },
             }, save_path)
 
     print(f"\nBest val accuracy: {best_val_acc:.3f}")
