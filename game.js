@@ -1713,16 +1713,17 @@ function gameLoop(currentTime) {
     // Clear canvas and draw everything using the existing draw functions
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawPlayer();
+    drawWalls();
     drawEnemies();
-    drawKamikazeEnemies();
+    drawPlayer();
     drawMonster();
     drawMonster2();
-    drawBullets();
-    drawMissiles();
-    drawMissileExplosions();
-    drawWalls();
     drawExplosions();
+    drawMissileExplosions();
+    // Threats drawn LAST so always visible on top of monsters/explosions
+    drawKamikazeEnemies();
+    drawMissiles();
+    drawBullets();
     drawScore();
     drawHitMessage();
     drawMuteStatus();
