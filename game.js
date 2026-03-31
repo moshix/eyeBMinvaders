@@ -479,9 +479,10 @@ function createExplosion(x, y) {
     x: x,
     y: y,
     frame: 0,
+    startTime: Date.now(),
     img: new Image(),
-    width: isAdditionalExplosion ? 170 : 96,   // Regular explosion now 96 (32 * 3)
-    height: isAdditionalExplosion ? 170 : 96,  // Regular explosion now 96 (32 * 3)
+    width: isAdditionalExplosion ? 100 : 64,
+    height: isAdditionalExplosion ? 100 : 64,
   };
 
   // Set the source first, then push to array
@@ -2614,6 +2615,9 @@ lifeImage.onerror = () => {
 
 // is AI enabled?
 let autoPlayEnabled = false;
+// Expose AI toggle for parent frame (compare.html)
+window.enableAI = function() { autoPlayEnabled = true; if (typeof loadDQNModel === 'function') loadDQNModel(); };
+window.isAIEnabled = function() { return autoPlayEnabled; };
 
 // =============================================================================
 // DQN Neural Network AI (loaded from trained model)

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Comparison — eyeBMinvaders</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100vh; background: #000; font-family: monospace; overflow: hidden; }
+        .container { display: flex; flex-direction: column; height: 100vh; }
+        .hud {
+            display: flex; gap: 8px; padding: 6px 8px;
+            font-size: 13px; font-weight: bold;
+        }
+        .hud-panel {
+            flex: 1; display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 12px; border-radius: 4px;
+        }
+        .hud-left { color: #0ff; background: rgba(0,255,255,0.1); border: 1px solid #0ff; }
+        .hud-right { color: #fa0; background: rgba(255,170,0,0.1); border: 1px solid #fa0; }
+        .hud-title { font-size: 12px; }
+        .hud-stats { font-size: 14px; text-align: right; }
+        .hud-stats .best { font-size: 16px; }
+        .frames { display: flex; flex: 1; gap: 8px; padding: 0 8px 8px; min-height: 0; }
+        .frames iframe {
+            flex: 1; border: none; border-radius: 4px;
+            background: #111;
+        }
+        .frame-left { outline: 2px solid #0ff; }
+        .frame-right { outline: 2px solid #fa0; }
+        .hint { text-align: center; color: #888; font-size: 11px; padding: 2px; }
+        #start-btn {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #0f0; color: #000; font: bold 24px monospace;
+            padding: 20px 40px; border: none; border-radius: 8px; cursor: pointer;
+            z-index: 9999;
+        }
+        #start-btn:hover { background: #3f3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hud">
+            <div class="hud-panel hud-left">
+                <span class="hud-title">v10 PPO + GRU + SIL (WASM)</span>
+                <span class="hud-stats">
+                    Games: <span id="left-games">0</span> |
+                    Score: <span id="left-score">0</span> |
+                    Level: <span id="left-level">0</span> |
+                    <span class="best">Best: <span id="left-best-score">0</span> Lvl <span id="left-best-level">0</span></span>
+                </span>
+            </div>
+            <div class="hud-panel hud-right">
+                <span class="hud-title">Vanilla Heuristic AI (JS)</span>
+                <span class="hud-stats">
+                    Games: <span id="right-games">0</span> |
+                    Score: <span id="right-score">0</span> |
+                    Level: <span id="right-level">0</span> |
+                    <span class="best">Best: <span id="right-best-score">0</span> Lvl <span id="right-best-level">0</span></span>
+                </span>
+            </div>
+        </div>
+        <div class="frames">
+            <iframe id="frame-left" src="index.html" class="frame-left" allow="autoplay"></iframe>
+            <iframe id="frame-right" src="vanilla/index.html" class="frame-right" allow="autoplay"></iframe>
+        </div>
+        <div class="hint">Press START or hit 0 to launch both AIs | Auto-restarts on game over</div>
+    </div>
+    <button id="start-btn">START BOTH AIs</button>
+
+    <script>
+    const leftFrame = document.getElementById('frame-left');
+    const rightFrame = document.getElementById('frame-right');
+    const startBtn = document.getElementById('start-btn');
+
+    const stats = {
+        left:  { games: 0, bestScore: 0, bestLevel: 0, score: 0, level: 0, wasGameOver: false },
+        right: { games: 0, bestScore: 0, bestLevel: 0, score: 0, level: 0, wasGameOver: false },
+    };
+
+    let started = false;
+    let leftReady = false, rightReady = false;
+
+    leftFrame.addEventListener('load', () => { leftReady = true; });
+    rightFrame.addEventListener('load', () => { rightReady = true; });
+
+    function enableAI(win) {
+        try {
+            if (win.enableAI) win.enableAI();
+        } catch(ex) {}
+    }
+
+    function triggerGameStart(win) {
+        try {
+            // Simulate a keydown on the iframe's document to trigger the legend → game sequence
+            win.document.dispatchEvent(new KeyboardEvent('keydown', {
+                code: 'Space', key: ' ', keyCode: 32, bubbles: true, cancelable: true,
+            }));
+        } catch(ex) {}
+    }
+
+    function waitForAIAndEnable(win) {
+        // Poll until enableAI exists (game.js loaded after ~3s firebirds intro)
+        let attempts = 0;
+        const poll = setInterval(() => {
+            attempts++;
+            try {
+                if (win.enableAI) {
+                    win.enableAI();
+                    clearInterval(poll);
+                }
+            } catch(ex) {}
+            if (attempts > 30) clearInterval(poll); // give up after 15s
+        }, 500);
+    }
+
+    function startBothGames() {
+        if (started) return;
+        started = true;
+        startBtn.style.display = 'none';
+
+        // Trigger the legend → firebirds → game.js load sequence in both iframes
+        triggerGameStart(leftFrame.contentWindow);
+        triggerGameStart(rightFrame.contentWindow);
+
+        // Poll until game.js is loaded and enableAI exists, then activate AI
+        waitForAIAndEnable(leftFrame.contentWindow);
+        waitForAIAndEnable(rightFrame.contentWindow);
+    }
+
+    function restartGame(frameWindow) {
+        try {
+            if (frameWindow.restartGame) {
+                frameWindow.restartGame();
+                if (frameWindow.enableAI) frameWindow.enableAI();
+                setTimeout(() => { if (frameWindow.enableAI) frameWindow.enableAI(); }, 500);
+            }
+        } catch(ex) {}
+    }
+
+    // Start button click
+    startBtn.addEventListener('click', startBothGames);
+
+    // Also start on pressing 0
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Digit0' || e.code === 'Numpad0') {
+            if (!started) {
+                startBothGames();
+            }
+        }
+    });
+
+    // Poll iframe game state, update HUD, auto-restart
+    function updateHUD() {
+        try {
+            const lw = leftFrame.contentWindow;
+            if (lw && typeof lw.score !== 'undefined') {
+                stats.left.score = lw.score || 0;
+                stats.left.level = lw.currentLevel || 0;
+                if (stats.left.score > stats.left.bestScore) stats.left.bestScore = stats.left.score;
+                if (stats.left.level > stats.left.bestLevel) stats.left.bestLevel = stats.left.level;
+
+                if (lw.gameOverFlag && !stats.left.wasGameOver) {
+                    stats.left.wasGameOver = true;
+                    stats.left.games++;
+                    setTimeout(() => restartGame(lw, 'left'), 2000);
+                }
+                if (!lw.gameOverFlag) stats.left.wasGameOver = false;
+            }
+        } catch(ex) {}
+
+        try {
+            const rw = rightFrame.contentWindow;
+            if (rw && typeof rw.score !== 'undefined') {
+                stats.right.score = rw.score || 0;
+                stats.right.level = rw.currentLevel || 0;
+                if (stats.right.score > stats.right.bestScore) stats.right.bestScore = stats.right.score;
+                if (stats.right.level > stats.right.bestLevel) stats.right.bestLevel = stats.right.level;
+
+                if (rw.gameOverFlag && !stats.right.wasGameOver) {
+                    stats.right.wasGameOver = true;
+                    stats.right.games++;
+                    setTimeout(() => restartGame(rw, 'right'), 2000);
+                }
+                if (!rw.gameOverFlag) stats.right.wasGameOver = false;
+            }
+        } catch(ex) {}
+
+        document.getElementById('left-games').textContent = stats.left.games;
+        document.getElementById('left-score').textContent = stats.left.score.toLocaleString();
+        document.getElementById('left-level').textContent = stats.left.level;
+        document.getElementById('left-best-score').textContent = stats.left.bestScore.toLocaleString();
+        document.getElementById('left-best-level').textContent = stats.left.bestLevel;
+
+        document.getElementById('right-games').textContent = stats.right.games;
+        document.getElementById('right-score').textContent = stats.right.score.toLocaleString();
+        document.getElementById('right-level').textContent = stats.right.level;
+        document.getElementById('right-best-score').textContent = stats.right.bestScore.toLocaleString();
+        document.getElementById('right-best-level').textContent = stats.right.bestLevel;
+
+        requestAnimationFrame(updateHUD);
+    }
+
+    requestAnimationFrame(updateHUD);
+    </script>
+</body>
+</html>

@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <base href="../">
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Invaders! (Vanilla)</title>
+        <link rel="icon" type="image/webp" href="favicon.webp">
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #000000;
+                overflow: hidden;
+                color: white;
+                font-family: 'Arial', sans-serif;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #000000;
+                overflow: hidden;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            #gameContainer {
+                position: relative;
+                width: 1024px;
+                height: 576px;
+            }
+
+            #gameCanvas {
+                position: absolute;
+                left: 0;
+                top: 0;
+            }
+
+            #score, #version-info {
+                position: absolute;
+                color: #39FF14;
+                z-index: 1;
+                font-family: Arial, sans-serif;
+            }
+
+            #score {
+                left: 10px;
+                top: 10px;
+            }
+
+            #version-info {
+                right: 10px;
+                top: 30px;
+                color: #888;
+            }
+
+            #copyright {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                color: #888;
+                font-size: 12px;
+            }
+
+            #legend {
+                position: relative;
+                color: white;
+                font-size: 18px;
+                line-height: 1.4;
+                text-align: center;
+                margin: 20px auto;
+                width: min(600px, 90%);
+                padding: 20px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 15px;
+                box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+                margin-bottom: 60px;
+            }
+
+            #legend-title {
+                color: rgb(84, 206, 70);
+                font-size: 32px;
+                font-weight: bold;
+                text-align: center;
+                margin: 10px 0;
+                text-shadow: 0 0 15px rgba(84, 206, 70, 0.5);
+                letter-spacing: 2px;
+            }
+
+            .screenshot {
+                width: min(400px, 100%);
+                height: auto;
+                display: block;
+                border-radius: 10px;
+            }
+
+            .screenshot-frame {
+                background: linear-gradient(145deg, #2a2a2a, #333);
+                border: 2px solid #444;
+                border-radius: 12px;
+                padding: 10px;
+                width: fit-content;
+                margin: 20px auto;
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                transform: perspective(1000px) rotateX(5deg);
+                transition: transform 0.3s ease;
+            }
+
+            .screenshot-frame:hover {
+                transform: perspective(1000px) rotateX(0deg);
+            }
+
+            #legend p {
+                margin: 8px 0;
+                padding: 5px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 5px;
+                transition: background-color 0.3s ease;
+            }
+
+            #legend p:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            .key-instruction {
+                display: inline-block;
+                padding: 3px 8px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                margin: 0 5px;
+                font-weight: bold;
+            }
+
+            /* Touch controls styling updates */
+            #touch-controls {
+                position: fixed;
+                bottom: 40px;
+                left: 0;
+                right: 0;
+                z-index: 1000;
+                display: flex;
+                justify-content: space-between;
+                padding: 0 20px;
+            }
+
+            .touch-button {
+                background: rgba(255, 255, 255, 0.15);
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                color: white;
+                padding: 15px 30px;
+                margin: 5px;
+                border-radius: 8px;
+                font-size: 20px;
+                cursor: pointer;
+                backdrop-filter: blur(5px);
+                transition: all 0.3s ease;
+            }
+
+            .touch-button:active {
+                transform: scale(0.95);
+                background: rgba(255, 255, 255, 0.25);
+            }
+
+            .fire-button {
+                background: rgba(255, 50, 50, 0.2);
+                border-color: rgba(255, 50, 50, 0.4);
+            }
+
+            /* Media queries for better responsiveness */
+            @media (max-width: 768px) {
+                #legend {
+                    font-size: 16px;
+                    padding: 15px;
+                }
+
+                #legend-title {
+                    font-size: 28px;
+                }
+
+                .touch-button {
+                    padding: 12px 24px;
+                    font-size: 18px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                #legend {
+                    font-size: 14px;
+                    padding: 10px;
+                }
+
+                #legend-title {
+                    font-size: 24px;
+                }
+
+                .touch-button {
+                    padding: 10px 20px;
+                    font-size: 16px;
+                }
+            }
+
+            .hits-counter {
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                z-index: 1000;
+                opacity: 1;
+                pointer-events: all;
+            }
+
+            .game-header {
+                display: none;
+            }
+
+            #legend p:last-child {
+                margin-bottom: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="score">Score: 0</div>
+        
+        <div id="version-info"></div>
+        <div id="copyright">© hot dog studios</div>
+        
+        <div id="legend">
+            <div class="screenshot-frame">
+                <img src="screenshot.png" alt="Game Screenshot" class="screenshot">
+            </div>
+            <div id="legend-title">Invaders!</div>
+            <p>Use <span style="color: cyan;">cursor</span> keys, or <span style="color: cyan;">A</span> and <span style="color: cyan;">D</span></p>
+            <p><span style="color: cyan;">Space</span> to shoot - <span style="color: cyan;">M</span> to mute/unmute</p>
+            <p><span style="color: cyan;">P</span> to pause - <span style="color: cyan;">F1</span> AI mode!</p>
+            <p style="color: red; margin-top: 20px;">press any key to start</p>
+        </div>
+
+        <div class="hits-counter">
+            
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+        <div id="touch-controls">
+            <div id="left-controls">
+                <button id="touch-left" class="touch-button">◀</button>
+                <button id="touch-fire-left" class="touch-button fire-button">🔥</button>
+            </div>
+            <div id="right-controls">
+                <button id="touch-fire-right" class="touch-button fire-button">🔥</button>
+                <button id="touch-right" class="touch-button">▶</button>
+            </div>
+        </div>
+        <button id="touch-start" class="touch-button">Start Game</button>
+
+        <script>
+            // More precise device detection
+            function detectDevice() {
+                const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+                const isTablet = /(iPad|Android(?!.*Mobile))/i.test(navigator.userAgent);
+                const isPC = !isMobile && !isTablet;
+                const screenWidth = window.innerWidth;
+                
+                return {
+                    isMobile,
+                    isTablet,
+                    isPC,
+                    screenWidth
+                };
+            }
+
+            // Handle device-specific display
+            function handleDeviceSpecificDisplay() {
+                const device = detectDevice();
+                const touchControls = document.getElementById('touch-controls');
+                const touchStart = document.getElementById('touch-start');
+                const legend = document.getElementById('legend');
+
+                // Get user's language
+                const userLanguage = navigator.language || navigator.userLanguage;
+                const isUnsupportedLocale = /^(ar|zh|ga|no|nb|nn|es)/i.test(userLanguage);
+
+                // Hide touch controls on PC
+                if (touchControls) touchControls.style.display = 'none';
+                if (touchStart) touchStart.style.display = 'none';
+
+                if (device.isMobile || (device.screenWidth < 768) || isUnsupportedLocale) {
+                    // Show message for phones, narrow screens, or unsupported locales
+                    legend.innerHTML = `
+                        <div style="
+                            padding: 20px;
+                            background: rgba(255, 0, 0, 0.1);
+                            border: 2px solid rgba(255, 0, 0, 0.3);
+                            border-radius: 10px;
+                            margin: 20px;
+                            text-align: center;
+                            font-size: 18px;
+                            color: #fff;
+                        ">
+                            <h2 style="color: #ff6b6b; margin-bottom: 15px;">Device Not Supported</h2>
+                            eyeBMInvaders needs a wide enough screen.<br>
+                            Try it now on your PC or tablet!<br>
+                            Thank you!
+                        </div>`;
+                } else if (device.isTablet) {
+                    // Show touch controls only for tablets
+                    if (touchControls) touchControls.style.display = 'flex';
+                    if (touchStart) touchStart.style.display = 'block';
+                }
+            }
+
+            // Run on page load
+            document.addEventListener('DOMContentLoaded', handleDeviceSpecificDisplay);
+
+            // Run on resize
+            window.addEventListener('resize', handleDeviceSpecificDisplay);
+        </script>
+        <script>
+            // Proper touch device detection
+            function isTouchTablet() {
+                // Check if device has touch capability
+                const hasTouch = (('ontouchstart' in window) ||
+                    (navigator.maxTouchPoints > 0) ||
+                    (navigator.msMaxTouchPoints > 0));
+                
+                // Check if it's not a desktop/laptop
+                const isNotDesktop = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                return hasTouch && isNotDesktop;
+            }
+
+            // Only show touch controls if we're on a tablet
+            if (isTouchTablet()) {
+                document.getElementById('touch-controls').style.display = 'block';
+                document.getElementById('touch-start').style.display = 'block';
+                // Remove the "press any key" text for touch devices
+                const keyPrompt = document.querySelector('#legend p[style*="color: red"]');
+                if (keyPrompt) {
+                    keyPrompt.style.display = 'none';
+                }
+            }
+        </script>
+        <script>
+            function startGame() {
+                // Remove the hits counter completely from the DOM before transitioning
+                const hitsCounter = document.querySelector('.hits-counter');
+                if (hitsCounter) {
+                    hitsCounter.remove();
+                }
+                
+                // Hide the legend and start button
+                document.getElementById('legend').style.display = 'none';
+                document.getElementById('touch-start').style.display = 'none';
+                
+                // Create and show firebirds.html in an iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '100vh';
+                iframe.style.border = 'none';
+                iframe.src = 'firebirds.html';
+                document.body.appendChild(iframe);
+                
+                // After 3 seconds, remove iframe and start the game
+                setTimeout(() => {
+                    // Remove the iframe
+                    iframe.remove();
+                    
+                    // Show the canvas
+                    const canvas = document.getElementById('gameCanvas');
+                    canvas.style.display = 'block';
+                    
+                    // Load and start game.js
+                    const gameScript = document.createElement('script');
+                    gameScript.src = 'vanilla/game.js';
+                    gameScript.onload = () => {
+                        console.log('Game script loaded');
+                        // Initialize the game after script loads
+                        createEnemies();
+                        startGameSound.currentTime = 0;
+                        startGameSound.play();
+                        requestAnimationFrame(gameLoop);
+                    };
+                    document.body.appendChild(gameScript);
+                }, 3000);
+            }
+
+            // Add debug logs
+            document.addEventListener('keydown', function(e) {
+                if (document.getElementById('legend').style.display !== 'none') {
+                    console.log('Starting game sequence'); // Debug log
+                    startGame();
+                }
+            });
+        </script>
+        <script>
+            // Set version on page load
+            document.addEventListener('DOMContentLoaded', () => {
+                const versionInfo = document.getElementById('version-info');
+                if (versionInfo) {
+                    fetch('vanilla/game.js')
+                        .then(response => response.text())
+                        .then(text => {
+                            const versionMatch = text.match(/const VERSION = ["'](.+?)["']/);
+                            if (versionMatch) {
+                                versionInfo.textContent = versionMatch[1];
+                            }
+                        });
+                }
+            });
+        </script>
+    </body>
+</html>

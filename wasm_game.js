@@ -114,18 +114,40 @@ function _processEvents(events) {
 
       case 'missile_destroyed':
         _playSound(typeof missileBoomSound !== 'undefined' ? missileBoomSound : null);
+        if (typeof createExplosion === 'function') {
+          createExplosion(evt.x || 0, evt.y || 0);
+        }
         break;
 
       case 'missile_bonus':
         _playSound(typeof bonusSound !== 'undefined' ? bonusSound : null);
+        // Trigger bonus animation
+        if (typeof showBonusAnimation !== 'undefined') {
+          showBonusAnimation = true;
+          bonusAnimationTimer = Date.now();
+        }
         break;
 
       case 'bonus_life':
         _playSound(typeof newLifeSound !== 'undefined' ? newLifeSound : null);
+        // Trigger life grant animation (same as JS physics path)
+        if (typeof lifeGrant !== 'undefined') {
+          lifeGrant = true;
+          if (typeof animations !== 'undefined') {
+            animations.lifeGrant = {
+              startTime: Date.now(),
+              startX: 1024 / 2,
+              startY: 576 - 100,
+            };
+          }
+        }
         break;
 
       case 'monster_hit':
         _playSound(typeof monsterDeadSound !== 'undefined' ? monsterDeadSound : null);
+        if (typeof createExplosion === 'function') {
+          createExplosion(evt.x || 0, evt.y || 0);
+        }
         break;
 
       case 'kamikaze_spawned':
