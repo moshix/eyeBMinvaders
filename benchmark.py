@@ -211,13 +211,60 @@ def main():
     print("\n[Random Agent]")
     def random_action(states):
         return [random.randrange(6) for _ in range(len(states))]
-    results.append(run_benchmark("Random", random_action, raw_state_size, 1,
+    results.append(run_benchmark("Random Agent", random_action, raw_state_size, 1,
                                  args.episodes))
 
-    # --- 2. DQN models ---
+    # --- 2. Heuristic AI (rule-based threat avoidance) ---
+    print("\n[Heuristic AI]")
+    def heuristic_action(states):
+        """Simple rule-based AI: dodge nearest threat, fire when safe."""
+        actions = []
+        for s in states:
+            # Use last frame's features (indices relative to last frame)
+            base = (4 - 1) * raw_state_size  # last frame offset for 4-frame stack
+            if len(s) <= raw_state_size:
+                base = 0
+
+            player_x = s[base + 0]  # normalized player X
+            # Nearest bullet relative X (feature 8)
+            bullet_dx = s[base + 8] if abs(s[base + 9]) < 0.5 else 0  # only if bullet nearby
+            # Nearest kamikaze relative X (feature 18)
+            kamikaze_dx = s[base + 18] if abs(s[base + 19]) < 0.5 else 0
+            # Nearest missile relative X (feature 13)
+            missile_dx = s[base + 13] if abs(s[base + 14]) < 0.5 else 0
+
+            # Pick the most dangerous threat
+            threats = []
+            if abs(s[base + 9]) < 0.5:  # bullet nearby
+                threats.append(('bullet', bullet_dx, abs(s[base + 9])))
+            if abs(s[base + 19]) < 0.5:  # kamikaze nearby
+                threats.append(('kamikaze', kamikaze_dx, abs(s[base + 19])))
+            if abs(s[base + 14]) < 0.5:  # missile nearby
+                threats.append(('missile', missile_dx, abs(s[base + 14])))
+
+            if threats:
+                # Sort by distance (closest first)
+                threats.sort(key=lambda t: t[2])
+                dx = threats[0][1]
+                # Dodge: move away from threat, fire while dodging
+                if dx < -0.02:
+                    actions.append(5)  # FIRE+RIGHT
+                elif dx > 0.02:
+                    actions.append(4)  # FIRE+LEFT
+                else:
+                    # Threat directly above — pick a direction
+                    actions.append(5 if player_x < 0.5 else 4)
+            else:
+                # No immediate threat — fire
+                actions.append(3)  # FIRE
+        return actions
+
+    results.append(run_benchmark("Heuristic AI", heuristic_action, raw_state_size, 1,
+                                 args.episodes))
+
+    # --- 3. DQN models ---
     dqn_models = {
-        'DQN v6 (best)': 'model_best_54.pt',
-        'DQN Run6': 'model_run6_best.pt',
+        'DQN Dueling+NoisyNet': 'model_best_54.pt',
     }
     for name, filename in dqn_models.items():
         path = os.path.join(args.models_dir, filename)
@@ -255,9 +302,11 @@ def main():
         r['config'] = cfg
         results.append(r)
 
-    # --- 3. PPO models ---
+    # --- 4. PPO models ---
     ppo_models = {
         'PPO v10 (GRU+SIL)': 'model_ppo_best_avg.pt',
+        'PPO v5 (vanilla)': 'ppo_v5/model_ppo_best_avg.pt',
+        'PPO v7 (improved feat)': 'ppo_v7/model_ppo_best_avg.pt',
     }
     for name, filename in ppo_models.items():
         path = os.path.join(args.models_dir, filename)
