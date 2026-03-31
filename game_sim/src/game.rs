@@ -318,12 +318,18 @@ impl HeadlessGame {
             .count() as i32;
         let level_completed = self.events.iter()
             .any(|e| matches!(e.event_type, EventType::LevelComplete));
+        let enemies_killed_this_step = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::EnemyKilled))
+            .count() as i32;
+        let monster_killed_this_step = self.events.iter()
+            .any(|e| matches!(e.event_type, EventType::MonsterKilled));
         let player_wall_hits = self.player_wall_hits;
         self.player_wall_hits = 0;  // reset per-tick counter
         let reward = state::calculate_reward(
             self, old_score, old_lives, wall_destroyed_count,
             kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses,
-            level_completed, player_wall_hits);
+            level_completed, player_wall_hits, enemies_killed_this_step,
+            monster_killed_this_step);
 
         let st = state::get_state(self);
         StepResult {

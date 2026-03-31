@@ -344,14 +344,17 @@ pub fn calculate_reward(
     near_misses: i32,
     level_completed: bool,
     player_wall_hits: i32,
+    enemies_killed_this_step: i32,
+    monster_killed_this_step: bool,
 ) -> f32 {
     let mut reward: f32 = 0.0;
 
-    // Original proven reward function (reached level 7)
+    // Score-based reward
     reward += (game.score - old_score) as f32 * 0.01;
 
+    // Life loss penalty (reduced from 5.0 — was causing excessive dodging over offense)
     if game.player_lives < old_lives {
-        reward -= 5.0;
+        reward -= 3.0;
     }
 
     if game.game_over {
@@ -370,9 +373,19 @@ pub fn calculate_reward(
     // Progressive survival bonus: scales with level
     reward += 0.01 * game.current_level as f32;
 
-    // Extra reward for killing kamikazes and shooting down missiles
+    // Enemy kill bonus — direct reward so killing enemies isn't dwarfed by missiles
+    reward += enemies_killed_this_step as f32 * 1.0;
+
+    // Extra reward for killing kamikazes
     reward += kamikazes_killed_this_step as f32 * 1.5;
-    reward += missiles_shot_this_step as f32 * 2.0;
+
+    // Missile interception (reduced from 2.0 — score already gives +5.0 via 500pts)
+    reward += missiles_shot_this_step as f32 * 0.5;
+
+    // Monster kill bonus — restoring walls is strategically critical
+    if monster_killed_this_step {
+        reward += 3.0;
+    }
 
     // Dodging reward: threats passed close but missed
     reward += near_misses as f32 * 0.15;
@@ -381,6 +394,19 @@ pub fn calculate_reward(
     if level_completed {
         let level = game.current_level as f32;
         reward += 5.0 + 3.0 * level;
+    }
+
+    // Progressive penalty for enemies approaching wall — gives gradient BEFORE game over
+    // Quadratic ramp: 0 at 70% height, -3.3 at 85%, -15 at wall
+    if !game.enemies.is_empty() {
+        let lowest_y = game.enemies.iter()
+            .map(|e| e.y + e.height)
+            .fold(0.0f64, f64::max);
+        let proximity = (lowest_y / WALL_Y).min(1.0) as f32;
+        if proximity > 0.7 {
+            let danger = (proximity - 0.7) / 0.3;
+            reward -= 15.0 * danger * danger;
+        }
     }
 
     reward
