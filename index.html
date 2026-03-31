@@ -382,12 +382,22 @@
                         startGameSound.currentTime = 0;
                         startGameSound.play();
                         requestAnimationFrame(gameLoop);
+                        // Auto-enable AI if 0 was pressed to start the game
+                        if (window._startedWithAI && typeof window.enableAI === 'function') {
+                            setTimeout(() => window.enableAI(), 500);
+                        }
                     };
                     document.body.appendChild(gameScript);
                 }, 3000);
             }
 
-            // Add debug logs
+            // Track if 0 key was used to start (auto-enable AI after game.js loads)
+            document.addEventListener('keydown', function(e) {
+                if (e.code === 'Digit0' || e.code === 'Numpad0') {
+                    window._startedWithAI = true;
+                }
+            });
+
             document.addEventListener('keydown', function(e) {
                 if (document.getElementById('legend').style.display !== 'none') {
                     console.log('Starting game sequence'); // Debug log
