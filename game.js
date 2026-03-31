@@ -3162,23 +3162,32 @@ function applyDQNAction(action) {
 function updateDQN() {
   if (!dqnModel) return false;
 
+  // V10/vanilla models need 62-feature state from WASM — can't use JS buildDQNState (54 features)
+  const nFrames = dqnModel.n_frames || 1;
+  const rawStateSize = dqnModel.architecture[0] / nFrames;
+  if (rawStateSize > 54 && !(typeof wasmPhysics !== 'undefined' && wasmPhysics.ready)) {
+    return false; // fall back to heuristic AI
+  }
+
   // Throttle decisions to 30Hz to match training sim (Rust dt=33.333ms)
-  // Without this, 60Hz browser sees half the temporal change per frame,
-  // breaking all learned trajectory predictions and dodge timing
   const now = performance.now();
   if (now - dqnLastDecisionTime < DQN_DECISION_INTERVAL) return true; // keep last action
   dqnLastDecisionTime = now;
 
-  const nFrames = dqnModel.n_frames || 1;
-  if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
-    const rawStateSize = dqnModel.architecture[0] / nFrames;
-    dqnInitFrameBuffer(nFrames, rawStateSize);
-    // Fill all frames with current state (matches training reset behavior)
-    const initState = buildDQNState();
-    dqnResetFrameBuffer(initState);
+  // Get state: prefer WASM (62 features), fall back to JS (54 features)
+  let rawState;
+  if (typeof wasmPhysics !== 'undefined' && wasmPhysics.ready) {
+    const rawFeatures = wasmPhysics.getState();
+    rawState = rawFeatures ? Array.from(rawFeatures).slice(0, rawStateSize) : buildDQNState();
+  } else {
+    rawState = buildDQNState();
   }
 
-  const rawState = buildDQNState();
+  if (nFrames > 1 && (!dqnFrameBuffer || dqnFrameBuffer.nFrames !== nFrames)) {
+    dqnInitFrameBuffer(nFrames, rawStateSize);
+    dqnResetFrameBuffer(rawState);
+  }
+
   let state = nFrames > 1 ? dqnPushFrame(rawState) : rawState;
   // Apply observation normalization if PPO model includes it
   if (dqnModel.obs_norm) {
