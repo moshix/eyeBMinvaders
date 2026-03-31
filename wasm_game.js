@@ -124,7 +124,7 @@ function _processEvents(events) {
         // Trigger bonus animation
         if (typeof showBonusAnimation !== 'undefined') {
           showBonusAnimation = true;
-          bonusAnimationTimer = Date.now();
+          bonusAnimationStart = Date.now();
         }
         break;
 
