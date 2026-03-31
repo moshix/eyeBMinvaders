@@ -1,21 +1,21 @@
 {
-  "timestamp": "2026-03-31 11:09:50",
+  "timestamp": "2026-03-31 15:11:15",
   "episodes_per_model": 100,
   "state_size": 62,
   "results": [
     {
       "model": "Random Agent",
       "episodes": 100,
-      "avg_score": 3378.3,
-      "median_score": 3115.0,
-      "max_score": 10440,
-      "min_score": 1110,
-      "std_score": 1485.746987208791,
+      "avg_score": 3311.1,
+      "median_score": 3080.0,
+      "max_score": 7100,
+      "min_score": 720,
+      "std_score": 1455.4682373724274,
       "avg_level": 1.0,
       "max_level": 1,
-      "avg_steps": 981.01,
+      "avg_steps": 959.78,
       "elapsed_sec": 0.2,
-      "eps_per_sec": 515.8
+      "eps_per_sec": 578.8
     },
     {
       "model": "Heuristic AI",
@@ -29,7 +29,7 @@
       "max_level": 1,
       "avg_steps": 2153.67,
       "elapsed_sec": 0.8,
-      "eps_per_sec": 131.6
+      "eps_per_sec": 132.6
     },
     {
       "model": "DQN Dueling+NoisyNet",
@@ -42,8 +42,8 @@
       "avg_level": 1.42,
       "max_level": 2,
       "avg_steps": 2172.98,
-      "elapsed_sec": 1.7,
-      "eps_per_sec": 57.9,
+      "elapsed_sec": 2.0,
+      "eps_per_sec": 50.0,
       "config": {
         "type": "dqn",
         "state_size": 216,
@@ -60,16 +60,16 @@
     {
       "model": "PPO v10 (GRU+SIL)",
       "episodes": 100,
-      "avg_score": 125077.0,
-      "median_score": 126885.0,
-      "max_score": 163640,
-      "min_score": 63770,
-      "std_score": 20773.281758066056,
-      "avg_level": 6.67,
+      "avg_score": 129074.2,
+      "median_score": 132355.0,
+      "max_score": 169370,
+      "min_score": 70120,
+      "std_score": 19880.573944431282,
+      "avg_level": 7.19,
       "max_level": 9,
-      "avg_steps": 9316.92,
-      "elapsed_sec": 10.4,
-      "eps_per_sec": 9.6,
+      "avg_steps": 9370.19,
+      "elapsed_sec": 11.6,
+      "eps_per_sec": 8.7,
       "config": {
         "type": "ppo",
         "state_size": 248,
@@ -81,26 +81,26 @@
         ],
         "head_hidden": 64,
         "gru_hidden": 64,
-        "episodes": 255000,
-        "best_avg": 130927.18
+        "episodes": 306000,
+        "best_avg": 134253.67
       }
     },
     {
-      "model": "PPO v5 (vanilla)",
+      "model": "PPO Vanilla (62-feat)",
       "episodes": 100,
-      "avg_score": 21477.9,
-      "median_score": 21840.0,
-      "max_score": 43440,
-      "min_score": 7070,
-      "std_score": 8924.190752667717,
-      "avg_level": 1.55,
-      "max_level": 3,
-      "avg_steps": 3568.21,
-      "elapsed_sec": 3.3,
-      "eps_per_sec": 30.0,
+      "avg_score": 114008.9,
+      "median_score": 110060.0,
+      "max_score": 156760,
+      "min_score": 68470,
+      "std_score": 21351.626958852576,
+      "avg_level": 5.54,
+      "max_level": 8,
+      "avg_steps": 8680.24,
+      "elapsed_sec": 9.0,
+      "eps_per_sec": 11.1,
       "config": {
         "type": "ppo",
-        "state_size": 216,
+        "state_size": 248,
         "n_frames": 4,
         "hidden": [
           512,
@@ -109,36 +109,8 @@
         ],
         "head_hidden": 64,
         "gru_hidden": 0,
-        "episodes": 246000,
-        "best_avg": 116305.18
-      }
-    },
-    {
-      "model": "PPO v7 (improved feat)",
-      "episodes": 100,
-      "avg_score": 21615.5,
-      "median_score": 19525.0,
-      "max_score": 47860,
-      "min_score": 6800,
-      "std_score": 9492.057561456315,
-      "avg_level": 1.49,
-      "max_level": 3,
-      "avg_steps": 3457.59,
-      "elapsed_sec": 3.2,
-      "eps_per_sec": 31.4,
-      "config": {
-        "type": "ppo",
-        "state_size": 216,
-        "n_frames": 4,
-        "hidden": [
-          512,
-          256,
-          128
-        ],
-        "head_hidden": 64,
-        "gru_hidden": 0,
-        "episodes": 248000,
-        "best_avg": 126532.03
+        "episodes": 372000,
+        "best_avg": 124809.95
       }
     }
   ]

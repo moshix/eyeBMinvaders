@@ -305,8 +305,7 @@ def main():
     # --- 4. PPO models ---
     ppo_models = {
         'PPO v10 (GRU+SIL)': 'model_ppo_best_avg.pt',
-        'PPO v5 (vanilla)': 'ppo_v5/model_ppo_best_avg.pt',
-        'PPO v7 (improved feat)': 'ppo_v7/model_ppo_best_avg.pt',
+        'PPO Vanilla (62-feat)': 'ppo_vanilla_baseline/model_ppo_best_avg.pt',
     }
     for name, filename in ppo_models.items():
         path = os.path.join(args.models_dir, filename)
