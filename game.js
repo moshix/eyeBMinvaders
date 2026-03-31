@@ -1821,6 +1821,16 @@ function gameLoop(currentTime) {
     drawHitMessage();
     drawMuteStatus();
     drawLevelMessage();
+    // WASM level complete message (timed, since gamePaused isn't used in WASM mode)
+    if (window._wasmLevelMessage && Date.now() - window._wasmLevelMessage.time < 2000) {
+      ctx.save();
+      ctx.fillStyle = 'white';
+      ctx.font = '48px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(window._wasmLevelMessage.text, canvas.width / 2, canvas.height / 2);
+      ctx.restore();
+    }
     drawLives();
     drawPauseMessage();
     drawLifeGrant();

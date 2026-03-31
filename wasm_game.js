@@ -98,10 +98,23 @@ function _processEvents(events) {
 
       case 'player_hit':
         _playSound(typeof playerExplosionSound !== 'undefined' ? playerExplosionSound : null);
+        // Trigger hit message animation
+        if (typeof showHitMessage !== 'undefined') {
+          showHitMessage = true;
+          hitMessageTimer = Date.now();
+        }
+        // Trigger hit animation (player image swap + timer)
+        if (typeof playerHitTimer !== 'undefined') {
+          playerHitTimer = Date.now();
+        }
         break;
 
       case 'player_killed':
         _playSound(typeof playerExplosionSound !== 'undefined' ? playerExplosionSound : null);
+        if (typeof showHitMessage !== 'undefined') {
+          showHitMessage = true;
+          hitMessageTimer = Date.now();
+        }
         break;
 
       case 'game_over':
@@ -110,6 +123,8 @@ function _processEvents(events) {
 
       case 'level_complete':
         _playSound(typeof clearLevelSound !== 'undefined' ? clearLevelSound : null);
+        // Show level message briefly
+        window._wasmLevelMessage = { text: `Level ${(evt.level || 0) + 1}`, time: Date.now() };
         break;
 
       case 'missile_destroyed':
