@@ -415,53 +415,13 @@
             </div>
         </div>
 
-        <!-- Score Comparison Bar Chart -->
-        <div class="section-title">Score Comparison &mdash; Atari SpaceInvaders</div>
-        <p class="note">Published benchmark scores on the standard Atari 2600 ROM. eyeBMinvaders scores are on the custom game (different scale, far more complex mechanics). Direct numerical comparison is illustrative, not apples-to-apples.</p>
+        <!-- Score Comparison Bar Chart — populated from benchmark_results.json -->
+        <div class="section-title">Score Comparison &mdash; eyeBMinvaders Benchmark</div>
+        <p class="note">All models benchmarked on the same game with 100 headless episodes each. Same state representation (62 features), same physics engine. Apples-to-apples comparison.</p>
 
         <div class="bar-chart" id="scoreChart">
-            <div class="bar-row">
-                <div class="bar-label">Random Agent</div>
-                <div class="bar-track"><div class="bar-fill dim" style="--bar-width: 0.8%"><div class="bar-value">148</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">HF sb3 DQN (1M)</div>
-                <div class="bar-track"><div class="bar-fill blue" style="--bar-width: 3.2%"><div class="bar-value">~600</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">PPO (default)</div>
-                <div class="bar-track"><div class="bar-fill orange" style="--bar-width: 4.2%"><div class="bar-value">~800</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">Human Benchmark</div>
-                <div class="bar-track"><div class="bar-fill cyan" style="--bar-width: 8.7%"><div class="bar-value">1,652</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">DQN (DeepMind 2015)</div>
-                <div class="bar-track"><div class="bar-fill blue" style="--bar-width: 10.4%"><div class="bar-value">1,976</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">A3C</div>
-                <div class="bar-track"><div class="bar-fill purple" style="--bar-width: 11.7%"><div class="bar-value">2,214</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label">Rainbow DQN</div>
-                <div class="bar-track"><div class="bar-fill purple" style="--bar-width: 40%"><div class="bar-value">~18,789</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
-            <div class="bar-row">
-                <div class="bar-label" style="color: #FFD700; font-weight: bold;">eyeBMinvaders v10</div>
-                <div class="bar-track"><div class="bar-fill green" id="champ-bar" style="--bar-width: 100%"><div class="bar-value" id="champ-bar-value" style="font-weight:bold;">127,000 &#9733;</div></div></div>
-                <div class="bar-value-outside"></div>
-            </div>
+            <div style="color:#666;padding:12px;">Loading benchmark data...</div>
         </div>
-        <p class="note">&#9888; The eyeBMinvaders score is on a custom game with richer mechanics and wider scoring range. It is not directly comparable to Atari 2600 scores, but illustrates the relative scale of the problem being solved.</p>
         <div id="benchmark-live" style="margin-top:16px;padding:12px;background:rgba(0,255,0,0.05);border:1px solid #333;border-radius:6px;">
             <span style="color:#666;">Loading live benchmark data...</span>
         </div>
@@ -751,60 +711,86 @@
             });
         });
 
-        // Fetch live benchmark data
+        // Fetch live benchmark data and build charts + tables
         fetch('benchmark_results.json?t=' + Date.now())
             .then(r => r.json())
             .then(data => {
-                // Find the PPO v10 result
-                const ppo = data.results.find(r => r.model.includes('PPO'));
-                const random = data.results.find(r => r.model === 'Random');
-                const dqn = data.results.find(r => r.model.includes('DQN'));
+                const fmt = n => Math.round(n).toLocaleString();
+                const sorted = data.results.sort((a, b) => b.avg_score - a.avg_score);
+                const maxScore = sorted.length > 0 ? sorted[0].avg_score : 1;
 
+                // Find champion (PPO v10)
+                const ppo = sorted.find(r => r.model.includes('v10'));
                 if (ppo) {
-                    const fmt = n => Math.round(n).toLocaleString();
                     document.getElementById('champ-avg-score').textContent = fmt(ppo.avg_score);
                     document.getElementById('champ-max-level').textContent = 'Level ' + ppo.max_level;
                     document.getElementById('champ-avg-level').textContent = ppo.avg_level.toFixed(1);
                     document.getElementById('champ-max-score').textContent = fmt(ppo.max_score);
                     document.getElementById('champ-episodes').textContent = ppo.episodes;
-                    document.getElementById('champ-bar-value').textContent = fmt(ppo.avg_score) + ' \u2733';
                 }
-
                 if (data.timestamp) {
                     document.getElementById('champ-timestamp').textContent = data.timestamp;
                 }
 
-                // Update all model bars if we have data
-                if (data.results && data.results.length > 0) {
-                    // Build a summary table below the chart
-                    const container = document.getElementById('benchmark-live');
-                    if (container) {
-                        let html = '<table style="width:100%;border-collapse:collapse;margin-top:12px;">';
-                        html += '<tr style="color:#0ff;border-bottom:1px solid #333;"><th style="text-align:left;padding:4px;">Model</th>'
-                              + '<th style="text-align:right;padding:4px;">Avg Score</th>'
-                              + '<th style="text-align:right;padding:4px;">Avg Level</th>'
-                              + '<th style="text-align:right;padding:4px;">Max Level</th>'
-                              + '<th style="text-align:right;padding:4px;">Max Score</th>'
-                              + '<th style="text-align:right;padding:4px;">Episodes</th></tr>';
-                        for (const r of data.results.sort((a, b) => b.avg_score - a.avg_score)) {
-                            const color = r.model.includes('PPO') ? '#39FF14' : r.model.includes('DQN') ? '#0ff' : '#888';
-                            html += `<tr style="color:${color};border-bottom:1px solid #222;">`
-                                  + `<td style="padding:4px;">${r.model}</td>`
-                                  + `<td style="text-align:right;padding:4px;">${Math.round(r.avg_score).toLocaleString()}</td>`
-                                  + `<td style="text-align:right;padding:4px;">${r.avg_level.toFixed(1)}</td>`
-                                  + `<td style="text-align:right;padding:4px;">${r.max_level}</td>`
-                                  + `<td style="text-align:right;padding:4px;">${r.max_score.toLocaleString()}</td>`
-                                  + `<td style="text-align:right;padding:4px;">${r.episodes}</td></tr>`;
-                        }
-                        html += '</table>';
-                        html += `<div style="color:#666;font-size:11px;margin-top:6px;">Benchmark run: ${data.timestamp} | ${data.episodes_per_model} episodes per model</div>`;
-                        container.innerHTML = html;
+                // Build bar chart from benchmark data
+                const chart = document.getElementById('scoreChart');
+                if (chart && sorted.length > 0) {
+                    const colors = {
+                        'PPO v10': 'green', 'PPO Vanilla': 'orange',
+                        'DQN': 'blue', 'Heuristic': 'cyan', 'Random': 'dim'
+                    };
+                    let barsHtml = '';
+                    for (const r of sorted) {
+                        const pct = (r.avg_score / maxScore * 100).toFixed(1);
+                        const colorKey = Object.keys(colors).find(k => r.model.includes(k)) || 'dim';
+                        const fill = colors[colorKey];
+                        const isChamp = r.model.includes('v10');
+                        const labelStyle = isChamp ? 'color:#FFD700;font-weight:bold;' : '';
+                        const valStyle = isChamp ? 'font-weight:bold;' : '';
+                        const star = isChamp ? ' \u2733' : '';
+                        barsHtml += `<div class="bar-row">
+                            <div class="bar-label" style="${labelStyle}">${r.model}</div>
+                            <div class="bar-track"><div class="bar-fill ${fill}" style="--bar-width:${pct}%">
+                                <div class="bar-value" style="${valStyle}">${fmt(r.avg_score)}${star}</div>
+                            </div></div>
+                            <div class="bar-value-outside" style="font-size:10px;color:#888;">Lvl ${r.avg_level.toFixed(1)}</div>
+                        </div>`;
                     }
+                    chart.innerHTML = barsHtml;
+                }
+
+                // Build detail table
+                const container = document.getElementById('benchmark-live');
+                if (container && sorted.length > 0) {
+                    let html = '<table style="width:100%;border-collapse:collapse;margin-top:12px;">';
+                    html += '<tr style="color:#0ff;border-bottom:1px solid #333;">'
+                          + '<th style="text-align:left;padding:4px;">Model</th>'
+                          + '<th style="text-align:right;padding:4px;">Avg Score</th>'
+                          + '<th style="text-align:right;padding:4px;">Avg Level</th>'
+                          + '<th style="text-align:right;padding:4px;">Max Level</th>'
+                          + '<th style="text-align:right;padding:4px;">Max Score</th>'
+                          + '<th style="text-align:right;padding:4px;">Episodes</th></tr>';
+                    for (const r of sorted) {
+                        const color = r.model.includes('v10') ? '#FFD700'
+                                    : r.model.includes('PPO') ? '#39FF14'
+                                    : r.model.includes('DQN') ? '#0ff' : '#888';
+                        html += `<tr style="color:${color};border-bottom:1px solid #222;">`
+                              + `<td style="padding:4px;">${r.model}</td>`
+                              + `<td style="text-align:right;padding:4px;">${fmt(r.avg_score)}</td>`
+                              + `<td style="text-align:right;padding:4px;">${r.avg_level.toFixed(1)}</td>`
+                              + `<td style="text-align:right;padding:4px;">${r.max_level}</td>`
+                              + `<td style="text-align:right;padding:4px;">${r.max_score.toLocaleString()}</td>`
+                              + `<td style="text-align:right;padding:4px;">${r.episodes}</td></tr>`;
+                    }
+                    html += '</table>';
+                    html += `<div style="color:#666;font-size:11px;margin-top:6px;">Benchmark: ${data.timestamp} | ${data.episodes_per_model} episodes per model | Run: python benchmark.py --episodes 100</div>`;
+                    container.innerHTML = html;
                 }
             })
             .catch(() => {
                 const ts = document.getElementById('champ-timestamp');
                 if (ts) ts.textContent = 'No benchmark data';
+                document.getElementById('scoreChart').innerHTML = '<div style="color:#f44;padding:12px;">Failed to load benchmark_results.json</div>';
             });
     </script>
 </body>

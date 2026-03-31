@@ -1532,11 +1532,42 @@ function getPlayerAction() {
         const m = dqnModel.obs_norm.mean, s = dqnModel.obs_norm.std;
         state = state.map((v, i) => Math.max(-10, Math.min(10, (v - m[i]) / s[i])));
       }
+      // Select which model(s) to use based on F4 mode
+      const activeModel = _dualModelMode === 1 && dqnModelVanilla ? dqnModelVanilla : dqnModel;
+      const savedModel = dqnModel; // save primary
+      if (_dualModelMode === 1 && dqnModelVanilla) dqnModel = dqnModelVanilla;
       const qValues = dqnForward(state);
+      if (_dualModelMode === 1) dqnModel = savedModel; // restore
+
+      // Dual mode: run both models, pick action from higher value
+      let dualVanillaQ = null;
+      _dualLastWinner = _DUAL_MODES[_dualModelMode];
+      if (_dualModelMode === 2 && dqnModelVanilla && qValues) {
+        const savedM = dqnModel;
+        dqnModel = dqnModelVanilla;
+        dualVanillaQ = dqnForward(state);
+        dqnModel = savedM;
+      }
+
       if (qValues) {
-        // Get top 3 actions by policy logit
+        // Get top action from primary model
         const ranked = qValues.map((q, i) => [i, q]).sort((a, b) => b[1] - a[1]);
         let bestAction = ranked[0][0];
+
+        // In dual mode: compare max logits, pick from the more confident model
+        if (_dualModelMode === 2 && dualVanillaQ) {
+          const v10Max = Math.max(...qValues);
+          const vanillaMax = Math.max(...dualVanillaQ);
+          const vanillaBest = dualVanillaQ.indexOf(vanillaMax);
+          // Use the model with higher peak confidence
+          if (vanillaMax > v10Max) {
+            bestAction = vanillaBest;
+            _dualLastWinner = 'Vanilla';
+          } else {
+            _dualLastWinner = 'V10';
+          }
+        }
+
         let policyAction = bestAction;
         _lookaheadOverride = null;
 
@@ -2048,6 +2079,11 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     _lookaheadEnabled = !_lookaheadEnabled;
     console.log('Lookahead:', _lookaheadEnabled ? 'ON' : 'OFF');
+  }
+  if (e.code === "F4") {
+    e.preventDefault();
+    _dualModelMode = (_dualModelMode + 1) % 3;
+    console.log('Model mode:', _DUAL_MODES[_dualModelMode]);
   }
   if (e.code === "Digit0" || e.code === "Numpad0") {
     autoPlayEnabled = !autoPlayEnabled;
@@ -2632,12 +2668,19 @@ window.isAIEnabled = function() { return autoPlayEnabled; };
 // =============================================================================
 // DQN Neural Network AI (loaded from trained model)
 // =============================================================================
-let dqnModel = null;       // loaded model weights
+let dqnModel = null;       // loaded model weights (V10 primary)
+let dqnModelVanilla = null; // vanilla PPO model (secondary)
 let dqnModelLoading = false;
 let dqnModelTimestamp = 0;  // last modified time of the JSON file
 let dqnFrameBuffer = null;  // frame stacking buffer
 let dqnLastDecisionTime = 0;  // throttle to 30Hz to match training sim
 const DQN_DECISION_INTERVAL = 33.333;  // ms — must match Rust sim dt (30Hz)
+
+// Dual-model mode: F4 cycles through V10 / Vanilla / Dual (evolutionary)
+// 0 = V10 only, 1 = Vanilla only, 2 = Dual (best value wins)
+let _dualModelMode = 0;
+const _DUAL_MODES = ['V10', 'Vanilla', 'Dual'];
+let _dualLastWinner = ''; // which model chose the action in dual mode
 
 function dqnInitFrameBuffer(nFrames, stateSize) {
   dqnFrameBuffer = {
@@ -2681,10 +2724,16 @@ async function loadDQNModel() {
     if (!resp.ok) { dqnModelLoading = false; return; }
     const data = await resp.json();
     dqnModel = data;
-    console.log('DQN model loaded, architecture:', data.architecture);
-  } catch (e) {
-    // Model file not available yet — that's fine, will retry later
-  }
+    console.log('V10 model loaded, architecture:', data.architecture);
+  } catch (e) {}
+  // Also load vanilla model for dual mode
+  try {
+    const resp2 = await fetch('models/model_vanilla.json?t=' + Date.now());
+    if (resp2.ok) {
+      dqnModelVanilla = await resp2.json();
+      console.log('Vanilla model loaded, architecture:', dqnModelVanilla.architecture);
+    }
+  } catch (e) {}
   dqnModelLoading = false;
 }
 
@@ -3376,7 +3425,9 @@ function _updateAIOverlay(qValues, action) {
   html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'}</span>`;
   const laColor = _lookaheadEnabled ? '#39FF14' : '#666';
   html += ` <span style="color:${laColor}">LA:${_lookaheadEnabled ? 'ON' : 'OFF'}</span>`;
-  html += ` <span style="color:#888">F2=perf F3=lookahead</span>`;
+  const modeColor = _dualModelMode === 2 ? '#f0f' : _dualModelMode === 1 ? '#fa0' : '#0ff';
+  html += ` <span style="color:${modeColor}">${_DUAL_MODES[_dualModelMode]}${_dualModelMode === 2 ? '→' + _dualLastWinner : ''}</span>`;
+  html += `<br><span style="color:#888">F2=perf F3=LA F4=model</span>`;
 
   _aiOverlayEl.innerHTML = html;
 }
