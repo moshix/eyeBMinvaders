@@ -1533,11 +1533,19 @@ function getPlayerAction() {
         state = state.map((v, i) => Math.max(-10, Math.min(10, (v - m[i]) / s[i])));
       }
       // Select which model(s) to use based on F4 mode
-      const activeModel = _dualModelMode === 1 && dqnModelVanilla ? dqnModelVanilla : dqnModel;
-      const savedModel = dqnModel; // save primary
-      if (_dualModelMode === 1 && dqnModelVanilla) dqnModel = dqnModelVanilla;
-      const qValues = dqnForward(state);
-      if (_dualModelMode === 1) dqnModel = savedModel; // restore
+      let qValues = null;
+      const savedModel = dqnModel;
+      try {
+        if (_dualModelMode === 1 && dqnModelVanilla) dqnModel = dqnModelVanilla;
+        qValues = dqnForward(state);
+      } catch (e) {
+        console.error('dqnForward error:', e);
+      }
+      dqnModel = savedModel; // always restore, even on error
+      if (!window._fwdDebugCount) window._fwdDebugCount = 0;
+      if (window._fwdDebugCount++ < 5) {
+        console.log('dqnForward result:', qValues ? `[${qValues.map(v=>v.toFixed(2))}] state.len=${state.length}` : 'NULL');
+      }
 
       // Dual mode: run both models, pick action from higher value
       let dualVanillaQ = null;
@@ -1604,6 +1612,10 @@ function getPlayerAction() {
       }
     }
     // Fallback: no model loaded — return idle so heuristic can be considered
+    if (!window._aiDebugLogged) {
+      window._aiDebugLogged = true;
+      console.warn('AI fallback to idle. dqnModel:', !!dqnModel, 'wasmReady:', typeof wasmPhysics !== 'undefined' && wasmPhysics.ready);
+    }
     return 0;
   }
 
@@ -2814,8 +2826,15 @@ function dqnForward(state) {
         const n = Math.tanh(gi[2 * gruSize + i] + r * gh[2 * gruSize + i]);
         newH[i] = (1 - z) * n + z * hx[i];
       }
-      window._gruHidden = newH;
-      x = x.concat(newH);
+      // NaN safety: if any value is NaN, reset hidden state
+      if (newH.some(v => isNaN(v) || !isFinite(v))) {
+        console.warn('GRU produced NaN, resetting hidden state');
+        window._gruHidden = new Array(gruSize).fill(0);
+        x = x.concat(window._gruHidden);
+      } else {
+        window._gruHidden = newH;
+        x = x.concat(newH);
+      }
     }
 
     // Level conditioning: append continuous level value
