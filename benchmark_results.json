@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-03-31 09:55:32",
+  "episodes_per_model": 100,
+  "state_size": 62,
+  "results": [
+    {
+      "model": "Random",
+      "episodes": 100,
+      "avg_score": 3806.2,
+      "median_score": 3625.0,
+      "max_score": 8150,
+      "min_score": 820,
+      "std_score": 1644.860346655606,
+      "avg_level": 1.0,
+      "max_level": 1,
+      "avg_steps": 989.45,
+      "elapsed_sec": 0.2,
+      "eps_per_sec": 587.3
+    },
+    {
+      "model": "DQN v6 (best)",
+      "episodes": 100,
+      "avg_score": 12763.8,
+      "median_score": 11560.0,
+      "max_score": 27880,
+      "min_score": 4710,
+      "std_score": 5288.397069055991,
+      "avg_level": 1.42,
+      "max_level": 2,
+      "avg_steps": 2172.98,
+      "elapsed_sec": 2.1,
+      "eps_per_sec": 46.5,
+      "config": {
+        "type": "dqn",
+        "state_size": 216,
+        "n_frames": 4,
+        "hidden": [
+          512,
+          256,
+          128
+        ],
+        "dueling": true,
+        "noisy": true
+      }
+    },
+    {
+      "model": "PPO v10 (GRU+SIL)",
+      "episodes": 100,
+      "avg_score": 125077.0,
+      "median_score": 126885.0,
+      "max_score": 163640,
+      "min_score": 63770,
+      "std_score": 20773.281758066056,
+      "avg_level": 6.67,
+      "max_level": 9,
+      "avg_steps": 9316.92,
+      "elapsed_sec": 10.2,
+      "eps_per_sec": 9.8,
+      "config": {
+        "type": "ppo",
+        "state_size": 248,
+        "n_frames": 4,
+        "hidden": [
+          512,
+          256,
+          128
+        ],
+        "head_hidden": 64,
+        "gru_hidden": 64,
+        "episodes": 255000,
+        "best_avg": 130927.18
+      }
+    }
+  ]
+}
