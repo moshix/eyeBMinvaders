@@ -397,7 +397,9 @@ pub fn calculate_reward(
     }
 
     // Progressive penalty for enemies approaching wall — gives gradient BEFORE game over
-    // Quadratic ramp: 0 at 70% height, -3.3 at 85%, -15 at wall
+    // Scales with level: higher levels have faster enemies, need stronger urgency
+    // Base: quadratic ramp 0 at 70% height → -15 at wall
+    // Level multiplier: 1.0 at level 1, up to 2.5 at level 8+
     if !game.enemies.is_empty() {
         let lowest_y = game.enemies.iter()
             .map(|e| e.y + e.height)
@@ -405,7 +407,8 @@ pub fn calculate_reward(
         let proximity = (lowest_y / WALL_Y).min(1.0) as f32;
         if proximity > 0.7 {
             let danger = (proximity - 0.7) / 0.3;
-            reward -= 15.0 * danger * danger;
+            let level_mult = 1.0 + 0.2 * (game.current_level.min(9) - 1) as f32;
+            reward -= 15.0 * level_mult * danger * danger;
         }
     }
 

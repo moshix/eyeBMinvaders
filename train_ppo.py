@@ -74,6 +74,7 @@ class PPOConfig:
     gru_hidden: int = 64            # GRU side-channel hidden size (0 to disable)
     chunk_length: int = 16          # sequential chunk size for GRU training
     use_curriculum: bool = False    # aggressive curriculum (off by default — hurts PPO)
+    mixed_starts: bool = True       # 25% of episodes start at level 4-7 for high-level exposure
     entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
     target_kl: float = 0.03          # KL early stop threshold (None to disable)
     sil_capacity: int = 500          # self-imitation buffer: top-K episodes
@@ -994,9 +995,14 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                 if episode_count % 100 == 0:
                     log_file.flush()
 
-                # Reset done env (with curriculum)
+                # Reset done env (with curriculum or mixed starts)
                 if curriculum:
                     sl = curriculum.sample_level()
+                    raw_state = envs.reset_one_at_level(i, sl)
+                    env_start_levels[i] = sl
+                elif cfg.mixed_starts and random.random() < 0.25:
+                    # 25% of episodes start at level 4-7 for high-level exposure
+                    sl = random.choice([4, 5, 5, 6, 6, 6, 7, 7])
                     raw_state = envs.reset_one_at_level(i, sl)
                     env_start_levels[i] = sl
                 else:
@@ -1195,6 +1201,8 @@ if __name__ == "__main__":
     parser.add_argument("--clip-epsilon", type=float, default=None)
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--no-obs-norm", action="store_true")
+    parser.add_argument("--no-gru", action="store_true",
+                        help="Disable GRU side-channel (feedforward only)")
     parser.add_argument("--no-curriculum", action="store_true",
                         help="Disable aggressive curriculum learning")
     parser.add_argument("--no-sil", action="store_true",
@@ -1216,6 +1224,8 @@ if __name__ == "__main__":
         cfg.entropy_coeff = args.entropy_coeff
     if args.no_obs_norm:
         cfg.obs_norm = False
+    if args.no_gru:
+        cfg.gru_hidden = 0
     if args.no_curriculum:
         cfg.use_curriculum = False
     if args.no_sil:
