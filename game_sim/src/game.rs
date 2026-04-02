@@ -206,6 +206,13 @@ impl HeadlessGame {
         self.times_hit = 0;
         self.near_misses = 0;
         self.player_wall_hits = 0;
+        self.shots_fired = 0;
+        self.shots_hit = 0;
+        self.edge_columns_eliminated = 0;
+        self.monsters_killed = 0;
+        self.monsters_spawned = 0;
+        self.bounces = 0;
+        self.level_start_time = 0.0;
         self.create_enemies();
         state::get_state(self)
     }
