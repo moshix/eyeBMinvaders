@@ -314,17 +314,18 @@ class ActorCritic(nn.Module):
         value = self.value_head(conditioned)
         return logits, value, new_hx
 
-    def get_action_and_value(self, x, hx=None):
+    def get_action_and_value(self, x, hx=None, action_mask_enabled=False):
         logits, value, new_hx = self.forward(x, hx)
-        # Action masking: at level 5+, force fire actions when cooldown ready
-        # Current frame is last `state_size` features in the frame stack
-        ss = x.shape[-1] // (self.n_frames if hasattr(self, 'n_frames') else 4)
-        current = x[:, -ss:]  # last frame
-        level_feat = current[:, 2]     # feature [2] = level / 10
-        fire_feat = current[:, 52] if ss > 52 else torch.zeros(x.shape[0], device=x.device)
-        mask = (level_feat >= 0.5) & (fire_feat > 0.9)  # level 5+ and fire ready
-        if mask.any():
-            logits[mask, :3] = -1e8  # mask idle, left, right
+        # Action masking: at level 7+, bias toward fire actions when cooldown ready
+        # Only active after warmup to let the model learn basic behaviors first
+        if action_mask_enabled:
+            ss = x.shape[-1] // (self.n_frames if hasattr(self, 'n_frames') else 4)
+            current = x[:, -ss:]  # last frame
+            level_feat = current[:, 2]     # feature [2] = level / 10
+            fire_feat = current[:, 52] if ss > 52 else torch.zeros(x.shape[0], device=x.device)
+            mask = (level_feat >= 0.7) & (fire_feat > 0.9)  # level 7+ and fire ready
+            if mask.any():
+                logits[mask, :3] -= 5.0  # soft bias against non-fire, not hard mask
         dist = Categorical(logits=logits)
         action = dist.sample()
         return action, dist.log_prob(action), dist.entropy(), value.squeeze(-1), new_hx
@@ -879,7 +880,8 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
             states_t = torch.as_tensor(states, dtype=torch.float32, device=device)
 
             with torch.no_grad():
-                actions, log_probs, _, values, new_hx = agent.get_action_and_value(states_t, gru_hx)
+                use_mask = episode_count > 100_000  # warmup: no masking for first 100k episodes
+                actions, log_probs, _, values, new_hx = agent.get_action_and_value(states_t, gru_hx, action_mask_enabled=use_mask)
 
             actions_np = actions.cpu().numpy()
             log_probs_np = log_probs.cpu().numpy()
