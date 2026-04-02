@@ -92,6 +92,42 @@ Ep    1,000 | Avg Score:    5489 | Best:   10,740 | Avg Lvl: 1.0 | Best Lvl: 1 |
 
 ## Architecture
 
+- **Model**: Actor-Critic with GRU side-channel — 62 features x 4 frames = 248 inputs, 512→256→128 backbone, 64-dim GRU, policy + value heads, 6 action outputs
+- **Algorithm**: PPO (Proximal Policy Optimization) with GAE, entropy decay, and optional Self-Imitation Learning
+- **State**: 62 normalized features (player position, threats, velocities, danger heatmap, wall health, threat urgency, etc.)
+- **Actions**: idle, left, right, fire, fire+left, fire+right
+
+## PPO Training (Recommended)
+
+```bash
+# Full training run (v12 champion configuration)
+python3 train_ppo.py --episodes 500000 --save-dir models/ppo_v12
+
+# Resume from checkpoint
+python3 train_ppo.py --episodes 500000 --save-dir models/ppo_v12 --resume models/ppo_v11/model_ppo_best_avg.pt
+
+# Key options
+python3 train_ppo.py --help
+```
+
+### v12 Training Innovations
+
+| Feature | Description |
+|---------|-------------|
+| **Reward rebalancing** | Enemy kill +1.0, monster kill +3.0, missile reduced 2.0→0.5, life loss reduced 5.0→3.0 |
+| **Descent penalty** | Progressive quadratic penalty when enemies > 70% height, scales with level (1x at L1, 2.5x at L8+) |
+| **Mixed-start curriculum** | 25% of episodes start at level 4-7 for high-level exposure |
+
+### Model Evolution
+
+| Model | Best Score | Avg Level | Key Change |
+|-------|-----------|-----------|------------|
+| v10 | 184,920 | 6.5 | GRU + SIL (original reward) |
+| v11 | 179,760 | 6.5 | Fixed reward imbalance, added descent penalty |
+| **v12** | **185,460** | **7.3** | Level-scaled penalty + mixed-start curriculum |
+
+## Legacy DQN Training
+
 - **Model**: 4-layer MLP — 24 inputs, 256, 256, 128 hidden units, 6 action outputs
 - **Algorithm**: Double DQN with Prioritized Experience Replay (PER)
 - **Target updates**: Soft (Polyak averaging, tau=0.005)
