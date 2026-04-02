@@ -106,6 +106,7 @@ fn check_bullet_enemy(game: &mut HeadlessGame) {
             {
                 game.enemies[ei].hits += 1;
                 game.bullets[bi].removed = true;
+                game.shots_hit += 1;
                 let ex = game.enemies[ei].x;
                 let ey = game.enemies[ei].y;
                 if game.enemies[ei].hits >= ENEMY_HITS_TO_DESTROY {

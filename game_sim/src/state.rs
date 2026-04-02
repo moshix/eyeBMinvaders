@@ -331,6 +331,13 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
     let total_threats = enemy_bullets.len() + game.kamikazes.len() + game.missiles.len();
     f[61] = (total_threats as f32 / 15.0).min(1.0);
 
+    // [68] Shot accuracy (rolling hit rate)
+    f[68] = if game.shots_fired > 0 {
+        (game.shots_hit as f32 / game.shots_fired as f32).min(1.0)
+    } else {
+        0.5
+    };
+
     // --- v13 strategic features for high-level play ---
 
     if !game.enemies.is_empty() {

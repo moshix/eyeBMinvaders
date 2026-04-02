@@ -736,7 +736,8 @@ function moveEnemies(deltaTime) {
   // Then handle direction change and moving down as a separate step
   if (needsToMoveDown) {
     enemyDirection *= -1;
-    const moveDownAmount = 20;
+    // Level-scaled step-down: full 20px at L1-5, reduces at higher levels
+    const moveDownAmount = currentLevel <= 5 ? 20 : Math.max(8, 20 - 3 * (currentLevel - 5));
 
     enemies.forEach((enemy) => {
       // Skip any null or undefined enemies

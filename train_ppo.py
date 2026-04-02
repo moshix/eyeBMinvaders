@@ -316,6 +316,15 @@ class ActorCritic(nn.Module):
 
     def get_action_and_value(self, x, hx=None):
         logits, value, new_hx = self.forward(x, hx)
+        # Action masking: at level 5+, force fire actions when cooldown ready
+        # Current frame is last `state_size` features in the frame stack
+        ss = x.shape[-1] // (self.n_frames if hasattr(self, 'n_frames') else 4)
+        current = x[:, -ss:]  # last frame
+        level_feat = current[:, 2]     # feature [2] = level / 10
+        fire_feat = current[:, 52] if ss > 52 else torch.zeros(x.shape[0], device=x.device)
+        mask = (level_feat >= 0.5) & (fire_feat > 0.9)  # level 5+ and fire ready
+        if mask.any():
+            logits[mask, :3] = -1e8  # mask idle, left, right
         dist = Categorical(logits=logits)
         action = dist.sample()
         return action, dist.log_prob(action), dist.entropy(), value.squeeze(-1), new_hx

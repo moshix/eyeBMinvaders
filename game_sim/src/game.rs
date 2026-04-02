@@ -68,6 +68,8 @@ pub struct HeadlessGame {
     pub times_hit: u32,
     pub near_misses: i32,
     pub player_wall_hits: i32,  // player bullets hitting own walls
+    pub shots_fired: u32,
+    pub shots_hit: u32,
 }
 
 pub struct StepResult {
@@ -147,6 +149,8 @@ impl HeadlessGame {
             times_hit: 0,
             near_misses: 0,
             player_wall_hits: 0,
+            shots_fired: 0,
+            shots_hit: 0,
         };
         game.next_kamikaze_time = game.random_kamikaze_time();
         game.restore_walls();
@@ -273,6 +277,7 @@ impl HeadlessGame {
                 let by = self.player_y;
                 self.bullets.push(Bullet::new(bx, by, false));
                 self.last_fire_time = self.game_time;
+                self.shots_fired += 1;
                 self.emit(EventType::PlayerShot);
                 self.render_events.push(RenderEvent::PlayerFired {
                     x: self.player_x + PLAYER_WIDTH / 2.0,
