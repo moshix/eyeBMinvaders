@@ -858,6 +858,8 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
         obs_rms.update(states)
         states = obs_rms.normalize(states)
     env_start_levels = np.ones(num_envs, dtype=np.int32)  # track start level per env
+    env_fire_actions = np.zeros(num_envs, dtype=np.int32)  # count fire actions per episode
+    env_total_actions = np.zeros(num_envs, dtype=np.int32)  # count total actions per episode
 
     # Self-Imitation Learning buffer
     sil_buffer = SILBuffer(cfg.sil_capacity, cfg.sil_min_level) if cfg.sil_weight > 0 else None
@@ -898,6 +900,10 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
 
             roll_rewards[step] = np.asarray(rewards, dtype=np.float32)
             roll_dones[step] = np.asarray(dones, dtype=np.float32)
+
+            # Track fire vs non-fire actions per env
+            env_total_actions += 1
+            env_fire_actions += (actions_np >= 3).astype(np.int32)
 
             # Track per-env trajectories for SIL
             if sil_buffer:
@@ -946,6 +952,12 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                     env_ep_actions[i] = []
                     env_ep_rewards[i] = []
 
+                # Extended stats for detailed analysis
+                ext = {}
+                try:
+                    ext = envs.get_stats_ext(i)
+                except Exception:
+                    pass
                 log_file.write(json.dumps({
                     "episode": episode_count,
                     "score": ep_score,
@@ -958,7 +970,19 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                     "missiles_shot": ep_mshots,
                     "times_hit": ep_hits,
                     "update": update_count,
+                    "shots_fired": ext.get("shots_fired", 0),
+                    "shots_hit": ext.get("shots_hit", 0),
+                    "hit_rate": round(ext["shots_hit"] / max(ext["shots_fired"], 1), 3) if ext.get("shots_fired", 0) > 0 else 0,
+                    "edge_cols": ext.get("edge_cols_eliminated", 0),
+                    "bounces": ext.get("bounces", 0),
+                    "enemies_left": ext.get("enemies_left", 0),
+                    "formation_width": ext.get("formation_width", 0),
+                    "monsters_killed": ext.get("monsters_killed", 0),
+                    "fire_pct": round(int(env_fire_actions[i]) / max(int(env_total_actions[i]), 1), 3),
                 }) + "\n")
+                # Reset per-episode action counters
+                env_fire_actions[i] = 0
+                env_total_actions[i] = 0
 
                 if episode_count % 1000 == 0 or episode_count <= 5:
                     elapsed = time.time() - start_time

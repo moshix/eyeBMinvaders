@@ -70,6 +70,11 @@ pub struct HeadlessGame {
     pub player_wall_hits: i32,  // player bullets hitting own walls
     pub shots_fired: u32,
     pub shots_hit: u32,
+    pub edge_columns_eliminated: u32,
+    pub monsters_killed: u32,
+    pub monsters_spawned: u32,
+    pub bounces: u32,          // edge bounces (step-downs)
+    pub level_start_time: f64, // game_time when current level started
 }
 
 pub struct StepResult {
@@ -151,6 +156,11 @@ impl HeadlessGame {
             player_wall_hits: 0,
             shots_fired: 0,
             shots_hit: 0,
+            edge_columns_eliminated: 0,
+            monsters_killed: 0,
+            monsters_spawned: 0,
+            bounces: 0,
+            level_start_time: 0.0,
         };
         game.next_kamikaze_time = game.random_kamikaze_time();
         game.restore_walls();
@@ -324,6 +334,7 @@ impl HeadlessGame {
             if post_right < pre_right - col_width * 0.5 {
                 edge_columns_eliminated += 1;
             }
+            self.edge_columns_eliminated += edge_columns_eliminated as u32;
         }
 
         // Victory check
@@ -348,6 +359,22 @@ impl HeadlessGame {
             .count() as i32;
         let monster_killed_this_step = self.events.iter()
             .any(|e| matches!(e.event_type, EventType::MonsterKilled));
+        if monster_killed_this_step {
+            self.monsters_killed += 1;
+        }
+        // Count monster spawns via events
+        let spawns = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::MonsterSpawned))
+            .count() as u32;
+        self.monsters_spawned += spawns;
+        // Also count monster2 kills
+        if self.events.iter().any(|e| matches!(e.event_type, EventType::Monster2Killed)) {
+            self.monsters_killed += 1;
+        }
+        // Track level start time
+        if level_completed {
+            self.level_start_time = self.game_time;
+        }
         let player_wall_hits = self.player_wall_hits;
         self.player_wall_hits = 0;  // reset per-tick counter
         let reward = state::calculate_reward(

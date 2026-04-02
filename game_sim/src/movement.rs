@@ -58,6 +58,7 @@ pub fn move_enemies(game: &mut HeadlessGame, dt: f64) {
     }
 
     if needs_down {
+        game.bounces += 1;
         game.enemy_direction *= -1;
         let wall_y = if !game.walls.is_empty() {
             game.walls[0].y - 20.0

@@ -247,6 +247,26 @@ impl BatchedGames {
             g.enemies_killed, g.kamikazes_killed, g.missiles_shot, g.times_hit))
     }
 
+    /// Extended stats for detailed logging
+    fn get_stats_ext(&self, py: Python, idx: usize) -> PyResult<PyObject> {
+        let g = &self.games[idx];
+        let dict = PyDict::new_bound(py);
+        dict.set_item("shots_fired", g.shots_fired)?;
+        dict.set_item("shots_hit", g.shots_hit)?;
+        dict.set_item("edge_cols_eliminated", g.edge_columns_eliminated)?;
+        dict.set_item("bounces", g.bounces)?;
+        dict.set_item("monsters_killed", g.monsters_killed)?;
+        dict.set_item("monsters_spawned", g.monsters_spawned)?;
+        dict.set_item("enemies_left", g.enemies.len())?;
+        let formation_width = if g.enemies.is_empty() { 0 } else {
+            let left = g.enemies.iter().map(|e| e.x as i32).min().unwrap_or(0);
+            let right = g.enemies.iter().map(|e| (e.x + e.width) as i32).max().unwrap_or(0);
+            right - left
+        };
+        dict.set_item("formation_width", formation_width)?;
+        Ok(dict.into())
+    }
+
     #[getter]
     fn state_size(&self) -> usize { constants::STATE_SIZE }
 
