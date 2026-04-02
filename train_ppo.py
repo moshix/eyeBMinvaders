@@ -955,9 +955,10 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                 # Extended stats for detailed analysis
                 ext = {}
                 try:
-                    ext = envs.get_stats_ext(i)
-                except Exception:
-                    pass
+                    ext = dict(envs.get_stats_ext(i))
+                except Exception as e:
+                    if episode_count <= 5:
+                        print(f"  [warn] get_stats_ext failed: {e}")
                 log_file.write(json.dumps({
                     "episode": episode_count,
                     "score": ep_score,
