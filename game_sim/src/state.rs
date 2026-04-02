@@ -331,6 +331,70 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
     let total_threats = enemy_bullets.len() + game.kamikazes.len() + game.missiles.len();
     f[61] = (total_threats as f32 / 15.0).min(1.0);
 
+    // --- v13 strategic features for high-level play ---
+
+    if !game.enemies.is_empty() {
+        let left_edge = game.enemies.iter()
+            .map(|e| e.x)
+            .fold(f64::INFINITY, f64::min);
+        let right_edge = game.enemies.iter()
+            .map(|e| e.x + e.width)
+            .fold(0.0f64, f64::max);
+
+        // [62] Formation left edge (normalized)
+        f[62] = (left_edge / GAME_WIDTH) as f32;
+
+        // [63] Formation right edge (normalized)
+        f[63] = (right_edge / GAME_WIDTH) as f32;
+
+        // [64] Bounces remaining until wall breach (normalized, 0=imminent, 1=safe)
+        let lowest_bottom = game.enemies.iter()
+            .map(|e| e.y + e.height)
+            .fold(0.0f64, f64::max);
+        let gap = WALL_Y - lowest_bottom;
+        let bounces = (gap / 20.0).max(0.0);
+        f[64] = (bounces / 15.0).min(1.0) as f32;
+
+        // [65] Time to next bounce (normalized) — how soon enemies hit the edge
+        let speed_px_per_frame = ENEMY_SPEED * game.enemy_speed * (33.333 / 1000.0);
+        let pixels_to_wall = if game.enemy_direction > 0 {
+            GAME_WIDTH - right_edge
+        } else {
+            left_edge
+        };
+        let frames_to_bounce = if speed_px_per_frame > 0.001 {
+            pixels_to_wall / speed_px_per_frame
+        } else {
+            300.0
+        };
+        f[65] = (frames_to_bounce / 300.0).min(1.0) as f32;
+
+        // [66] Leading-edge column enemy count (direction of travel)
+        // Count enemies in the outermost column (~43px wide) in the direction of movement
+        let edge_x = if game.enemy_direction > 0 { right_edge } else { left_edge };
+        let edge_count = game.enemies.iter()
+            .filter(|e| {
+                if game.enemy_direction > 0 {
+                    e.x + e.width > edge_x - ENEMY_WIDTH
+                } else {
+                    e.x < edge_x + ENEMY_WIDTH
+                }
+            })
+            .count();
+        f[66] = (edge_count as f32 / 5.0).min(1.0);
+
+        // [67] Fire-line density: enemies directly above player (within bullet width + margin)
+        let fire_margin = BULLET_W + 10.0; // bullet width + small margin
+        let fire_x = game.player_x + PLAYER_WIDTH / 2.0;
+        let above_count = game.enemies.iter()
+            .filter(|e| {
+                let ecx = e.x + e.width / 2.0;
+                (ecx - fire_x).abs() < fire_margin + e.width / 2.0
+            })
+            .count();
+        f[67] = (above_count as f32 / 5.0).min(1.0);
+    }
+
     f
 }
 
@@ -346,6 +410,7 @@ pub fn calculate_reward(
     player_wall_hits: i32,
     enemies_killed_this_step: i32,
     monster_killed_this_step: bool,
+    edge_columns_eliminated: i32,
 ) -> f32 {
     let mut reward: f32 = 0.0;
 
@@ -394,6 +459,11 @@ pub fn calculate_reward(
     if level_completed {
         let level = game.current_level as f32;
         reward += 5.0 + 3.0 * level;
+    }
+
+    // Edge column elimination bonus — thinning the formation buys time between bounces
+    if edge_columns_eliminated > 0 {
+        reward += 3.0 * edge_columns_eliminated as f32;
     }
 
     // Progressive penalty for enemies approaching wall — gives gradient BEFORE game over

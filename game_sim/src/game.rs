@@ -298,8 +298,28 @@ impl HeadlessGame {
         spawning::handle_enemy_shooting(self);
         spawning::handle_missile_launching(self);
 
+        // Track formation edges before collision (for column elimination detection)
+        let pre_left = self.enemies.iter().map(|e| e.x).fold(f64::INFINITY, f64::min);
+        let pre_right = self.enemies.iter().map(|e| e.x + e.width).fold(0.0f64, f64::max);
+        let pre_count = self.enemies.len();
+
         // Collision detection
         collision::detect_collisions(self);
+
+        // Detect edge column elimination: formation shrank from either side
+        let mut edge_columns_eliminated: i32 = 0;
+        if !self.enemies.is_empty() && self.enemies.len() < pre_count {
+            let post_left = self.enemies.iter().map(|e| e.x).fold(f64::INFINITY, f64::min);
+            let post_right = self.enemies.iter().map(|e| e.x + e.width).fold(0.0f64, f64::max);
+            // Column width is ~59px (ENEMY_WIDTH + ENEMY_PADDING)
+            let col_width = ENEMY_WIDTH + ENEMY_PADDING;
+            if post_left > pre_left + col_width * 0.5 {
+                edge_columns_eliminated += 1;
+            }
+            if post_right < pre_right - col_width * 0.5 {
+                edge_columns_eliminated += 1;
+            }
+        }
 
         // Victory check
         if self.enemies.is_empty() && !self.game_over {
@@ -329,7 +349,7 @@ impl HeadlessGame {
             self, old_score, old_lives, wall_destroyed_count,
             kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses,
             level_completed, player_wall_hits, enemies_killed_this_step,
-            monster_killed_this_step);
+            monster_killed_this_step, edge_columns_eliminated);
 
         let st = state::get_state(self);
         StepResult {
