@@ -74,7 +74,7 @@ class PPOConfig:
     gru_hidden: int = 64            # GRU side-channel hidden size (0 to disable)
     chunk_length: int = 16          # sequential chunk size for GRU training
     use_curriculum: bool = False    # aggressive curriculum (off by default — hurts PPO)
-    mixed_starts: bool = True       # 50% of episodes start at level 6-8 for high-level exposure
+    mixed_starts: bool = True       # progressive curriculum: ramps up high-level starts as model improves
     entropy_coeff_end: float = 0.005  # entropy decays from entropy_coeff → this
     target_kl: float = 0.03          # KL early stop threshold (None to disable)
     sil_capacity: int = 500          # self-imitation buffer: top-K episodes
@@ -1032,13 +1032,22 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                     log_file.flush()
 
                 # Reset done env (with curriculum or mixed starts)
+                sl = None
                 if curriculum:
                     sl = curriculum.sample_level()
-                    raw_state = envs.reset_one_at_level(i, sl)
-                    env_start_levels[i] = sl
-                elif cfg.mixed_starts and random.random() < 0.50:
-                    # 50% of episodes start at level 6-8 for high-level exposure
-                    sl = random.choice([6, 7, 7, 7, 8, 8])
+                elif cfg.mixed_starts:
+                    # Progressive curriculum: ramp high-level starts based on avg level
+                    # Phase 1 (avg < 4): 10% at L3-5 (gentle exposure)
+                    # Phase 2 (avg 4-6): 25% at L4-7
+                    # Phase 3 (avg 6+): 40% at L6-8
+                    avg_lvl = float(np.mean(levels)) if levels else 1.0
+                    if avg_lvl >= 6.0 and random.random() < 0.40:
+                        sl = random.choice([6, 7, 7, 7, 8, 8])
+                    elif avg_lvl >= 4.0 and random.random() < 0.25:
+                        sl = random.choice([4, 5, 5, 6, 6, 7])
+                    elif random.random() < 0.10:
+                        sl = random.choice([3, 4, 4, 5])
+                if sl is not None and sl > 1:
                     raw_state = envs.reset_one_at_level(i, sl)
                     env_start_levels[i] = sl
                 else:
