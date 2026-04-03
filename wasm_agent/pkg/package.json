@@ -1,0 +1,16 @@
+{
+  "name": "wasm_agent",
+  "type": "module",
+  "description": "PPO agent for eyeBMinvaders — trains and plays in the browser via WASM",
+  "version": "0.1.0",
+  "files": [
+    "wasm_agent_bg.wasm",
+    "wasm_agent.js",
+    "wasm_agent.d.ts"
+  ],
+  "main": "wasm_agent.js",
+  "types": "wasm_agent.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

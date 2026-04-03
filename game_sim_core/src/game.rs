@@ -68,6 +68,13 @@ pub struct HeadlessGame {
     pub times_hit: u32,
     pub near_misses: i32,
     pub player_wall_hits: i32,  // player bullets hitting own walls
+    pub shots_fired: u32,
+    pub shots_hit: u32,
+    pub edge_columns_eliminated: u32,
+    pub monsters_killed: u32,
+    pub monsters_spawned: u32,
+    pub bounces: u32,          // edge bounces (step-downs)
+    pub level_start_time: f64, // game_time when current level started
 }
 
 pub struct StepResult {
@@ -147,6 +154,13 @@ impl HeadlessGame {
             times_hit: 0,
             near_misses: 0,
             player_wall_hits: 0,
+            shots_fired: 0,
+            shots_hit: 0,
+            edge_columns_eliminated: 0,
+            monsters_killed: 0,
+            monsters_spawned: 0,
+            bounces: 0,
+            level_start_time: 0.0,
         };
         game.next_kamikaze_time = game.random_kamikaze_time();
         game.restore_walls();
@@ -192,6 +206,13 @@ impl HeadlessGame {
         self.times_hit = 0;
         self.near_misses = 0;
         self.player_wall_hits = 0;
+        self.shots_fired = 0;
+        self.shots_hit = 0;
+        self.edge_columns_eliminated = 0;
+        self.monsters_killed = 0;
+        self.monsters_spawned = 0;
+        self.bounces = 0;
+        self.level_start_time = 0.0;
         self.create_enemies();
         state::get_state(self)
     }
@@ -273,6 +294,7 @@ impl HeadlessGame {
                 let by = self.player_y;
                 self.bullets.push(Bullet::new(bx, by, false));
                 self.last_fire_time = self.game_time;
+                self.shots_fired += 1;
                 self.emit(EventType::PlayerShot);
                 self.render_events.push(RenderEvent::PlayerFired {
                     x: self.player_x + PLAYER_WIDTH / 2.0,
@@ -298,8 +320,29 @@ impl HeadlessGame {
         spawning::handle_enemy_shooting(self);
         spawning::handle_missile_launching(self);
 
+        // Track formation edges before collision (for column elimination detection)
+        let pre_left = self.enemies.iter().map(|e| e.x).fold(f64::INFINITY, f64::min);
+        let pre_right = self.enemies.iter().map(|e| e.x + e.width).fold(0.0f64, f64::max);
+        let pre_count = self.enemies.len();
+
         // Collision detection
         collision::detect_collisions(self);
+
+        // Detect edge column elimination: formation shrank from either side
+        let mut edge_columns_eliminated: i32 = 0;
+        if !self.enemies.is_empty() && self.enemies.len() < pre_count {
+            let post_left = self.enemies.iter().map(|e| e.x).fold(f64::INFINITY, f64::min);
+            let post_right = self.enemies.iter().map(|e| e.x + e.width).fold(0.0f64, f64::max);
+            // Column width is ~59px (ENEMY_WIDTH + ENEMY_PADDING)
+            let col_width = ENEMY_WIDTH + ENEMY_PADDING;
+            if post_left > pre_left + col_width * 0.5 {
+                edge_columns_eliminated += 1;
+            }
+            if post_right < pre_right - col_width * 0.5 {
+                edge_columns_eliminated += 1;
+            }
+            self.edge_columns_eliminated += edge_columns_eliminated as u32;
+        }
 
         // Victory check
         if self.enemies.is_empty() && !self.game_over {
@@ -318,12 +361,34 @@ impl HeadlessGame {
             .count() as i32;
         let level_completed = self.events.iter()
             .any(|e| matches!(e.event_type, EventType::LevelComplete));
+        let enemies_killed_this_step = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::EnemyKilled))
+            .count() as i32;
+        let monster_killed_this_step = self.events.iter()
+            .any(|e| matches!(e.event_type, EventType::MonsterKilled));
+        if monster_killed_this_step {
+            self.monsters_killed += 1;
+        }
+        // Count monster spawns via events
+        let spawns = self.events.iter()
+            .filter(|e| matches!(e.event_type, EventType::MonsterSpawned))
+            .count() as u32;
+        self.monsters_spawned += spawns;
+        // Also count monster2 kills
+        if self.events.iter().any(|e| matches!(e.event_type, EventType::Monster2Killed)) {
+            self.monsters_killed += 1;
+        }
+        // Track level start time
+        if level_completed {
+            self.level_start_time = self.game_time;
+        }
         let player_wall_hits = self.player_wall_hits;
         self.player_wall_hits = 0;  // reset per-tick counter
         let reward = state::calculate_reward(
             self, old_score, old_lives, wall_destroyed_count,
             kamikazes_killed_this_step, missiles_shot_this_step, self.near_misses,
-            level_completed, player_wall_hits);
+            level_completed, player_wall_hits, enemies_killed_this_step,
+            monster_killed_this_step, edge_columns_eliminated);
 
         let st = state::get_state(self);
         StepResult {

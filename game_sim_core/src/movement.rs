@@ -58,6 +58,7 @@ pub fn move_enemies(game: &mut HeadlessGame, dt: f64) {
     }
 
     if needs_down {
+        game.bounces += 1;
         game.enemy_direction *= -1;
         let wall_y = if !game.walls.is_empty() {
             game.walls[0].y - 20.0
@@ -66,7 +67,14 @@ pub fn move_enemies(game: &mut HeadlessGame, dt: f64) {
         };
         for e in game.enemies.iter_mut() {
             if e.hits < ENEMY_HITS_TO_DESTROY {
-                e.y += 20.0;
+                // Level-scaled step-down: full 20px at L1-5, reduces at higher levels
+                // to keep the game clearable as enemy speed grows exponentially
+                let step = if game.current_level <= 5 {
+                    20.0
+                } else {
+                    (20.0 - 3.0 * (game.current_level - 5) as f64).max(8.0)
+                };
+                e.y += step;
                 if e.y + e.height >= wall_y {
                     game.game_over = true;
                     game.emit(EventType::GameOver);
