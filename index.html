@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <title>Invaders!</title>
         <link rel="icon" type="image/webp" href="favicon.webp">
         <style>
@@ -29,16 +29,11 @@
                 align-items: center;
             }
 
-            #gameContainer {
-                position: relative;
-                width: 1024px;
-                height: 576px;
-            }
-
             #gameCanvas {
                 position: absolute;
                 left: 0;
                 top: 0;
+                will-change: transform;
             }
 
             #score, #version-info {
@@ -159,6 +154,10 @@
                 cursor: pointer;
                 backdrop-filter: blur(5px);
                 transition: all 0.3s ease;
+                touch-action: manipulation;
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                user-select: none;
             }
 
             .touch-button:active {
@@ -169,6 +168,25 @@
             .fire-button {
                 background: rgba(255, 50, 50, 0.2);
                 border-color: rgba(255, 50, 50, 0.4);
+            }
+
+            .ai-button {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                background: rgba(57, 255, 20, 0.15);
+                border-color: rgba(57, 255, 20, 0.4);
+                color: #39FF14;
+                padding: 10px 18px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 1001;
+            }
+
+            .ai-button.active {
+                background: rgba(57, 255, 20, 0.4);
+                border-color: rgba(57, 255, 20, 0.8);
+                box-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
             }
 
             /* Media queries for better responsiveness */
@@ -220,6 +238,41 @@
             #legend p:last-child {
                 margin-bottom: 0;
             }
+
+            /* Portrait orientation prompt for phones */
+            #orientation-prompt {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.95);
+                z-index: 9999;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                color: white;
+                font-size: 20px;
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            #orientation-prompt .rotate-icon {
+                font-size: 60px;
+                animation: rotate-hint 2s ease-in-out infinite;
+            }
+
+            @keyframes rotate-hint {
+                0%, 100% { transform: rotate(0deg); }
+                50% { transform: rotate(90deg); }
+            }
+
+            @media (orientation: portrait) and (max-width: 1024px) {
+                #orientation-prompt {
+                    display: flex !important;
+                }
+            }
         </style>
     </head>
     <body>
@@ -253,23 +306,25 @@
                 <button id="touch-fire-right" class="touch-button fire-button">🔥</button>
                 <button id="touch-right" class="touch-button">▶</button>
             </div>
+            <button id="touch-ai" class="touch-button ai-button">AI</button>
         </div>
         <button id="touch-start" class="touch-button">Start Game</button>
 
+        <div id="orientation-prompt">
+            <div class="rotate-icon">📱</div>
+            <div>Rotate your device to<br><strong>landscape</strong> to play</div>
+        </div>
+
         <script>
-            // More precise device detection
+            // Device detection
             function detectDevice() {
                 const isMobile = /iPhone|Android/i.test(navigator.userAgent);
                 const isTablet = /(iPad|Android(?!.*Mobile))/i.test(navigator.userAgent);
+                const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+                const isTouchMobile = hasTouch && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                 const isPC = !isMobile && !isTablet;
-                const screenWidth = window.innerWidth;
-                
-                return {
-                    isMobile,
-                    isTablet,
-                    isPC,
-                    screenWidth
-                };
+
+                return { isMobile, isTablet, isPC, isTouchMobile };
             }
 
             // Handle device-specific display
@@ -283,12 +338,12 @@
                 const userLanguage = navigator.language || navigator.userLanguage;
                 const isUnsupportedLocale = /^(ar|zh|ga|no|nb|nn|es)/i.test(userLanguage);
 
-                // Hide touch controls on PC
+                // Default: hide touch controls (PC)
                 if (touchControls) touchControls.style.display = 'none';
                 if (touchStart) touchStart.style.display = 'none';
 
-                if (device.isMobile || (device.screenWidth < 768) || isUnsupportedLocale) {
-                    // Show message for phones, narrow screens, or unsupported locales
+                if (isUnsupportedLocale) {
+                    // Only block unsupported locales
                     legend.innerHTML = `
                         <div style="
                             padding: 20px;
@@ -300,15 +355,20 @@
                             font-size: 18px;
                             color: #fff;
                         ">
-                            <h2 style="color: #ff6b6b; margin-bottom: 15px;">Device Not Supported</h2>
-                            eyeBMInvaders needs a wide enough screen.<br>
-                            Try it now on your PC or tablet!<br>
+                            <h2 style="color: #ff6b6b; margin-bottom: 15px;">Locale Not Supported</h2>
+                            eyeBMInvaders is not yet available in your language.<br>
                             Thank you!
                         </div>`;
-                } else if (device.isTablet) {
-                    // Show touch controls only for tablets
-                    if (touchControls) touchControls.style.display = 'flex';
-                    if (touchStart) touchStart.style.display = 'block';
+                } else if (device.isTouchMobile) {
+                    const gameStarted = legend && legend.style.display === 'none';
+                    // Only show fire/move controls after game has started
+                    if (touchControls) touchControls.style.display = gameStarted ? 'flex' : 'none';
+                    if (touchStart && !gameStarted) touchStart.style.display = 'block';
+                    // Change "press any key" to touch-friendly text
+                    const keyPrompt = document.querySelector('#legend p[style*="color: red"]');
+                    if (keyPrompt) {
+                        keyPrompt.innerHTML = 'tap <strong>Start Game</strong> to play';
+                    }
                 }
             }
 
@@ -317,31 +377,6 @@
 
             // Run on resize
             window.addEventListener('resize', handleDeviceSpecificDisplay);
-        </script>
-        <script>
-            // Proper touch device detection
-            function isTouchTablet() {
-                // Check if device has touch capability
-                const hasTouch = (('ontouchstart' in window) ||
-                    (navigator.maxTouchPoints > 0) ||
-                    (navigator.msMaxTouchPoints > 0));
-                
-                // Check if it's not a desktop/laptop
-                const isNotDesktop = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                
-                return hasTouch && isNotDesktop;
-            }
-
-            // Only show touch controls if we're on a tablet
-            if (isTouchTablet()) {
-                document.getElementById('touch-controls').style.display = 'block';
-                document.getElementById('touch-start').style.display = 'block';
-                // Remove the "press any key" text for touch devices
-                const keyPrompt = document.querySelector('#legend p[style*="color: red"]');
-                if (keyPrompt) {
-                    keyPrompt.style.display = 'none';
-                }
-            }
         </script>
         <script>
             function startGame() {
@@ -354,6 +389,13 @@
                 // Hide the legend and start button
                 document.getElementById('legend').style.display = 'none';
                 document.getElementById('touch-start').style.display = 'none';
+
+                // Show touch controls now that game is starting
+                var device = detectDevice();
+                if (device.isTouchMobile) {
+                    var tc = document.getElementById('touch-controls');
+                    if (tc) tc.style.display = 'flex';
+                }
                 
                 // Create and show firebirds.html in an iframe
                 const iframe = document.createElement('iframe');
@@ -401,6 +443,13 @@
             document.addEventListener('keydown', function(e) {
                 if (document.getElementById('legend').style.display !== 'none') {
                     console.log('Starting game sequence'); // Debug log
+                    startGame();
+                }
+            });
+
+            // Wire touch-start button to index.html's startGame (game.js not loaded yet)
+            document.getElementById('touch-start').addEventListener('click', function() {
+                if (document.getElementById('legend').style.display !== 'none') {
                     startGame();
                 }
             });

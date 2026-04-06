@@ -127,9 +127,32 @@ document.body.style.backgroundSize = 'cover';
 document.body.style.backgroundPosition = 'center';
 document.body.style.backgroundRepeat = 'no-repeat';
 
+// Scale canvas to fit viewport on small screens (CSS only — internal resolution stays 1024x576)
+function scaleCanvas() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (vw >= GAME_WIDTH && vh >= GAME_HEIGHT) {
+    // Desktop: no scaling needed, center normally
+    canvas.style.transform = '';
+    canvas.style.left = '0';
+    canvas.style.top = '0';
+    canvas.style.transformOrigin = '';
+    return;
+  }
+  const scale = Math.min(vw / GAME_WIDTH, vh / GAME_HEIGHT);
+  canvas.style.transformOrigin = 'top left';
+  canvas.style.transform = `scale(${scale})`;
+  const scaledW = GAME_WIDTH * scale;
+  const scaledH = GAME_HEIGHT * scale;
+  canvas.style.left = `${(vw - scaledW) / 2}px`;
+  canvas.style.top = `${(vh - scaledH) / 2}px`;
+}
+
+scaleCanvas();
+
 // Update resize handler
 window.addEventListener('resize', () => {
-  // No positioning updates needed
+  scaleCanvas();
 });
 
 // streak related  constants
@@ -374,22 +397,25 @@ let currentEnemyFireRate = BASE_ENEMY_FIRE_RATE;
 let isTouchDevice = false;
 let isTablet = false;
 
-// Detect if device is a tablet
+// Detect if device supports touch (phones + tablets)
 function detectTablet() {
-  // Check if touch device
   isTouchDevice = ('ontouchstart' in window) ||
     (navigator.maxTouchPoints > 0) ||
     (navigator.msMaxTouchPoints > 0);
 
-  // Check if tablet based on screen size
+  // Tablet = touch device with larger screen
   isTablet = isTouchDevice &&
     Math.min(window.innerWidth, window.innerHeight) >= 768 &&
     Math.max(window.innerWidth, window.innerHeight) <= 1366;
 
-  // Show/hide touch controls based on device
+  // Also detect phones as touch-capable mobile devices
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isTouchMobile = isTouchDevice && isMobileUA;
+
+  // Show touch controls for ALL touch mobile devices (phones + tablets)
   const touchControls = document.getElementById('touch-controls');
   if (touchControls) {
-    touchControls.style.display = isTablet ? 'block' : 'none';
+    touchControls.style.display = isTouchMobile ? 'flex' : 'none';
   }
 }
 
@@ -397,13 +423,25 @@ function detectTablet() {
 function initTouchControls() {
   detectTablet();
 
-  if (!isTablet) return;
+  if (!isTouchDevice) return;
 
   const touchStart = document.getElementById('touch-start');
   const touchLeft = document.getElementById('touch-left');
   const touchRight = document.getElementById('touch-right');
   const touchFireLeft = document.getElementById('touch-fire-left');
   const touchFireRight = document.getElementById('touch-fire-right');
+  const touchAI = document.getElementById('touch-ai');
+
+  // AI toggle button
+  if (touchAI) {
+    touchAI.addEventListener('click', (e) => {
+      e.preventDefault();
+      autoPlayEnabled = !autoPlayEnabled;
+      if (autoPlayEnabled && typeof loadDQNModel === 'function') loadDQNModel();
+      touchAI.classList.toggle('active', autoPlayEnabled);
+      touchAI.textContent = autoPlayEnabled ? 'AI ON' : 'AI';
+    });
+  }
 
   // Start button
   touchStart.addEventListener('click', () => {
@@ -463,8 +501,8 @@ function initTouchControls() {
 // handler to update tablet detection
 window.addEventListener('resize', detectTablet);
 
-// Initialize touch controls when the window loads
-window.addEventListener('load', initTouchControls);
+// Initialize touch controls immediately (game.js is loaded dynamically after window.load)
+initTouchControls();
 
 function createExplosion(x, y) {
   explosionCounter++;
@@ -2030,7 +2068,7 @@ function gameLoop(currentTime) {
 
 function startGame() {
   document.getElementById("legend").style.display = "none";
-  if (isTablet) {
+  if (isTouchDevice) {
     document.getElementById("touch-start").style.display = "none";
   }
   enemies = [];
