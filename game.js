@@ -2142,6 +2142,8 @@ document.addEventListener("keydown", (e) => {
     keys.ArrowLeft = false;
     keys.ArrowRight = false;
     keys.Space = false;
+    // Hide AI overlay immediately when disabled
+    if (!autoPlayEnabled && _aiOverlayEl) _aiOverlayEl.style.display = 'none';
     // Load DQN model when AI is enabled
     if (autoPlayEnabled) loadDQNModel();
   }
@@ -3487,14 +3489,9 @@ function _updateAIOverlay(qValues, action) {
     }
   }
 
-  // WASM indicator + controls
+  // WASM indicator
   const wasmOn = typeof wasmPhysics !== 'undefined' && wasmPhysics.ready;
   html += `<span style="color:${wasmOn ? '#39FF14' : '#f44'}">⚡${wasmOn ? 'WASM' : 'JS'}</span>`;
-  const laColor = _lookaheadEnabled ? '#39FF14' : '#666';
-  html += ` <span style="color:${laColor}">LA:${_lookaheadEnabled ? 'ON' : 'OFF'}</span>`;
-  const modeColor = _dualModelMode === 2 ? '#f0f' : _dualModelMode === 1 ? '#fa0' : '#0ff';
-  html += ` <span style="color:${modeColor}">${_DUAL_MODES[_dualModelMode]}${_dualModelMode === 2 ? '→' + _dualLastWinner : ''}</span>`;
-  html += `<br><span style="color:#888">F2=perf F3=LA F4=model</span>`;
 
   _aiOverlayEl.innerHTML = html;
 }
