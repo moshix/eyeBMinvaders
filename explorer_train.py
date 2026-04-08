@@ -802,8 +802,11 @@ class ExperimentRunner:
         )
 
     def _parse_ppo_results(self, save_dir: str, max_episodes: int):
-        """Parse PPO results from training_events.jsonl since train_ppo returns None."""
-        log_path = os.path.join(save_dir, "training_events.jsonl")
+        """Parse PPO results from training log since train_ppo returns None."""
+        # PPO uses training_events_ppo.jsonl, DQN uses training_events.jsonl
+        log_path = os.path.join(save_dir, "training_events_ppo.jsonl")
+        if not os.path.exists(log_path):
+            log_path = os.path.join(save_dir, "training_events.jsonl")
         scores = []
         best_score = 0
         best_level = 0
