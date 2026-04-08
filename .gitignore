@@ -16,5 +16,9 @@ models/meta_events.jsonl
 models/training_events.jsonl
 models/*.log
 
+# Auto-improve loop artifacts
+models/auto_improve/logs/
+models/auto_improve/latest_explorer_state.json
+
 # Cargo lock for libraries (keep for binaries)
 game_sim_core/Cargo.lock

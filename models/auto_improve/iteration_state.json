@@ -1,0 +1,39 @@
+{
+  "iteration": 0,
+  "target_level": 15,
+  "best_level_reached": 4,
+  "best_avg_score": 18930,
+  "best_model_path": "models/explorer/gen_006_baseline/model_best.pt",
+  "history": [
+    {
+      "iteration": 0,
+      "type": "initial_explorer_run",
+      "episodes": 200000,
+      "generations": 7,
+      "experiments": 42,
+      "successes": 4,
+      "best_level": 4,
+      "best_score": 64720,
+      "avg_score": 18930,
+      "winning_config": "wide_shallow [1024,256], lr=5e-4, dueling DQN",
+      "axis_insights": {
+        "best_architecture": "narrow_deep (0.49 success rate)",
+        "best_reward": "sparse (0.33)",
+        "best_buffer": "fresh_buffer (0.35)",
+        "best_starting_point": "from_scratch (0.19)",
+        "best_algorithm": "dqn (0.02) - but PPO+GRU reached level 9 in separate benchmarks"
+      }
+    }
+  ],
+  "changes_made": [],
+  "failed_ideas": [],
+  "successful_ideas": [],
+  "known_bottlenecks": [
+    "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features)",
+    "Reward function: survival bonus only 0.01*level, level-complete bonus linear not exponential",
+    "Level input capped at 10 in Python state (can't distinguish L10-L15)",
+    "DQN can't track temporal patterns - PPO+GRU already reached L9 vs DQN L4",
+    "Enemy proximity danger caps at level 8 (.min(9) in Rust)",
+    "Missile interception reward too low (0.5) vs wall damage penalty (2.0)"
+  ]
+}
