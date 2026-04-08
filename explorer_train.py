@@ -1260,16 +1260,21 @@ class ExplorerLoop:
             )
 
             # Set max_episodes and checkpoint hints (algorithm-aware)
+            # ALWAYS override checkpoint_path_hint to match the experiment's algorithm.
+            # Generator methods may assign PPO checkpoints to DQN experiments (or vice versa),
+            # causing instant 'policy_net' KeyError or state_dict size mismatch crashes.
             for spec in specs:
                 spec.max_episodes = fail_fast_budget
                 if spec.starting_point in ("from_best", "from_early", "from_perturbed"):
                     algo_ckpts = dqn_checkpoints if spec.algorithm == "dqn" else ppo_checkpoints
-                    if not spec.checkpoint_path_hint and algo_ckpts:
+                    if algo_ckpts:
                         spec.checkpoint_path_hint = algo_ckpts[0]
-                    elif not spec.checkpoint_path_hint and not algo_ckpts:
+                    else:
                         # No compatible checkpoint — fall back to from_scratch
                         spec.starting_point = "from_scratch"
                         spec.checkpoint_path_hint = None
+                elif spec.starting_point == "from_scratch":
+                    spec.checkpoint_path_hint = None
 
             print(f"\n--- Exploration Phase ({len(specs)} experiments) ---")
             print(f"  Baseline to beat: {baseline_score:.0f}")

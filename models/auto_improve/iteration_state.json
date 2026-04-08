@@ -1,5 +1,5 @@
 {
-  "iteration": 6,
+  "iteration": 7,
   "target_level": 15,
   "best_level_reached": 6,
   "best_avg_score": 17090,
@@ -43,6 +43,17 @@
         "exp_radical_dqn_aggressive_29813d: avg=15306, best_level=6, aggressive/[128,128,128,64]/challenge_only"
       ],
       "expected_impact": "3x more experiments actually run, enabling faster convergence to better configs"
+    },
+    {
+      "iteration": 6,
+      "type": "bug_fix_checkpoint_override",
+      "change": "Always override checkpoint_path_hint with algorithm-compatible checkpoint",
+      "problem": "Generator methods set PPO checkpoint hints for DQN experiments. The post-generation fix only corrected unset hints (if not spec.checkpoint_path_hint), so ~50% of DQN experiments still crashed with 'policy_net' KeyError",
+      "fix": "Removed 'not spec.checkpoint_path_hint' guard so override always enforces algorithm-compatible checkpoint. Also clear hints for from_scratch experiments.",
+      "best_level": 6,
+      "best_score": 36690,
+      "best_avg_score": 17090,
+      "expected_impact": "Single-axis DQN experiments (from_best/from_early/from_perturbed) will finally run instead of crashing, roughly doubling useful experiments per generation"
     }
   ],
   "changes_made": [
@@ -51,6 +62,12 @@
       "file": "explorer_train.py",
       "description": "Fix 3 critical bugs: algorithm-aware checkpoint loading, PPO error handling, ExperimentSpec crash",
       "impact": "~70% of experiments were failing instantly due to these bugs"
+    },
+    {
+      "iteration": 6,
+      "file": "explorer_train.py",
+      "description": "Always override checkpoint_path_hint with algorithm-compatible checkpoint instead of only when unset",
+      "impact": "~50% of DQN experiments were still crashing due to receiving PPO checkpoint hints from generators"
     }
   ],
   "failed_ideas": [],
@@ -62,6 +79,7 @@
     "DQN can't track temporal patterns - PPO+GRU already reached L9 vs DQN L4",
     "Enemy proximity danger caps at level 8 (.min(9) in Rust)",
     "Missile interception reward too low (0.5) vs wall damage penalty (2.0)",
-    "Explorer best configs cluster: sparse/aggressive reward + small nets [128,64] + challenge_only curriculum + epsilon_high + from_scratch"
+    "Explorer best configs cluster: sparse/aggressive reward + small nets [128,64] + challenge_only curriculum + epsilon_high + from_scratch",
+    "PPO from_ppo_best_avg.pt checkpoint has old state size (248 vs 276) - can't load into current PPO model"
   ]
 }
