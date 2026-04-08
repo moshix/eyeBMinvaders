@@ -2050,7 +2050,8 @@ NUM_ENVS = 256  # Number of parallel game instances
 def train(episodes=1_000_000, resume_path=None, save_dir="models", device_override=None,
           num_envs=NUM_ENVS, config=None, plateau_detector=None, cycle=0,
           flush_buffer=False, cosine_reset=False, auto_scale=True, god_mode=False,
-          use_curriculum=True, auto_stop=False):
+          use_curriculum=True, auto_stop=False, reward_transform=None,
+          curriculum_override=None):
     os.makedirs(save_dir, exist_ok=True)
 
     if device_override:
@@ -2180,7 +2181,7 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
     tick_count = 0
     plateau_detected = False
     # Curriculum learning: sample starting levels based on agent performance
-    curriculum = CurriculumScheduler() if use_curriculum and use_rust else None
+    curriculum = curriculum_override or (CurriculumScheduler() if use_curriculum and use_rust else None)
     env_start_levels = np.ones(num_envs, dtype=np.int32)  # track start level per env
     if curriculum:
         print("Curriculum learning: enabled (activates after 10K episodes)")
@@ -2204,6 +2205,8 @@ def train(episodes=1_000_000, resume_path=None, save_dir="models", device_overri
             # Push experiences (N-step or direct)
             rewards_np = np.asarray(rewards, dtype=np.float32)
             dones_np = np.asarray(dones, dtype=np.float32)
+            if reward_transform is not None:
+                rewards_np = reward_transform(rewards_np, dones_np, envs)
             if agent:
                 if n_step_buffer:
                     n_step_buffer.add_batch(
