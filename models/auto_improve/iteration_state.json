@@ -1,9 +1,9 @@
 {
-  "iteration": 0,
+  "iteration": 6,
   "target_level": 15,
-  "best_level_reached": 4,
-  "best_avg_score": 18930,
-  "best_model_path": "models/explorer/gen_006_baseline/model_best.pt",
+  "best_level_reached": 6,
+  "best_avg_score": 17090,
+  "best_model_path": "models/explorer/gen_006/exp_informed_b1eb03/model_best.pt",
   "history": [
     {
       "iteration": 0,
@@ -23,9 +23,36 @@
         "best_starting_point": "from_scratch (0.19)",
         "best_algorithm": "dqn (0.02) - but PPO+GRU reached level 9 in separate benchmarks"
       }
+    },
+    {
+      "iteration": 5,
+      "type": "bug_fix_explorer",
+      "change": "Fix 3 critical bugs in explorer_train.py that wasted ~70% of experiments",
+      "bugs_fixed": [
+        "DQN experiments loading PPO checkpoints -> instant 'policy_net' KeyError (fixed find_checkpoints to be algorithm-aware)",
+        "PPO experiments crashing with 'NoneType has no attribute get' (fixed error handling in _run_ppo and _parse_ppo_results)",
+        "Explorer crash at end: ExperimentSpec() missing experiment_id (fixed with default value)"
+      ],
+      "best_level": 6,
+      "best_score": 36690,
+      "best_avg_score": 17090,
+      "best_experiment": "exp_informed_b1eb03: sparse reward, [128,64], challenge_only, epsilon_high, aggressive_important, from_scratch",
+      "top_configs": [
+        "exp_informed_b1eb03: avg=17090, best_level=5, sparse/[128,64]/challenge_only",
+        "exp_informed_1e43bd: avg=16711, best_level=5, sparse/[128,64]/challenge_only/noisy_net",
+        "exp_radical_dqn_aggressive_29813d: avg=15306, best_level=6, aggressive/[128,128,128,64]/challenge_only"
+      ],
+      "expected_impact": "3x more experiments actually run, enabling faster convergence to better configs"
     }
   ],
-  "changes_made": [],
+  "changes_made": [
+    {
+      "iteration": 5,
+      "file": "explorer_train.py",
+      "description": "Fix 3 critical bugs: algorithm-aware checkpoint loading, PPO error handling, ExperimentSpec crash",
+      "impact": "~70% of experiments were failing instantly due to these bugs"
+    }
+  ],
   "failed_ideas": [],
   "successful_ideas": [],
   "known_bottlenecks": [
@@ -34,6 +61,7 @@
     "Level input capped at 10 in Python state (can't distinguish L10-L15)",
     "DQN can't track temporal patterns - PPO+GRU already reached L9 vs DQN L4",
     "Enemy proximity danger caps at level 8 (.min(9) in Rust)",
-    "Missile interception reward too low (0.5) vs wall damage penalty (2.0)"
+    "Missile interception reward too low (0.5) vs wall damage penalty (2.0)",
+    "Explorer best configs cluster: sparse/aggressive reward + small nets [128,64] + challenge_only curriculum + epsilon_high + from_scratch"
   ]
 }

@@ -579,7 +579,7 @@ class StrategyGenerator:
                 n_step=random.choice([1, 3, 5, 7]),
                 train_steps_per_tick=random.choice([2, 4, 8]),
                 generation=generation,
-                checkpoint_path_hint=checkpoints[0] if checkpoints and start != "from_scratch" else None,
+                checkpoint_path_hint=checkpoints[0] if checkpoints and start != "from_scratch" and algo == "dqn" else None,
                 creation_reason=f"Random: {reward}/{arch_name}/{algo}/{curric}/{start}",
             )
             specs.append(spec)
@@ -771,13 +771,24 @@ class ExperimentRunner:
                 elapsed_seconds=time.time() - start_time,
             )
 
-        result = train_ppo(
-            episodes=spec.max_episodes,
-            save_dir=save_dir,
-            device_override=device,
-            num_envs=num_envs,
-            auto_scale=False,
-        )
+        try:
+            resume_path = self._resolve_starting_point(spec, save_dir)
+            ppo_kwargs = dict(
+                episodes=spec.max_episodes,
+                save_dir=save_dir,
+                device_override=device,
+                num_envs=num_envs,
+                auto_scale=False,
+            )
+            if resume_path:
+                ppo_kwargs["resume_path"] = resume_path
+            result = train_ppo(**ppo_kwargs)
+        except Exception as e:
+            return ExperimentResult(
+                spec=spec.to_dict(),
+                stop_reason=f"error: PPO train failed: {e}",
+                elapsed_seconds=time.time() - start_time,
+            )
 
         # train_ppo returns None — parse results from saved files
         elapsed = time.time() - start_time
@@ -820,15 +831,17 @@ class ExperimentRunner:
                             continue
                         try:
                             ev = json.loads(line)
-                            s = ev.get("score", 0)
+                            if not isinstance(ev, dict):
+                                continue
+                            s = ev.get("score", 0) or 0
                             scores.append(s)
                             if s > best_score:
                                 best_score = s
-                            lv = ev.get("level", 0)
+                            lv = ev.get("level", 0) or 0
                             if lv > best_level:
                                 best_level = lv
-                            eps = ev.get("episode", eps)
-                        except json.JSONDecodeError:
+                            eps = ev.get("episode", eps) or eps
+                        except (json.JSONDecodeError, AttributeError, TypeError):
                             continue
             except Exception:
                 pass
@@ -1068,8 +1081,8 @@ class ExplorerState:
                     0.7 * self.axis_stats[axis][value] + 0.3 * score
                 )
 
-    def find_checkpoints(self) -> list:
-        """Find available model checkpoints."""
+    def find_checkpoints(self, algorithm: str = "dqn") -> list:
+        """Find available model checkpoints compatible with the given algorithm."""
         checkpoints = []
         # Check common locations
         for d in [self.save_dir, "models"]:
@@ -1077,14 +1090,31 @@ class ExplorerState:
                 continue
             for f in os.listdir(d):
                 if f.endswith(".pt") and "best" in f:
-                    checkpoints.append(os.path.join(d, f))
+                    path = os.path.join(d, f)
+                    # Filter by algorithm compatibility:
+                    # PPO checkpoints contain "ppo" in filename, DQN ones don't
+                    is_ppo_file = "ppo" in f.lower()
+                    if algorithm == "dqn" and is_ppo_file:
+                        continue
+                    if algorithm == "ppo" and not is_ppo_file:
+                        continue
+                    checkpoints.append(path)
         # Also check generation subdirs
         for entry in sorted(os.listdir(self.save_dir)) if os.path.isdir(self.save_dir) else []:
             subdir = os.path.join(self.save_dir, entry)
             if os.path.isdir(subdir):
-                best = os.path.join(subdir, "model_best.pt")
-                if os.path.exists(best):
-                    checkpoints.append(best)
+                # DQN checkpoints
+                if algorithm == "dqn":
+                    best = os.path.join(subdir, "model_best.pt")
+                    if os.path.exists(best):
+                        checkpoints.append(best)
+                # PPO checkpoints
+                elif algorithm == "ppo":
+                    for name in ["model_ppo_best_avg.pt", "model_ppo_final.pt"]:
+                        p = os.path.join(subdir, name)
+                        if os.path.exists(p):
+                            checkpoints.append(p)
+                            break
         return checkpoints
 
 
@@ -1214,7 +1244,11 @@ class ExplorerLoop:
                 "fail_fast_budget": fail_fast_budget,
             }
 
-            checkpoints = self.state.find_checkpoints()
+            # Find checkpoints for each algorithm type separately
+            dqn_checkpoints = self.state.find_checkpoints("dqn")
+            ppo_checkpoints = self.state.find_checkpoints("ppo")
+            # For backward compat, pass DQN checkpoints as default
+            checkpoints = dqn_checkpoints or ppo_checkpoints
             generator = StrategyGenerator(axis_stats=self.state.axis_stats)
 
             n_experiments = self.state.experiments_per_plateau
@@ -1225,12 +1259,17 @@ class ExplorerLoop:
                 generation=gen,
             )
 
-            # Set max_episodes and checkpoint hints
+            # Set max_episodes and checkpoint hints (algorithm-aware)
             for spec in specs:
                 spec.max_episodes = fail_fast_budget
                 if spec.starting_point in ("from_best", "from_early", "from_perturbed"):
-                    if not spec.checkpoint_path_hint and checkpoints:
-                        spec.checkpoint_path_hint = checkpoints[0]
+                    algo_ckpts = dqn_checkpoints if spec.algorithm == "dqn" else ppo_checkpoints
+                    if not spec.checkpoint_path_hint and algo_ckpts:
+                        spec.checkpoint_path_hint = algo_ckpts[0]
+                    elif not spec.checkpoint_path_hint and not algo_ckpts:
+                        # No compatible checkpoint — fall back to from_scratch
+                        spec.starting_point = "from_scratch"
+                        spec.checkpoint_path_hint = None
 
             print(f"\n--- Exploration Phase ({len(specs)} experiments) ---")
             print(f"  Baseline to beat: {baseline_score:.0f}")
@@ -1309,7 +1348,7 @@ class ExplorerLoop:
                     closest = max(close_enough, key=lambda r: r.avg_score)
                     spec_obj = ExperimentSpec.from_dict(closest.spec) if isinstance(closest.spec, dict) else closest.spec
                     # Check if it's a genuinely different approach
-                    baseline_spec = ExperimentSpec()  # defaults
+                    baseline_spec = ExperimentSpec(experiment_id="baseline_default")
                     dist = self.diversity.distance(spec_obj, baseline_spec)
                     if dist > 0.4:
                         spec_id = closest.spec.get("experiment_id", "?") if isinstance(closest.spec, dict) else closest.spec.experiment_id
