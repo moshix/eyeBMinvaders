@@ -54,6 +54,15 @@
       "best_score": 36690,
       "best_avg_score": 17090,
       "expected_impact": "Single-axis DQN experiments (from_best/from_early/from_perturbed) will finally run instead of crashing, roughly doubling useful experiments per generation"
+    },
+    {
+      "iteration": 7,
+      "type": "reward_shaping",
+      "change": "Quadratic level completion reward (5+level^2) and survival bonus (0.01*level^2) replacing linear scaling",
+      "best_level": 6,
+      "best_avg_score": 17090,
+      "rationale": "Linear reward gave only 2.5x difference between L5 and L15. Quadratic gives 7.7x, creating strong gradient to push past level 6 plateau.",
+      "expected_impact": "Agent should push past level 6 due to dramatically stronger reward for higher levels"
     }
   ],
   "changes_made": [
@@ -68,6 +77,12 @@
       "file": "explorer_train.py",
       "description": "Always override checkpoint_path_hint with algorithm-compatible checkpoint instead of only when unset",
       "impact": "~50% of DQN experiments were still crashing due to receiving PPO checkpoint hints from generators"
+    },
+    {
+      "iteration": 7,
+      "file": "game_sim/src/state.rs",
+      "description": "Quadratic level completion reward (5+level^2) and survival bonus (0.01*level^2) replacing linear scaling",
+      "impact": "Level completion reward at L15 jumps from 50 to 230, survival bonus from 0.15 to 2.25 per tick"
     }
   ],
   "failed_ideas": [],

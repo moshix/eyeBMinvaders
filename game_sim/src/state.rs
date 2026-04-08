@@ -442,8 +442,9 @@ pub fn calculate_reward(
         reward -= 0.5 * player_wall_hits as f32;
     }
 
-    // Progressive survival bonus: scales with level
-    reward += 0.01 * game.current_level as f32;
+    // Progressive survival bonus: quadratic scaling with level for stronger high-level signal
+    let level = game.current_level as f32;
+    reward += 0.01 * level * level;
 
     // Enemy kill bonus — direct reward so killing enemies isn't dwarfed by missiles
     reward += enemies_killed_this_step as f32 * 1.0;
@@ -462,10 +463,11 @@ pub fn calculate_reward(
     // Dodging reward: threats passed close but missed
     reward += near_misses as f32 * 0.15;
 
-    // Level completion bonus — increased and scaling to push past level 7
+    // Level completion bonus — quadratic scaling to strongly incentivize higher levels
+    // L1=6, L5=30, L10=105, L15=230 (was linear: L5=20, L10=35, L15=50)
     if level_completed {
         let level = game.current_level as f32;
-        reward += 5.0 + 3.0 * level;
+        reward += 5.0 + 1.0 * level * level;
     }
 
     // Edge column elimination bonus — thinning the formation buys time between bounces
