@@ -1921,7 +1921,7 @@ class DQNAgent:
         torch.save(data, path)
 
     def load(self, path):
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
 
         # Get the actual module (unwrap torch.compile if needed)
         policy_mod = self.policy_net._orig_mod if hasattr(self.policy_net, '_orig_mod') else self.policy_net

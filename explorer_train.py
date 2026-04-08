@@ -779,19 +779,58 @@ class ExperimentRunner:
             auto_scale=False,
         )
 
-        checkpoint = os.path.join(save_dir, "model_best.pt")
+        # train_ppo returns None — parse results from saved files
+        elapsed = time.time() - start_time
+        avg_score, best_score_val, best_level_val, eps_completed = \
+            self._parse_ppo_results(save_dir, spec.max_episodes)
+
+        checkpoint = os.path.join(save_dir, "model_ppo_best_avg.pt")
+        if not os.path.exists(checkpoint):
+            checkpoint = os.path.join(save_dir, "model_ppo_final.pt")
+
         return ExperimentResult(
             spec=spec.to_dict(),
-            avg_score=result.get("avg_score", 0),
-            best_score=result.get("best_score", 0),
-            avg_level=result.get("avg_level", 0),
-            best_level=result.get("best_level", 0),
-            episodes_completed=result.get("episodes_completed", 0),
-            elapsed_seconds=time.time() - start_time,
-            stop_reason="success" if result.get("avg_score", 0) > baseline_score else "budget_exhausted",
-            score_trajectory=[result.get("avg_score", 0)],
+            avg_score=avg_score,
+            best_score=best_score_val,
+            avg_level=0,
+            best_level=best_level_val,
+            episodes_completed=eps_completed,
+            elapsed_seconds=elapsed,
+            stop_reason="success" if avg_score > baseline_score else "budget_exhausted",
+            score_trajectory=[avg_score],
             checkpoint_path=checkpoint if os.path.exists(checkpoint) else None,
         )
+
+    def _parse_ppo_results(self, save_dir: str, max_episodes: int):
+        """Parse PPO results from training_events.jsonl since train_ppo returns None."""
+        log_path = os.path.join(save_dir, "training_events.jsonl")
+        scores = []
+        best_score = 0
+        best_level = 0
+        eps = 0
+        if os.path.exists(log_path):
+            try:
+                with open(log_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            ev = json.loads(line)
+                            s = ev.get("score", 0)
+                            scores.append(s)
+                            if s > best_score:
+                                best_score = s
+                            lv = ev.get("level", 0)
+                            if lv > best_level:
+                                best_level = lv
+                            eps = ev.get("episode", eps)
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                pass
+        avg = float(np.mean(scores[-1000:])) if scores else 0
+        return avg, best_score, best_level, eps
 
     def _build_config(self, spec: ExperimentSpec) -> TrainingConfig:
         """Build a TrainingConfig from an ExperimentSpec."""
