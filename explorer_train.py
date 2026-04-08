@@ -886,16 +886,31 @@ class ExperimentRunner:
         """Resolve starting_point axis to a file path."""
         if spec.starting_point == "from_scratch":
             return None
-        elif spec.starting_point == "from_perturbed":
-            if spec.checkpoint_path_hint and os.path.exists(spec.checkpoint_path_hint):
-                return self._create_perturbed_checkpoint(
-                    spec.checkpoint_path_hint, save_dir)
+
+        path = spec.checkpoint_path_hint
+        if not path or not os.path.exists(path):
             return None
-        elif spec.starting_point in ("from_best", "from_early"):
-            if spec.checkpoint_path_hint and os.path.exists(spec.checkpoint_path_hint):
-                return spec.checkpoint_path_hint
+
+        # Check checkpoint compatibility: DQN needs 'policy_net', PPO needs 'agent'
+        if HAS_TORCH and self._checkpoint_compatible(path, spec.algorithm):
+            if spec.starting_point == "from_perturbed":
+                return self._create_perturbed_checkpoint(path, save_dir)
+            return path
+        else:
+            # Incompatible checkpoint (e.g., PPO checkpoint for DQN experiment)
             return None
-        return None
+
+    def _checkpoint_compatible(self, path: str, algorithm: str) -> bool:
+        """Check if a checkpoint file is compatible with the target algorithm."""
+        try:
+            checkpoint = torch.load(path, map_location='cpu', weights_only=False)
+            if algorithm == "dqn":
+                return 'policy_net' in checkpoint
+            elif algorithm == "ppo":
+                return 'agent' in checkpoint
+            return True
+        except Exception:
+            return False
 
     def _create_perturbed_checkpoint(self, source_path: str, save_dir: str) -> str:
         """Load checkpoint, add Gaussian noise to weights."""
