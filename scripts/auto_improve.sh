@@ -286,7 +286,7 @@ PROMPTEOF
     # Run claude -p with the improvement prompt
     log "  Running claude -p for analysis and implementation..."
     echo "${IMPROVE_PROMPT}" | claude -p \
-        --permission-mode auto \
+        --dangerously-skip-permissions \
         --max-turns 40 \
         2>&1 | tee "${CYCLE_ANALYSIS}"
 
