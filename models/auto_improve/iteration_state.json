@@ -1,5 +1,5 @@
 {
-  "iteration": 7,
+  "iteration": 9,
   "target_level": 15,
   "best_level_reached": 6,
   "best_avg_score": 17090,
@@ -63,6 +63,16 @@
       "best_avg_score": 17090,
       "rationale": "Linear reward gave only 2.5x difference between L5 and L15. Quadratic gives 7.7x, creating strong gradient to push past level 6 plateau.",
       "expected_impact": "Agent should push past level 6 due to dramatically stronger reward for higher levels"
+    },
+    {
+      "iteration": 9,
+      "type": "training_extension",
+      "change": "Extend successful experiments by 20K episodes instead of stopping immediately when they beat baseline",
+      "problem": "Winning experiments stopped at 2,500 episodes (first checkpoint after beating baseline). Not enough training time to learn strategies beyond level 5-6.",
+      "fix": "Added SUCCESS_EXTENSION=20000. When experiment beats baseline, extends max_episodes by 20K. Disables fail-fast during extension. Stops early only on negative learning velocity over 3 checkpoints.",
+      "best_level": 6,
+      "best_avg_score": 17090,
+      "expected_impact": "Winning configs get 9x more training (22.5K vs 2.5K episodes), should push from level 5-6 to level 8-10+"
     }
   ],
   "changes_made": [
@@ -83,13 +93,18 @@
       "file": "game_sim/src/state.rs",
       "description": "Quadratic level completion reward (5+level^2) and survival bonus (0.01*level^2) replacing linear scaling",
       "impact": "Level completion reward at L15 jumps from 50 to 230, survival bonus from 0.15 to 2.25 per tick"
+    },
+    {
+      "iteration": 9,
+      "file": "explorer_train.py",
+      "description": "Extend successful experiments by 20K more episodes instead of stopping immediately on beating baseline",
+      "impact": "Winning experiments train 9x longer (22.5K vs 2.5K episodes), giving models time to learn higher-level strategies"
     }
   ],
   "failed_ideas": [],
   "successful_ideas": [],
   "known_bottlenecks": [
     "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features)",
-    "Reward function: survival bonus only 0.01*level, level-complete bonus linear not exponential",
     "Level input capped at 10 in Python state (can't distinguish L10-L15)",
     "DQN can't track temporal patterns - PPO+GRU already reached L9 vs DQN L4",
     "Enemy proximity danger caps at level 8 (.min(9) in Rust)",

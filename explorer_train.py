@@ -644,6 +644,7 @@ class ExperimentRunner:
     """Runs a single experiment with fail-fast evaluation."""
 
     CHECKPOINT_INTERVAL = 2500
+    SUCCESS_EXTENSION = 20000  # Continue training successful experiments for 20K more episodes
 
     def run(self, spec: ExperimentSpec, baseline_score: float,
             save_dir: str, device: str, num_envs: int,
@@ -711,24 +712,33 @@ class ExperimentRunner:
             if os.path.exists(final_path):
                 resume_path = final_path
 
-            # Success check
+            # Success check — extend training instead of stopping immediately
             if last_avg > baseline_score:
-                return ExperimentResult(
-                    spec=spec.to_dict(),
-                    avg_score=last_avg,
-                    best_score=best_score,
-                    avg_level=result["avg_level"],
-                    best_level=best_level,
-                    episodes_completed=episodes_run,
-                    elapsed_seconds=time.time() - start_time,
-                    stop_reason="success",
-                    score_trajectory=score_trajectory,
-                    checkpoint_path=os.path.join(save_dir, "model_best.pt"),
-                    learning_velocity=self._velocity(score_trajectory),
-                )
+                if not getattr(spec, '_extended', False):
+                    # First time beating baseline: extend budget to push further
+                    spec._extended = True
+                    spec.max_episodes = episodes_run + self.SUCCESS_EXTENSION
+                    print(f"  -> Beat baseline ({baseline_score:.0f})! "
+                          f"Extending training to {spec.max_episodes} episodes")
+                # If we've been extended and stopped improving, stop
+                elif len(score_trajectory) >= 3 and self._velocity(score_trajectory[-3:]) < 0:
+                    return ExperimentResult(
+                        spec=spec.to_dict(),
+                        avg_score=last_avg,
+                        best_score=best_score,
+                        avg_level=result["avg_level"],
+                        best_level=best_level,
+                        episodes_completed=episodes_run,
+                        elapsed_seconds=time.time() - start_time,
+                        stop_reason="success",
+                        score_trajectory=score_trajectory,
+                        checkpoint_path=os.path.join(save_dir, "model_best.pt"),
+                        learning_velocity=self._velocity(score_trajectory),
+                    )
 
-            # Fail-fast check
-            if self._should_abort(episodes_run, last_avg, baseline_score,
+            # Fail-fast check (skip if already in extended training)
+            if not getattr(spec, '_extended', False) and \
+               self._should_abort(episodes_run, last_avg, baseline_score,
                                    spec.max_episodes):
                 return ExperimentResult(
                     spec=spec.to_dict(),
@@ -743,8 +753,9 @@ class ExperimentRunner:
                     learning_velocity=self._velocity(score_trajectory),
                 )
 
-        # Budget exhausted
+        # Budget exhausted — report success if we were in extended training
         checkpoint = os.path.join(save_dir, "model_best.pt")
+        was_extended = getattr(spec, '_extended', False)
         return ExperimentResult(
             spec=spec.to_dict(),
             avg_score=last_avg,
@@ -753,7 +764,7 @@ class ExperimentRunner:
             best_level=best_level,
             episodes_completed=episodes_run,
             elapsed_seconds=time.time() - start_time,
-            stop_reason="budget_exhausted",
+            stop_reason="success" if was_extended else "budget_exhausted",
             score_trajectory=score_trajectory,
             checkpoint_path=checkpoint if os.path.exists(checkpoint) else None,
             learning_velocity=self._velocity(score_trajectory),
