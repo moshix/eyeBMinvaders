@@ -142,9 +142,26 @@ while (( ITERATION < MAX_ITERATIONS )); do
 
         # Rebuild Rust sim if source changed
         log "  Rebuilding Rust sim..."
-        remote_exec "cd ${REMOTE_DIR}/game_sim && ~/.cargo/bin/maturin develop --release 2>&1 | tail -5" 2>&1 | tee -a "${CYCLE_LOG}" || {
+        remote_exec "cd ${REMOTE_DIR}/game_sim && maturin develop --release 2>&1 | tail -5" 2>&1 | tee -a "${CYCLE_LOG}" || {
             log "  WARNING: Rust build failed, continuing with existing sim"
         }
+
+        # Reset explorer state so training starts fresh (keeps best model but resets episode count)
+        log "  Resetting explorer episode count for fresh cycle..."
+        remote_exec "cd ${REMOTE_DIR} && ${REMOTE_VENV} -c \"
+import json, os
+state_path = 'models/explorer/explorer_state.json'
+if os.path.exists(state_path):
+    with open(state_path) as f:
+        state = json.load(f)
+    state['total_episodes'] = 0
+    state['generation'] = 0
+    with open(state_path, 'w') as f:
+        json.dump(state, f, indent=2)
+    print(f'Reset explorer state (kept baseline_score={state.get(\\\"baseline_score\\\", 0)})')
+else:
+    print('No explorer state to reset')
+\"" 2>&1 | tee -a "${CYCLE_LOG}"
 
         # Start training
         remote_exec "cd ${REMOTE_DIR} && nohup ${REMOTE_VENV} -u explorer_train.py \
@@ -155,14 +172,19 @@ while (( ITERATION < MAX_ITERATIONS )); do
             --resume \
             > training_explorer_output.log 2>&1 &"
 
-        sleep 10  # Let it start
+        sleep 15  # Let it start
 
         if remote_training_running; then
             log "  Training started successfully"
             wait_for_training
         else
-            log "  ERROR: Training failed to start"
-            remote_exec "tail -30 ${REMOTE_DIR}/training_explorer_output.log" 2>&1 | tee -a "${CYCLE_LOG}"
+            # Check if it already finished (very fast completion)
+            if grep -q "EXPLORER TRAINING COMPLETE" <(remote_exec "tail -5 ${REMOTE_DIR}/training_explorer_output.log" 2>/dev/null); then
+                log "  Training completed immediately"
+            else
+                log "  ERROR: Training failed to start"
+                remote_exec "tail -30 ${REMOTE_DIR}/training_explorer_output.log" 2>&1 | tee -a "${CYCLE_LOG}"
+            fi
         fi
 
         # Fetch training results
