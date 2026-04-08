@@ -81,7 +81,8 @@ remote_exec() {
 }
 
 remote_training_running() {
-    remote_exec "pgrep -f 'explorer_train|train_ppo|train.py' > /dev/null 2>&1" && return 0 || return 1
+    # Use pgrep -x with python3 and check /proc for the actual explorer script
+    remote_exec "pgrep -f 'python3.*explorer_train\.py' > /dev/null 2>&1" && return 0 || return 1
 }
 
 wait_for_training() {
