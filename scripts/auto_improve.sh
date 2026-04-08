@@ -143,7 +143,7 @@ while (( ITERATION < MAX_ITERATIONS )); do
 
         # Rebuild Rust sim if source changed
         log "  Rebuilding Rust sim..."
-        remote_exec "cd ${REMOTE_DIR}/game_sim && maturin develop --release 2>&1 | tail -5" 2>&1 | tee -a "${CYCLE_LOG}" || {
+        remote_exec "source ~/.cargo/env 2>/dev/null; cd ${REMOTE_DIR}/game_sim && maturin develop --release 2>&1 | tail -5" 2>&1 | tee -a "${CYCLE_LOG}" || {
             log "  WARNING: Rust build failed, continuing with existing sim"
         }
 
