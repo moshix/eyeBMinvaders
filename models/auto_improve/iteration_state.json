@@ -1,5 +1,5 @@
 {
-  "iteration": 3,
+  "iteration": 4,
   "target_level": 15,
   "best_level_reached": 8,
   "best_avg_score": 35714,
@@ -28,6 +28,19 @@
         "Danger signal uncapped: .min(9) -> .min(20) in proximity penalty",
         "Missile interception: 0.5 -> (2.0 + 0.5*level) scaling with threat",
         "PPO bias: explorer now picks PPO 70% of time (was 50%)"
+      ]
+    },
+    {
+      "iteration": 3,
+      "type": "bug_fix",
+      "best_level": 8,
+      "best_avg_score": 35714,
+      "total_experiments": 430,
+      "ppo_experiments_broken": "165/165 (100%)",
+      "changes": [
+        "Fix ParallelGameEnv → BatchedGames import (PPO checkpoint validation was crashing)",
+        "Build and pass PPOConfig from experiment spec to train_ppo (PPO was ignoring all hyperparams)",
+        "Wrap PPO result parsing in try/except (errors were escaping with misleading messages)"
       ]
     }
   ],
@@ -76,6 +89,11 @@
       "iteration": 2,
       "file": "explorer_train.py",
       "description": "Fix PPO checkpoint state size validation (248 vs 276) and compute avg_level from logs"
+    },
+    {
+      "iteration": 3,
+      "file": "explorer_train.py",
+      "description": "Fix PPO integration: BatchedGames import, pass PPOConfig from spec, wrap result parsing"
     }
   ],
   "failed_ideas": [],

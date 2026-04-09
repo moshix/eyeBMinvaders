@@ -783,13 +783,26 @@ class ExperimentRunner:
             )
 
         try:
+            from train_ppo import PPOConfig
             resume_path = self._resolve_starting_point(spec, save_dir)
+
+            # Build PPOConfig from experiment spec so PPO uses the right hyperparams
+            ppo_cfg = PPOConfig()
+            ppo_cfg.lr = spec.lr
+            ppo_cfg.gamma = spec.gamma
+            if spec.hidden_sizes:
+                ppo_cfg.hidden_sizes = list(spec.hidden_sizes)
+            # Map explorer batch_size to PPO minibatch_size
+            if spec.batch_size:
+                ppo_cfg.minibatch_size = spec.batch_size
+
             ppo_kwargs = dict(
                 episodes=spec.max_episodes,
                 save_dir=save_dir,
                 device_override=device,
                 num_envs=num_envs,
                 auto_scale=False,
+                config=ppo_cfg,
             )
             if resume_path:
                 ppo_kwargs["resume_path"] = resume_path
@@ -802,19 +815,19 @@ class ExperimentRunner:
             )
 
         # train_ppo returns None — parse results from saved files
-        elapsed = time.time() - start_time
-        avg_score, best_score_val, best_level_val, eps_completed = \
-            self._parse_ppo_results(save_dir, spec.max_episodes)
+        try:
+            elapsed = time.time() - start_time
+            avg_score, best_score_val, best_level_val, eps_completed = \
+                self._parse_ppo_results(save_dir, spec.max_episodes)
 
-        checkpoint = os.path.join(save_dir, "model_ppo_best_avg.pt")
-        if not os.path.exists(checkpoint):
-            checkpoint = os.path.join(save_dir, "model_ppo_final.pt")
+            checkpoint = os.path.join(save_dir, "model_ppo_best_avg.pt")
+            if not os.path.exists(checkpoint):
+                checkpoint = os.path.join(save_dir, "model_ppo_final.pt")
 
-        # Compute avg_level from the log file
-        avg_level_val = 0
-        log_path = os.path.join(save_dir, "training_events_ppo.jsonl")
-        if os.path.exists(log_path):
-            try:
+            # Compute avg_level from the log file
+            avg_level_val = 0
+            log_path = os.path.join(save_dir, "training_events_ppo.jsonl")
+            if os.path.exists(log_path):
                 levels = []
                 with open(log_path) as f:
                     for line in f:
@@ -826,21 +839,25 @@ class ExperimentRunner:
                             continue
                 if levels:
                     avg_level_val = float(np.mean(levels[-1000:]))
-            except Exception:
-                pass
 
-        return ExperimentResult(
-            spec=spec.to_dict(),
-            avg_score=avg_score,
-            best_score=best_score_val,
-            avg_level=avg_level_val,
-            best_level=best_level_val,
-            episodes_completed=eps_completed,
-            elapsed_seconds=elapsed,
-            stop_reason="success" if avg_score > baseline_score else "budget_exhausted",
-            score_trajectory=[avg_score],
-            checkpoint_path=checkpoint if os.path.exists(checkpoint) else None,
-        )
+            return ExperimentResult(
+                spec=spec.to_dict(),
+                avg_score=avg_score,
+                best_score=best_score_val,
+                avg_level=avg_level_val,
+                best_level=best_level_val,
+                episodes_completed=eps_completed,
+                elapsed_seconds=elapsed,
+                stop_reason="success" if avg_score > baseline_score else "budget_exhausted",
+                score_trajectory=[avg_score],
+                checkpoint_path=checkpoint if os.path.exists(checkpoint) else None,
+            )
+        except Exception as e:
+            return ExperimentResult(
+                spec=spec.to_dict(),
+                stop_reason=f"error: PPO result parse failed: {e}",
+                elapsed_seconds=time.time() - start_time,
+            )
 
     def _parse_ppo_results(self, save_dir: str, max_episodes: int):
         """Parse PPO results from training log since train_ppo returns None."""
@@ -962,8 +979,8 @@ class ExperimentRunner:
                 if first_layer_key is not None:
                     saved_input_dim = agent_state[first_layer_key].shape[1]
                     # Current state size: STATE_SIZE * n_frames (default 4)
-                    from game_sim import ParallelGameEnv
-                    current_raw = ParallelGameEnv(1).state_size
+                    from game_sim import BatchedGames
+                    current_raw = BatchedGames(1).state_size
                     n_frames = checkpoint.get('config', {}).get('n_frames', 4)
                     expected_input_dim = current_raw * n_frames
                     if saved_input_dim != expected_input_dim:
