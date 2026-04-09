@@ -949,7 +949,7 @@ def train_ppo(episodes=1_000_000, resume_path=None, save_dir="models",
                         ep_returns.insert(0, G)
                     added = sil_buffer.maybe_add(
                         env_ep_obs[i], env_ep_actions[i], ep_returns,
-                        float(episode_rewards[i]), ep_level)
+                        float(ep_score), ep_level)
                     env_ep_obs[i] = []
                     env_ep_actions[i] = []
                     env_ep_rewards[i] = []

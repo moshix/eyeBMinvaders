@@ -1,5 +1,5 @@
 {
-  "iteration": 4,
+  "iteration": 5,
   "target_level": 15,
   "best_level_reached": 8,
   "best_avg_score": 35714,
@@ -38,9 +38,20 @@
       "total_experiments": 430,
       "ppo_experiments_broken": "165/165 (100%)",
       "changes": [
-        "Fix ParallelGameEnv → BatchedGames import (PPO checkpoint validation was crashing)",
+        "Fix ParallelGameEnv -> BatchedGames import (PPO checkpoint validation was crashing)",
         "Build and pass PPOConfig from experiment spec to train_ppo (PPO was ignoring all hyperparams)",
         "Wrap PPO result parsing in try/except (errors were escaping with misleading messages)"
+      ]
+    },
+    {
+      "iteration": 4,
+      "type": "bug_fix",
+      "best_level": 8,
+      "best_avg_score": 35714,
+      "total_experiments": 455,
+      "ppo_experiments_all_zero": true,
+      "changes": [
+        "Fix SIL crash: episode_rewards[i] -> ep_score in train_ppo.py line 952. Every PPO experiment crashed on first episode due to undefined variable in Self-Imitation Learning buffer code. This killed 100% of PPO experiments (172/455 total)."
       ]
     }
   ],
@@ -83,7 +94,7 @@
     {
       "iteration": 2,
       "file": "train_ppo.py",
-      "description": "Fix ext['shots_hit'] bracket crash → ext.get('shots_hit', 0) — PPO logging was silently dying"
+      "description": "Fix ext['shots_hit'] bracket crash -> ext.get('shots_hit', 0)"
     },
     {
       "iteration": 2,
@@ -94,6 +105,11 @@
       "iteration": 3,
       "file": "explorer_train.py",
       "description": "Fix PPO integration: BatchedGames import, pass PPOConfig from spec, wrap result parsing"
+    },
+    {
+      "iteration": 4,
+      "file": "train_ppo.py",
+      "description": "Fix SIL crash: episode_rewards[i] -> ep_score (line 952). Every PPO experiment crashed on first episode."
     }
   ],
   "failed_ideas": [],
@@ -103,10 +119,10 @@
     "Bug fixes tripled effective experiment throughput"
   ],
   "known_bottlenecks": [
-    "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features) — requires adding to STATE_SIZE in constants.rs and get_state in state.rs",
-    "Explorer best configs cluster tightly — need more architectural diversity",
-    "No recurrent DQN variant tested (LSTM/GRU Q-network could help DQN reach higher levels)",
-    "DQN plateaus at level 6-8 regardless of hyperparameters — PPO+GRU is the path to level 15",
+    "PPO was 100% broken - now fixed, should unlock level 9+ progression",
+    "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features)",
+    "DQN plateaus at level 6-8 regardless of hyperparameters - PPO+GRU is the path to level 15",
+    "Old PPO checkpoint (model_ppo_best_avg.pt) has wrong state size (248 vs 276) - from_best PPO experiments fall back to from_scratch",
     "PPO from_scratch experiments need enough episodes (25K+) to match DQN performance"
   ]
 }
