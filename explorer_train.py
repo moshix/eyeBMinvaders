@@ -810,11 +810,30 @@ class ExperimentRunner:
         if not os.path.exists(checkpoint):
             checkpoint = os.path.join(save_dir, "model_ppo_final.pt")
 
+        # Compute avg_level from the log file
+        avg_level_val = 0
+        log_path = os.path.join(save_dir, "training_events_ppo.jsonl")
+        if os.path.exists(log_path):
+            try:
+                levels = []
+                with open(log_path) as f:
+                    for line in f:
+                        try:
+                            ev = json.loads(line.strip())
+                            if isinstance(ev, dict):
+                                levels.append(ev.get("level", 0) or 0)
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+                if levels:
+                    avg_level_val = float(np.mean(levels[-1000:]))
+            except Exception:
+                pass
+
         return ExperimentResult(
             spec=spec.to_dict(),
             avg_score=avg_score,
             best_score=best_score_val,
-            avg_level=0,
+            avg_level=avg_level_val,
             best_level=best_level_val,
             episodes_completed=eps_completed,
             elapsed_seconds=elapsed,
@@ -931,7 +950,25 @@ class ExperimentRunner:
             if algorithm == "dqn":
                 return 'policy_net' in checkpoint
             elif algorithm == "ppo":
-                return 'agent' in checkpoint
+                if 'agent' not in checkpoint:
+                    return False
+                # Validate state size compatibility — old checkpoints with
+                # different STATE_SIZE (e.g. 248 vs 276) will crash on load
+                agent_state = checkpoint['agent']
+                first_layer_key = next(
+                    (k for k in agent_state if k.endswith('.0.weight') and 'backbone' in k),
+                    None
+                )
+                if first_layer_key is not None:
+                    saved_input_dim = agent_state[first_layer_key].shape[1]
+                    # Current state size: STATE_SIZE * n_frames (default 4)
+                    from game_sim import ParallelGameEnv
+                    current_raw = ParallelGameEnv(1).state_size
+                    n_frames = checkpoint.get('config', {}).get('n_frames', 4)
+                    expected_input_dim = current_raw * n_frames
+                    if saved_input_dim != expected_input_dim:
+                        return False
+                return True
             return True
         except Exception:
             return False
