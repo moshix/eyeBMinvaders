@@ -471,7 +471,7 @@ class StrategyGenerator:
 
     def _radical_departure(self, ctx: dict, generation: int) -> ExperimentSpec:
         """A from-scratch experiment with completely different approach."""
-        algo = random.choice(["dqn", "ppo"])
+        algo = random.choices(["ppo", "dqn"], weights=[0.7, 0.3])[0]
         reward = random.choice(["aggressive", "survival", "sparse"])
         arch_name = random.choice(["wide_shallow", "narrow_deep", "large"])
         arch = ARCHITECTURES[arch_name]
@@ -552,7 +552,7 @@ class StrategyGenerator:
             reward = random.choice(list(REWARD_MODES.keys()))
             arch_name = random.choice(list(ARCHITECTURES.keys()))
             arch = ARCHITECTURES[arch_name]
-            algo = random.choice(ALGORITHMS)
+            algo = random.choices(["ppo", "dqn"], weights=[0.7, 0.3])[0]
             curric = random.choice(list(CURRICULUM_MODES.keys()))
             explore = random.choice(list(EXPLORATION_MODES.keys()))
             buf = random.choice(list(BUFFER_MODES.keys()))
@@ -1093,40 +1093,64 @@ class ExplorerState:
                 )
 
     def find_checkpoints(self, algorithm: str = "dqn") -> list:
-        """Find available model checkpoints compatible with the given algorithm."""
-        checkpoints = []
-        # Check common locations
+        """Find available model checkpoints compatible with the given algorithm.
+
+        Uses actual torch.load verification instead of filename heuristics,
+        and searches 2 levels deep in the explorer directory.
+        """
+        candidates = []
+        # Check common locations (models/ root and explorer root)
         for d in [self.save_dir, "models"]:
             if not os.path.isdir(d):
                 continue
             for f in os.listdir(d):
                 if f.endswith(".pt") and "best" in f:
-                    path = os.path.join(d, f)
-                    # Filter by algorithm compatibility:
-                    # PPO checkpoints contain "ppo" in filename, DQN ones don't
-                    is_ppo_file = "ppo" in f.lower()
-                    if algorithm == "dqn" and is_ppo_file:
+                    candidates.append(os.path.join(d, f))
+        # Check generation subdirs (gen_XXX/) AND experiment subdirs (gen_XXX/exp_XXX/)
+        if os.path.isdir(self.save_dir):
+            for entry in sorted(os.listdir(self.save_dir)):
+                subdir = os.path.join(self.save_dir, entry)
+                if not os.path.isdir(subdir):
+                    continue
+                # Check gen_XXX/ level
+                for name in ["model_best.pt", "model_ppo_best_avg.pt", "model_ppo_final.pt"]:
+                    p = os.path.join(subdir, name)
+                    if os.path.exists(p):
+                        candidates.append(p)
+                # Check gen_XXX/exp_XXX/ level (2 deep)
+                for exp_entry in sorted(os.listdir(subdir)):
+                    exp_subdir = os.path.join(subdir, exp_entry)
+                    if not os.path.isdir(exp_subdir):
                         continue
-                    if algorithm == "ppo" and not is_ppo_file:
-                        continue
-                    checkpoints.append(path)
-        # Also check generation subdirs
-        for entry in sorted(os.listdir(self.save_dir)) if os.path.isdir(self.save_dir) else []:
-            subdir = os.path.join(self.save_dir, entry)
-            if os.path.isdir(subdir):
-                # DQN checkpoints
-                if algorithm == "dqn":
-                    best = os.path.join(subdir, "model_best.pt")
-                    if os.path.exists(best):
-                        checkpoints.append(best)
-                # PPO checkpoints
-                elif algorithm == "ppo":
-                    for name in ["model_ppo_best_avg.pt", "model_ppo_final.pt"]:
-                        p = os.path.join(subdir, name)
+                    for name in ["model_best.pt", "model_ppo_best_avg.pt", "model_ppo_final.pt"]:
+                        p = os.path.join(exp_subdir, name)
                         if os.path.exists(p):
-                            checkpoints.append(p)
-                            break
+                            candidates.append(p)
+        # Filter by actual content compatibility (not filename heuristics)
+        checkpoints = []
+        for path in candidates:
+            if self._checkpoint_compatible_static(path, algorithm):
+                checkpoints.append(path)
         return checkpoints
+
+    @staticmethod
+    def _checkpoint_compatible_static(path: str, algorithm: str) -> bool:
+        """Check if a checkpoint file is compatible with the target algorithm."""
+        if not HAS_TORCH:
+            # Fall back to filename heuristic
+            is_ppo_file = "ppo" in os.path.basename(path).lower()
+            return (algorithm == "ppo") == is_ppo_file
+        try:
+            checkpoint = torch.load(path, map_location='cpu', weights_only=False)
+            if not isinstance(checkpoint, dict):
+                return False
+            if algorithm == "dqn":
+                return 'policy_net' in checkpoint
+            elif algorithm == "ppo":
+                return 'agent' in checkpoint
+            return True
+        except Exception:
+            return False
 
 
 # =============================================================================

@@ -21,8 +21,8 @@ pub fn get_state(game: &HeadlessGame) -> [f32; STATE_SIZE] {
     // [1] Player lives (normalized)
     f[1] = game.player_lives as f32 / PLAYER_LIVES as f32;
 
-    // [2] Level (normalized, cap at 10)
-    f[2] = (game.current_level.min(10) as f64 / 10.0) as f32;
+    // [2] Level (normalized, cap at 20 to distinguish L10-L15+)
+    f[2] = (game.current_level.min(20) as f64 / 20.0) as f32;
 
     // [3] Number of enemies (normalized)
     f[3] = ((game.enemies.len().min(60) as f64) / 60.0) as f32;
@@ -452,8 +452,8 @@ pub fn calculate_reward(
     // Extra reward for killing kamikazes
     reward += kamikazes_killed_this_step as f32 * 1.5;
 
-    // Missile interception (reduced from 2.0 — score already gives +5.0 via 500pts)
-    reward += missiles_shot_this_step as f32 * 0.5;
+    // Missile interception — scales with level since missiles are critical at high levels
+    reward += missiles_shot_this_step as f32 * (2.0 + 0.5 * game.current_level as f32);
 
     // Monster kill bonus — restoring walls is strategically critical
     if monster_killed_this_step {
@@ -486,7 +486,7 @@ pub fn calculate_reward(
         let proximity = (lowest_y / WALL_Y).min(1.0) as f32;
         if proximity > 0.7 {
             let danger = (proximity - 0.7) / 0.3;
-            let level_mult = 1.0 + 0.2 * (game.current_level.min(9) - 1) as f32;
+            let level_mult = 1.0 + 0.2 * (game.current_level.min(20) - 1) as f32;
             reward -= 15.0 * level_mult * danger * danger;
         }
     }

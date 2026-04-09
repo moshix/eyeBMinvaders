@@ -266,10 +266,22 @@ You are working in ${LOCAL_DIR}. Analyze the training results and implement ONE 
 
 ### Analysis Framework
 1. **What level did we reach?** Compare to target (${TARGET_LEVEL}) and previous iterations.
-2. **What's the bottleneck?** Is it perception (state), motivation (rewards), capacity (architecture), or strategy (curriculum)?
+2. **What's the bottleneck?** Run these diagnostic checks:
+   - **Input caps**: grep for \`.min(\` in \`game_sim/src/state.rs\` and \`train.py\` — any hardcoded caps that prevent the network from distinguishing high levels?
+   - **State feature audit**: compare STATE_SIZE in \`game_sim/src/constants.rs\` with game mechanics in \`game_sim/src/game.rs\` — are there game events the agent can't perceive?
+   - **Reward ratios**: in \`calculate_reward\`, compare bonus vs penalty magnitudes — are defensive actions (missile interception, wall protection) properly incentivized vs offensive actions (kills)?
+   - **Architecture check**: is the training algorithm capable of temporal reasoning? DQN has no memory; PPO+GRU (in \`train_ppo.py\`) can learn patterns. If stuck at a level, consider switching.
+   - **Curriculum check**: is the agent practicing at the right levels? Check curriculum weights in \`explorer_train.py\`.
 3. **What was tried before?** Check \`changes_made\` and \`failed_ideas\` in the iteration state. Do NOT repeat failed approaches.
 4. **What's the single highest-impact change?** Implement it.
 5. **Update the iteration state** by writing to ${STATE_FILE}
+
+### Key Insights From Previous Runs
+- PPO+GRU (in \`train_ppo.py\`) reached level 9 in separate benchmarks — it's the best architecture for level progression
+- DQN consistently plateaus at level 4-6 regardless of hyperparameters
+- The Rust sim state size is 69 features (check \`constants.rs\` STATE_SIZE)
+- Enemy speed scales 1.33x per level (L15 = 61x base speed)
+- Enemy fire rate scales by \`0.85 / (1 + 0.10 * (level-1))\` seconds
 
 ### Output Format
 After implementing your change, write a summary to ${CYCLE_CHANGES} with:
@@ -287,7 +299,7 @@ PROMPTEOF
     log "  Running claude -p for analysis and implementation..."
     echo "${IMPROVE_PROMPT}" | claude -p \
         --dangerously-skip-permissions \
-        --max-turns 40 \
+        --max-turns 60 \
         2>&1 | tee "${CYCLE_ANALYSIS}"
 
     # Check if changes were committed

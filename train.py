@@ -492,7 +492,7 @@ class HeadlessGame:
         # [1] Player lives
         f[1] = self.player_lives / PLAYER_LIVES
         # [2] Level
-        f[2] = min(self.current_level, 10) / 10.0
+        f[2] = min(self.current_level, 20) / 20.0
         # [3] Enemy count
         f[3] = min(len(self.enemies), 60) / 60.0
 

@@ -1,115 +1,56 @@
 {
-  "iteration": 9,
+  "iteration": 0,
   "target_level": 15,
   "best_level_reached": 6,
-  "best_avg_score": 17090,
-  "best_model_path": "models/explorer/gen_006/exp_informed_b1eb03/model_best.pt",
+  "best_avg_score": 33864,
+  "best_model_path": "models/explorer/gen_003/exp_informed_2f4a7e/model_best.pt",
   "history": [
     {
-      "iteration": 0,
-      "type": "initial_explorer_run",
-      "episodes": 200000,
-      "generations": 7,
-      "experiments": 42,
-      "successes": 4,
-      "best_level": 4,
-      "best_score": 64720,
-      "avg_score": 18930,
-      "winning_config": "wide_shallow [1024,256], lr=5e-4, dueling DQN",
-      "axis_insights": {
-        "best_architecture": "narrow_deep (0.49 success rate)",
-        "best_reward": "sparse (0.33)",
-        "best_buffer": "fresh_buffer (0.35)",
-        "best_starting_point": "from_scratch (0.19)",
-        "best_algorithm": "dqn (0.02) - but PPO+GRU reached level 9 in separate benchmarks"
-      }
+      "iteration": "phase1_summary",
+      "type": "10_iteration_run",
+      "best_level": 6,
+      "best_avg_score": 33864,
+      "best_single_score": 94420,
+      "total_experiments": 384,
+      "code_changes": 4,
+      "changes": [
+        "iter5: Fix 3 explorer bugs (70% experiments were crashing)",
+        "iter6: Fix checkpoint override (DQN getting PPO checkpoints)",
+        "iter7: Quadratic reward scaling (level^2 completion + survival)",
+        "iter9: Extend winning experiments +20K episodes"
+      ]
     },
     {
-      "iteration": 5,
-      "type": "bug_fix_explorer",
-      "change": "Fix 3 critical bugs in explorer_train.py that wasted ~70% of experiments",
-      "bugs_fixed": [
-        "DQN experiments loading PPO checkpoints -> instant 'policy_net' KeyError (fixed find_checkpoints to be algorithm-aware)",
-        "PPO experiments crashing with 'NoneType has no attribute get' (fixed error handling in _run_ppo and _parse_ppo_results)",
-        "Explorer crash at end: ExperimentSpec() missing experiment_id (fixed with default value)"
-      ],
-      "best_level": 6,
-      "best_score": 36690,
-      "best_avg_score": 17090,
-      "best_experiment": "exp_informed_b1eb03: sparse reward, [128,64], challenge_only, epsilon_high, aggressive_important, from_scratch",
-      "top_configs": [
-        "exp_informed_b1eb03: avg=17090, best_level=5, sparse/[128,64]/challenge_only",
-        "exp_informed_1e43bd: avg=16711, best_level=5, sparse/[128,64]/challenge_only/noisy_net",
-        "exp_radical_dqn_aggressive_29813d: avg=15306, best_level=6, aggressive/[128,128,128,64]/challenge_only"
-      ],
-      "expected_impact": "3x more experiments actually run, enabling faster convergence to better configs"
-    },
-    {
-      "iteration": 6,
-      "type": "bug_fix_checkpoint_override",
-      "change": "Always override checkpoint_path_hint with algorithm-compatible checkpoint",
-      "problem": "Generator methods set PPO checkpoint hints for DQN experiments. The post-generation fix only corrected unset hints (if not spec.checkpoint_path_hint), so ~50% of DQN experiments still crashed with 'policy_net' KeyError",
-      "fix": "Removed 'not spec.checkpoint_path_hint' guard so override always enforces algorithm-compatible checkpoint. Also clear hints for from_scratch experiments.",
-      "best_level": 6,
-      "best_score": 36690,
-      "best_avg_score": 17090,
-      "expected_impact": "Single-axis DQN experiments (from_best/from_early/from_perturbed) will finally run instead of crashing, roughly doubling useful experiments per generation"
-    },
-    {
-      "iteration": 7,
-      "type": "reward_shaping",
-      "change": "Quadratic level completion reward (5+level^2) and survival bonus (0.01*level^2) replacing linear scaling",
-      "best_level": 6,
-      "best_avg_score": 17090,
-      "rationale": "Linear reward gave only 2.5x difference between L5 and L15. Quadratic gives 7.7x, creating strong gradient to push past level 6 plateau.",
-      "expected_impact": "Agent should push past level 6 due to dramatically stronger reward for higher levels"
-    },
-    {
-      "iteration": 9,
-      "type": "training_extension",
-      "change": "Extend successful experiments by 20K episodes instead of stopping immediately when they beat baseline",
-      "problem": "Winning experiments stopped at 2,500 episodes (first checkpoint after beating baseline). Not enough training time to learn strategies beyond level 5-6.",
-      "fix": "Added SUCCESS_EXTENSION=20000. When experiment beats baseline, extends max_episodes by 20K. Disables fail-fast during extension. Stops early only on negative learning velocity over 3 checkpoints.",
-      "best_level": 6,
-      "best_avg_score": 17090,
-      "expected_impact": "Winning configs get 9x more training (22.5K vs 2.5K episodes), should push from level 5-6 to level 8-10+"
+      "iteration": "phase2_manual_fixes",
+      "type": "direct_code_changes",
+      "changes": [
+        "Level input cap: .min(10)/10 -> .min(20)/20 in Rust and Python state",
+        "Danger signal uncapped: .min(9) -> .min(20) in proximity penalty",
+        "Missile interception: 0.5 -> (2.0 + 0.5*level) scaling with threat",
+        "PPO bias: explorer now picks PPO 70% of time (was 50%)"
+      ]
     }
   ],
   "changes_made": [
-    {
-      "iteration": 5,
-      "file": "explorer_train.py",
-      "description": "Fix 3 critical bugs: algorithm-aware checkpoint loading, PPO error handling, ExperimentSpec crash",
-      "impact": "~70% of experiments were failing instantly due to these bugs"
-    },
-    {
-      "iteration": 6,
-      "file": "explorer_train.py",
-      "description": "Always override checkpoint_path_hint with algorithm-compatible checkpoint instead of only when unset",
-      "impact": "~50% of DQN experiments were still crashing due to receiving PPO checkpoint hints from generators"
-    },
-    {
-      "iteration": 7,
-      "file": "game_sim/src/state.rs",
-      "description": "Quadratic level completion reward (5+level^2) and survival bonus (0.01*level^2) replacing linear scaling",
-      "impact": "Level completion reward at L15 jumps from 50 to 230, survival bonus from 0.15 to 2.25 per tick"
-    },
-    {
-      "iteration": 9,
-      "file": "explorer_train.py",
-      "description": "Extend successful experiments by 20K more episodes instead of stopping immediately on beating baseline",
-      "impact": "Winning experiments train 9x longer (22.5K vs 2.5K episodes), giving models time to learn higher-level strategies"
-    }
+    {"iteration": 5, "file": "explorer_train.py", "description": "Fix 3 critical explorer bugs"},
+    {"iteration": 6, "file": "explorer_train.py", "description": "Fix checkpoint override"},
+    {"iteration": 7, "file": "game_sim/src/state.rs", "description": "Quadratic reward scaling"},
+    {"iteration": 9, "file": "explorer_train.py", "description": "Extend winning experiments +20K"},
+    {"iteration": "phase2", "file": "game_sim/src/state.rs", "description": "Level cap .min(20), danger uncap, missile reward scaling"},
+    {"iteration": "phase2", "file": "train.py", "description": "Level cap .min(20) in Python state"},
+    {"iteration": "phase2", "file": "explorer_train.py", "description": "PPO 70/30 bias over DQN"}
   ],
   "failed_ideas": [],
-  "successful_ideas": [],
+  "successful_ideas": [
+    "Quadratic reward scaling increased best score from 65K to 94K",
+    "Extended training (20K) doubled avg score from 17K to 34K",
+    "Bug fixes tripled effective experiment throughput"
+  ],
   "known_bottlenecks": [
-    "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features)",
-    "Level input capped at 10 in Python state (can't distinguish L10-L15)",
-    "DQN can't track temporal patterns - PPO+GRU already reached L9 vs DQN L4",
-    "Enemy proximity danger caps at level 8 (.min(9) in Rust)",
-    "Missile interception reward too low (0.5) vs wall damage penalty (2.0)",
-    "Explorer best configs cluster: sparse/aggressive reward + small nets [128,64] + challenge_only curriculum + epsilon_high + from_scratch",
-    "PPO from_ppo_best_avg.pt checkpoint has old state size (248 vs 276) - can't load into current PPO model"
+    "State representation missing enemy_fire_rate, kamikaze_timing, bounce_urgency (7 features) — requires adding to STATE_SIZE in constants.rs and get_state in state.rs",
+    "PPO+GRU reached L9 in benchmarks but explorer PPO experiments still crash on old checkpoints — from_scratch PPO should work now with 70% bias",
+    "Explorer best configs cluster tightly — need more architectural diversity",
+    "No recurrent DQN variant tested (LSTM/GRU Q-network could help DQN reach higher levels)",
+    "Old PPO checkpoint model_ppo_best_avg.pt has wrong state size (248 vs 276) — only from_scratch PPO works"
   ]
 }
